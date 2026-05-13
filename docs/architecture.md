@@ -31,7 +31,36 @@ Codex / Claude Code / opencode lifecycle hooks
 
 ### CLI
 
-`src/cli.ts` is the public entrypoint. It parses commands, resolves configuration, loads provider credentials, and dispatches hook, setup, status, update, reset, and config operations.
+`src/cli.ts` is the public entrypoint. It delegates immediately to `src/cli/app.ts`, which routes to one command module per command.
+
+Human-facing commands use `@clack/prompts` for interaction:
+
+```text
+login   -> intro, QR note, authorization spinner, outro
+setup   -> intro, installer spinner, signature URL note, outro
+config  -> text prompts when provider/render values are omitted in a TTY
+```
+
+Machine-facing commands stay plain:
+
+```text
+status/update/reset -> JSON or silent output
+hook                -> pass-through `{}` for Codex or silent output for other agents
+url                 -> raw URL only
+```
+
+This keeps the pretty CLI layer out of hook and automation protocols.
+
+The CLI files are split by responsibility:
+
+```text
+src/cli/app.ts              command routing
+src/cli/args.ts             argv parsing helpers
+src/cli/ui.ts               Clack wrapper and non-TTY fallback
+src/cli/slot-sync.ts        state-lock to provider-sync bridge
+src/cli/hook-context.ts     source-specific hook context selection
+src/cli/commands/*.ts       one command or subcommand per file
+```
 
 The package exposes both binaries:
 

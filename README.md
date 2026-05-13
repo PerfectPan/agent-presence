@@ -43,6 +43,8 @@ For the implementation shape and trust boundaries, see [docs/architecture.md](do
 4. Run `agent-presence url --provider feishu-signature`.
 5. Paste that URL into Feishu profile signature as a custom link preview.
 
+`login`, `setup`, and interactive `config` flows use Clack prompts. Hook, status, update, reset, and URL commands keep script-safe output.
+
 The URL contains only an encoded slot helper, not credentials:
 
 ```text
