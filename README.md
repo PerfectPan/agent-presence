@@ -223,7 +223,13 @@ pnpm run changeset
 
 Package management is pinned to pnpm through `packageManager`. CI and release use the checked-in `pnpm-lock.yaml`, frozen installs, dependency script blocking, and the workspace supply-chain settings in `pnpm-workspace.yaml`.
 
-Before merging the first implementation PR, configure npm Trusted Publishing for:
+If `@rivus/agent-presence` does not exist on npm yet, do one bootstrap publish with a temporary granular npm token:
+
+1. Create a short-lived npm granular access token with publish access to `@rivus/agent-presence` or the `@rivus` scope.
+2. Add it to this GitHub repository as `NPM_TOKEN`.
+3. Merge the release PR created by Changesets.
+4. Confirm `@rivus/agent-presence` exists on npm.
+5. Configure npm Trusted Publishing for:
 
 ```text
 GitHub owner: PerfectPan
@@ -231,12 +237,14 @@ Repository: agent-presence
 Workflow filename: publish.yml
 ```
 
+6. Delete the GitHub `NPM_TOKEN` secret and revoke the npm token.
+
 Release flow:
 
 1. Merge feature PRs with `.changeset/*.md` files.
 2. `.github/workflows/publish.yml` opens or updates a `chore: release package` PR.
 3. Review and merge that release PR.
-4. The same workflow publishes to npm through Changesets and npm Trusted Publishing.
+4. The same workflow publishes to npm through Changesets. The first publish can use the temporary `NPM_TOKEN`; later publishes use npm Trusted Publishing.
 
 The package starts at `0.0.0`; the initial changeset bumps it to `0.1.0` in the generated release PR.
 
