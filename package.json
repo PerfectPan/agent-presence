@@ -1,0 +1,50 @@
+{
+  "name": "@rivus/agent-presence",
+  "version": "0.1.0",
+  "description": "Sync local coding-agent presence to Feishu signature link previews.",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/PerfectPan/agent-presence.git"
+  },
+  "bugs": {
+    "url": "https://github.com/PerfectPan/agent-presence/issues"
+  },
+  "homepage": "https://github.com/PerfectPan/agent-presence#readme",
+  "bin": {
+    "agent-presence": "./dist/src/cli.js",
+    "agent-signature": "./dist/src/cli.js"
+  },
+  "scripts": {
+    "build": "rm -rf dist && tsc -p tsconfig.build.json && chmod +x dist/src/cli.js dist/scripts/*.js",
+    "install:all-hooks": "npm run install:codex-hook && npm run install:claude-hook && npm run install:opencode-plugin && npm run install:shutdown-watcher",
+    "install:claude-hook": "node dist/scripts/install-claude-hook.js",
+    "install:codex-hook": "node dist/scripts/install-codex-hook.js",
+    "install:opencode-plugin": "node dist/scripts/install-opencode-plugin.js",
+    "install:shutdown-watcher": "node dist/scripts/install-shutdown-watcher.js",
+    "uninstall:all-hooks": "npm run uninstall:codex-hook && npm run uninstall:claude-hook && npm run uninstall:opencode-plugin && npm run uninstall:shutdown-watcher",
+    "uninstall:claude-hook": "node dist/scripts/uninstall-claude-hook.js",
+    "uninstall:codex-hook": "node dist/scripts/uninstall-codex-hook.js",
+    "uninstall:opencode-plugin": "node dist/scripts/uninstall-opencode-plugin.js",
+    "uninstall:shutdown-watcher": "node dist/scripts/uninstall-shutdown-watcher.js",
+    "prepack": "npm test && npm run typecheck && npm run build",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "dist",
+    "skills",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.2",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.6"
+  }
+}

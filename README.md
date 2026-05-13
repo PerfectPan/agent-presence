@@ -1,30 +1,243 @@
-# Project Template
+# Agent Presence
 
-A technology-agnostic repository template for starting maintainable, publishable, AI-friendly projects.
+Sync local coding-agent presence to Feishu signature link previews.
 
-Use this template when creating a new project that should have consistent contribution rules, agent instructions, review expectations, and repository hygiene from day one.
+```text
+Codex / Claude Code / opencode hooks
+-> local presence state
+-> debounced renderer
+-> l.garyyang slot provider
+-> Feishu signature link preview
+```
 
-## Start a New Project
+`@rivus/agent-presence` is intentionally named around presence, not Feishu. The first supported output is Feishu signature previews through `l.garyyang.work`; the hook/state/render/provider shape can grow later.
 
-1. Create a new repository from this template.
-2. Replace this README with the new project's name, purpose, and quick start.
-3. Fill in the project-specific validation commands in `AGENTS.md` and `CONTRIBUTING.md`.
-4. Choose the actual implementation stack and add the source layout.
-5. Update `CHANGELOG.md` for the first release.
-6. Keep or replace `LICENSE` according to the project needs.
+## Install
 
-## Included
+From npm:
 
-- `AGENTS.md` for agent workflow rules.
-- `CLAUDE.md` for Claude Code entrypoint instructions.
-- `CONTRIBUTING.md` for human contribution flow.
-- `SECURITY.md` for vulnerability and sensitive data reporting.
-- `.github/pull_request_template.md` for PR summaries and validation.
-- `.github/ISSUE_TEMPLATE/` for bug and feature reports.
-- `rfcs/0000-template.md` for substantial design changes.
-- `.editorconfig` for consistent text formatting.
+```bash
+npm install -g @rivus/agent-presence
+agent-presence setup --provider feishu-signature
+```
 
-## Template Maintenance
+From a local checkout:
 
-Keep this repository generic. Do not add language-specific package files, framework defaults, generated output, or project-specific business logic.
+```bash
+npm install
+npm run build
+npm link
+agent-presence setup --provider feishu-signature
+```
 
+The package also exposes `agent-signature` as a compatibility alias, so old hooks keep working while new installs use `agent-presence`.
+
+## User Flow
+
+1. Run `agent-presence setup --provider feishu-signature`.
+2. Scan the QR code if login is needed.
+3. Let setup install Codex, Claude Code, opencode, and macOS power watchers.
+4. Run `agent-presence url --provider feishu-signature`.
+5. Paste that URL into Feishu profile signature as a custom link preview.
+
+The URL contains only an encoded slot helper, not credentials:
+
+```text
+https://l.garyyang.work/?t2=<base62({{slot id="slot_xxx"}})>
+```
+
+## Commands
+
+```bash
+agent-presence login --provider feishu-signature
+agent-presence setup --provider feishu-signature
+agent-presence setup --provider feishu-signature --skip-login
+agent-presence setup --provider feishu-signature --no-hooks
+agent-presence url --provider feishu-signature
+agent-presence status --provider feishu-signature
+agent-presence status --provider feishu-signature --remote
+agent-presence update --provider feishu-signature --force
+agent-presence reset --provider feishu-signature --force
+agent-presence config show
+agent-presence config provider feishu-signature --base-url "https://l.garyyang.work" --preview-base-url "https://l.garyyang.work/" --image-key "img_xxx" --target-url "https://example.com"
+agent-presence config render --zero "AI 牛马下班了" --one "{total} 个 AI 牛马正在搬砖 | {details}" --many "{total} 个 AI 牛马并行搬砖 | {details}"
+```
+
+Hook commands are installed automatically by `setup`, but can be called directly:
+
+```bash
+agent-presence hook --source codex --event SessionStart
+agent-presence hook --source claude --event SessionStart --silent
+agent-presence hook --source opencode --event SessionStart --silent
+agent-presence hook --source codex --event Stop
+```
+
+Hook commands never block the coding agent. Codex hooks print `{}`; Claude and opencode hooks run silent.
+
+## Presence Semantics
+
+This project counts agents that are actually working, not merely open terminal windows.
+
+```text
+SessionStart / UserPromptSubmit / PreToolUse / PostToolUse -> running / heartbeat
+Stop / SessionEnd / session.idle                              -> finished
+No heartbeat for 3 minutes                                    -> expired
+Laptop sleep / lid close / screen sleep                       -> reset to 0
+Wake                                                          -> reset to 0 again
+```
+
+Default render output:
+
+```text
+0 -> AI 牛马暂未开工
+1 -> 1 个 AI 牛马正在搬砖 | codex 1
+N -> N 个 AI 牛马正在搬砖 | codex X · claude Y · opencode Z
+```
+
+The value is capped at 200 characters.
+
+## Copywriting
+
+Configure templates:
+
+```bash
+agent-presence config render \
+  --zero "AI 牛马下班了" \
+  --one "{total} 个 AI 牛马正在搬砖 | {details}" \
+  --many "{total} 个 AI 牛马并行搬砖 | {details}"
+```
+
+Variables:
+
+```text
+{total}   active agent count
+{details} grouped source counts, for example: codex 1 · claude 1
+```
+
+Environment overrides:
+
+```bash
+export AGENT_PRESENCE_RENDER_ZERO="AI 牛马暂未开工"
+export AGENT_PRESENCE_RENDER_ONE="{total} 个 AI 牛马正在搬砖 | {details}"
+export AGENT_PRESENCE_RENDER_MANY="{total} 个 AI 牛马并行搬砖 | {details}"
+```
+
+Legacy `AGENT_SIGNATURE_*` environment names are still accepted.
+
+## Hooks And Watchers
+
+`agent-presence setup` installs:
+
+- Codex hooks in `~/.codex/hooks.json`
+- Claude Code hooks in `~/.claude/settings.json`
+- opencode plugin in `~/.config/opencode/plugins/agent-presence.js`
+- macOS LaunchAgent power watcher
+
+The power watcher listens for lid close, system sleep, screen sleep, wake, shutdown, reboot, and logout. Each event runs:
+
+```bash
+agent-presence reset --force --silent
+```
+
+This is best effort. Sudden power loss, forced shutdown, lost network, or provider rate limits can delay the remote slot update. Wake events reset again to pull stale remote state back to 0.
+
+Manual install/uninstall scripts remain available:
+
+```bash
+npm run install:all-hooks
+npm run uninstall:all-hooks
+npm run install:shutdown-watcher
+npm run uninstall:shutdown-watcher
+```
+
+## Provider
+
+The first provider id is `feishu-signature`. Its current slot backend is `l.garyyang.work`:
+
+```http
+GET  /api/slot/wechat/qrcode
+GET  /api/slot/wechat/login-status?sceneId=...
+POST /api/slot/update
+GET  /api/slot/info
+```
+
+Configure provider-specific link preview fields:
+
+```bash
+agent-presence config provider feishu-signature \
+  --base-url "https://l.garyyang.work" \
+  --preview-base-url "https://l.garyyang.work/" \
+  --image-key "img_xxx" \
+  --target-url "https://example.com"
+```
+
+Credentials are stored in Keychain by default. Env overrides:
+
+```bash
+export AGENT_PRESENCE_TOKEN=...
+export AGENT_PRESENCE_SLOT_ID=slot_xxx
+export AGENT_PRESENCE_FEISHU_SIGNATURE_BASE_URL="https://l.garyyang.work"
+export AGENT_PRESENCE_FEISHU_SIGNATURE_PREVIEW_BASE_URL="https://l.garyyang.work/"
+export AGENT_PRESENCE_FEISHU_SIGNATURE_PREVIEW_IMAGE_KEY="img_xxx"
+export AGENT_PRESENCE_FEISHU_SIGNATURE_PREVIEW_TARGET_URL="https://example.com"
+```
+
+Token and slot credentials are not written to git and are not embedded in the signature URL.
+
+## Validation
+
+```bash
+npm test
+npm run typecheck
+npm run build
+
+agent-presence status
+agent-presence url
+agent-presence update --force
+agent-presence status --remote
+
+CODEX_THREAD_ID=fake-2 agent-presence hook --source codex --event SessionStart
+agent-presence status
+CODEX_THREAD_ID=fake-2 agent-presence hook --source codex --event Stop
+agent-presence status
+```
+
+## Release
+
+The package is published as `@rivus/agent-presence`.
+
+First public publish:
+
+```bash
+npm login
+npm whoami
+npm test
+npm run typecheck
+npm run build
+npm pack --dry-run
+npm publish --access public
+```
+
+After the first publish, configure npm Trusted Publishing for:
+
+```text
+GitHub owner: PerfectPan
+Repository: agent-presence
+Workflow filename: publish.yml
+```
+
+Then release from Git tags:
+
+```bash
+npm version patch --no-git-tag-version
+git add package.json package-lock.json
+git commit -S -m "chore: release v0.1.1"
+git tag -s v0.1.1 -m "v0.1.1"
+git push origin main --tags
+```
+
+`.github/workflows/publish.yml` runs `npm ci`, tests, typecheck, build, and `npm publish` through npm OIDC trusted publishing.
+
+## Agent Skill
+
+Reusable operator instructions live in [skills/agent-presence/SKILL.md](skills/agent-presence/SKILL.md). Install or symlink that skill into your agent skill directory if you want future agents to know how to install, verify, and debug Agent Presence.

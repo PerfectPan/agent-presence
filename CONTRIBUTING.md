@@ -2,12 +2,12 @@
 
 ## Development Setup
 
-Replace this section with project-specific setup instructions.
-
 ```bash
-# install dependencies
-# run tests
-# run local app or CLI
+npm install
+npm test
+npm run typecheck
+npm run build
+node dist/src/cli.js --help
 ```
 
 ## Contribution Flow
@@ -24,18 +24,14 @@ Small typo corrections, narrow documentation fixes, and repository metadata upda
 
 ## Required Checks
 
-Replace these placeholders after choosing the project stack:
-
 ```bash
-# Format:
+npm test
 
-# Lint:
+npm run typecheck
 
-# Test:
+npm run build
 
-# Build:
-
-# Package or release dry-run:
+npm pack --dry-run
 ```
 
 ## When to Write an RFC
@@ -70,4 +66,3 @@ Keep package or deploy contents intentional. If a file should ship, verify it ap
 ## Security Reports
 
 Use `SECURITY.md` for vulnerability reporting guidance. Do not include secrets, exploit details, or private infrastructure in public issues or pull requests.
-

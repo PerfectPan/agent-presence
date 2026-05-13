@@ -4,13 +4,11 @@
 
 ## Validation
 
-- [ ] Format:
-- [ ] Lint:
-- [ ] Test:
-- [ ] Build:
-- [ ] Package or release dry-run:
+- [ ] `npm test`
+- [ ] `npm run typecheck`
+- [ ] `npm run build`
+- [ ] `npm pack --dry-run`
 
 ## Follow-up Risks
 
 -
-

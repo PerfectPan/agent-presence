@@ -13,20 +13,22 @@ This repository is intended to become a maintainable, publishable project. Treat
 
 ## Project-Specific Commands
 
-Replace these placeholders after choosing the project stack:
-
 ```bash
-# Format:
+npm test
 
-# Lint:
+npm run typecheck
 
-# Test:
+npm run build
 
-# Build:
+npm pack --dry-run
 
-# Package or release dry-run:
-
-# Security or hygiene scan:
+rg --hidden --no-ignore -n "private-token|internal-domain.example|HOME_PATH_PLACEHOLDER|bnpm|byted" . \
+  --glob '!.git/**' \
+  --glob '!node_modules/**' \
+  --glob '!dist/**' \
+  --glob '!AGENTS.md' \
+  --glob '!CONTRIBUTING.md' \
+  --glob '!SECURITY.md'
 ```
 
 Do not claim implementation work is complete until the relevant commands pass, or until skipped commands are explained with concrete blockers.
@@ -61,12 +63,4 @@ When an AI agent completes implementation work:
 
 Before pushing public-facing or package-facing changes, scan for accidental private references. Adjust globs for the project stack:
 
-```bash
-rg --hidden --no-ignore -n "private-token|secret|internal-domain.example|HOME_PATH_PLACEHOLDER" . \
-  --glob '!.git/**' \
-  --glob '!.omx/**' \
-  --glob '!AGENTS.md' \
-  --glob '!CONTRIBUTING.md' \
-  --glob '!SECURITY.md'
-```
-
+Use the project-specific hygiene scan above before public PRs and releases.
