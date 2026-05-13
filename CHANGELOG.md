@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.1
+
+### Patch Changes
+
+- 8b6776a: Fix Feishu signature login parsing for confirmed credential responses.
+
 ## 0.1.0
 
 ### Minor Changes
