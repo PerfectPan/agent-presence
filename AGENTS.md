@@ -13,20 +13,25 @@ This repository is intended to become a maintainable, publishable project. Treat
 
 ## Project-Specific Commands
 
-Replace these placeholders after choosing the project stack:
-
 ```bash
-# Format:
+pnpm install --frozen-lockfile --ignore-scripts
 
-# Lint:
+pnpm test
 
-# Test:
+pnpm run typecheck
 
-# Build:
+pnpm run build
 
-# Package or release dry-run:
+pnpm pack --dry-run
 
-# Security or hygiene scan:
+rg --hidden --no-ignore -n "private-token|internal-domain.example|HOME_PATH_PLACEHOLDER|bnpm|byted" . \
+  --glob '!.git/**' \
+  --glob '!node_modules/**' \
+  --glob '!dist/**' \
+  --glob '!pnpm-lock.yaml' \
+  --glob '!AGENTS.md' \
+  --glob '!CONTRIBUTING.md' \
+  --glob '!SECURITY.md'
 ```
 
 Do not claim implementation work is complete until the relevant commands pass, or until skipped commands are explained with concrete blockers.
@@ -34,6 +39,7 @@ Do not claim implementation work is complete until the relevant commands pass, o
 ## Documentation
 
 - Keep `README.md` focused on orientation, quick start, and current user-facing behavior.
+- Use `docs/architecture.md` for the current runtime architecture and trust boundaries.
 - Use `CONTRIBUTING.md` for contribution workflow.
 - Use `rfcs/` for substantial design proposals.
 - Update `CHANGELOG.md` for user-facing changes unless the change is docs-only or repository-only.
@@ -61,12 +67,4 @@ When an AI agent completes implementation work:
 
 Before pushing public-facing or package-facing changes, scan for accidental private references. Adjust globs for the project stack:
 
-```bash
-rg --hidden --no-ignore -n "private-token|secret|internal-domain.example|HOME_PATH_PLACEHOLDER" . \
-  --glob '!.git/**' \
-  --glob '!.omx/**' \
-  --glob '!AGENTS.md' \
-  --glob '!CONTRIBUTING.md' \
-  --glob '!SECURITY.md'
-```
-
+Use the project-specific hygiene scan above before public PRs and releases.

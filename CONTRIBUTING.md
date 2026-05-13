@@ -2,12 +2,13 @@
 
 ## Development Setup
 
-Replace this section with project-specific setup instructions.
-
 ```bash
-# install dependencies
-# run tests
-# run local app or CLI
+corepack enable
+pnpm install --frozen-lockfile --ignore-scripts
+pnpm test
+pnpm run typecheck
+pnpm run build
+node dist/src/cli.js --help
 ```
 
 ## Contribution Flow
@@ -24,18 +25,16 @@ Small typo corrections, narrow documentation fixes, and repository metadata upda
 
 ## Required Checks
 
-Replace these placeholders after choosing the project stack:
-
 ```bash
-# Format:
+pnpm install --frozen-lockfile --ignore-scripts
 
-# Lint:
+pnpm test
 
-# Test:
+pnpm run typecheck
 
-# Build:
+pnpm run build
 
-# Package or release dry-run:
+pnpm pack --dry-run
 ```
 
 ## When to Write an RFC
@@ -67,7 +66,8 @@ Do not commit private tokens, local config, generated workspaces, internal hostn
 
 Keep package or deploy contents intentional. If a file should ship, verify it appears in the package or deployment dry-run.
 
+Use the pinned pnpm version from `packageManager`. Do not commit `package-lock.json`, local `.npmrc` credentials, generated `dist/`, or `node_modules/`.
+
 ## Security Reports
 
 Use `SECURITY.md` for vulnerability reporting guidance. Do not include secrets, exploit details, or private infrastructure in public issues or pull requests.
-

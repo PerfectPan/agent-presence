@@ -4,13 +4,12 @@
 
 ## Validation
 
-- [ ] Format:
-- [ ] Lint:
-- [ ] Test:
-- [ ] Build:
-- [ ] Package or release dry-run:
+- [ ] `pnpm install --frozen-lockfile --ignore-scripts`
+- [ ] `pnpm test`
+- [ ] `pnpm run typecheck`
+- [ ] `pnpm run build`
+- [ ] `pnpm pack --dry-run`
 
 ## Follow-up Risks
 
 -
-
