@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.4
+
+### Patch Changes
+
+- 036ffe7: Prefer Claude hook payload session ids over process env ids so stop events target the same session as start and heartbeat events.
+- a14cbcd: Fix Codex setup and uninstall deduplication for fixed-version npx hook commands.
+
 ## 0.1.3
 
 ### Patch Changes
