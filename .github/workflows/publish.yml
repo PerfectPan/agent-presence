@@ -15,6 +15,9 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
+    environment: NPM_TOKEN
+    env:
+      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -33,14 +36,23 @@ jobs:
       - run: pnpm run typecheck
       - run: pnpm run build
 
-      - name: Create Release Pull Request or Publish
+      - name: Create Release Pull Request
+        id: changesets
         uses: changesets/action@v1
         with:
           version: pnpm run version
-          publish: pnpm run release
           title: 'chore: release package'
           commit: 'chore: release package'
           commitMode: github-api
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Configure npm token
+        if: steps.changesets.outputs.hasChangesets == 'false'
+        run: |
+          test -n "$NPM_TOKEN"
+          npm config set //registry.npmjs.org/:_authToken "$NPM_TOKEN"
+
+      - name: Publish to npm
+        if: steps.changesets.outputs.hasChangesets == 'false'
+        run: pnpm run release
