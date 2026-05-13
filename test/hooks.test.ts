@@ -1,7 +1,30 @@
 import { describe, expect, it } from 'vitest';
 import { resolveClaudeHookContext } from '../src/hooks/claude.js';
+import { resolveCodexHookContext } from '../src/hooks/codex.js';
 import { mapOpenCodeEvent, resolveOpenCodeHookContext } from '../src/hooks/opencode.js';
 import { applyAgentEvent, createEmptyState, getActiveSessions } from '../src/state.js';
+
+describe('Codex hook context', () => {
+  it('prefers stable payload session ids over process env ids', () => {
+    expect(
+      resolveCodexHookContext(
+        {
+          session: {
+            thread_id: 'payload-thread-1',
+            cwd: '/repo'
+          }
+        },
+        {
+          CODEX_SESSION_ID: 'env-session-1',
+          PWD: '/env-repo'
+        }
+      )
+    ).toEqual({
+      project: '/repo',
+      sessionId: 'payload-thread-1'
+    });
+  });
+});
 
 describe('Claude hook context', () => {
   it('uses Claude Code session_id and cwd for main-session hooks', () => {
