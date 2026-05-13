@@ -23,6 +23,12 @@ pnpm add -g @rivus/agent-presence
 agent-presence setup --provider feishu-signature
 ```
 
+Without a global install:
+
+```bash
+npx --yes --registry=https://registry.npmjs.org @rivus/agent-presence@latest setup --provider feishu-signature
+```
+
 From a local checkout:
 
 ```bash
@@ -45,6 +51,15 @@ For the implementation shape and trust boundaries, see [docs/architecture.md](do
 4. Run `agent-presence url --provider feishu-signature`.
 5. Paste that URL into Feishu profile signature as a custom link preview.
 
+For the published package without installing globally:
+
+```bash
+npx --yes --registry=https://registry.npmjs.org @rivus/agent-presence@latest setup --provider feishu-signature
+npx --yes --registry=https://registry.npmjs.org @rivus/agent-presence@latest url --provider feishu-signature
+```
+
+`setup` installs local hooks and power watchers. It keeps credential material in Keychain and never embeds credentials in the Feishu signature URL.
+
 `login`, `setup`, and interactive `config` flows use Clack prompts. Hook, status, update, reset, and URL commands keep script-safe output.
 
 The URL contains only an encoded slot helper, not credentials:
@@ -60,6 +75,7 @@ agent-presence login --provider feishu-signature
 agent-presence setup --provider feishu-signature
 agent-presence setup --provider feishu-signature --skip-login
 agent-presence setup --provider feishu-signature --no-hooks
+agent-presence uninstall
 agent-presence url --provider feishu-signature
 agent-presence status --provider feishu-signature
 agent-presence status --provider feishu-signature --remote
@@ -148,7 +164,22 @@ agent-presence reset --force --silent
 
 This is best effort. Sudden power loss, forced shutdown, lost network, or provider rate limits can delay the remote slot update. Wake events reset again to pull stale remote state back to 0.
 
-Manual install/uninstall scripts remain available:
+To remove local hooks, the opencode plugin, and the macOS power watcher:
+
+```bash
+agent-presence uninstall
+```
+
+The uninstall command intentionally keeps Keychain credentials, local state, and provider config so a later `agent-presence setup --skip-login` can reinstall hooks without another QR scan. To force a fresh login, remove the credential and slot config yourself:
+
+```bash
+security delete-generic-password -s 'agent-signature:l-garyyang' -a token 2>/dev/null || true
+security delete-generic-password -s 'agent-signature:l-garyyang' -a slotId 2>/dev/null || true
+security delete-generic-password -s 'agent-signature-slot-credential' -a "${USER:-agent-presence}" 2>/dev/null || true
+printf '{}\n' > ~/.codex/agent-signature/config.json
+```
+
+Manual package scripts remain available from a local checkout:
 
 ```bash
 pnpm run install:all-hooks

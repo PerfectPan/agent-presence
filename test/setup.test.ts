@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { DEFAULT_SETUP_SCRIPT_NAMES, runSetupScripts } from '../src/setup.js';
+import { DEFAULT_SETUP_SCRIPT_NAMES, DEFAULT_UNINSTALL_SCRIPT_NAMES, runSetupScripts, runUninstallScripts } from '../src/setup.js';
 
 describe('runSetupScripts', () => {
   it('runs every local installer script in setup order', async () => {
@@ -24,6 +24,31 @@ describe('runSetupScripts', () => {
       { scriptName: 'install-claude-hook.js', scriptPath: '/dist/scripts/install-claude-hook.js' },
       { scriptName: 'install-opencode-plugin.js', scriptPath: '/dist/scripts/install-opencode-plugin.js' },
       { scriptName: 'install-shutdown-watcher.js', scriptPath: '/dist/scripts/install-shutdown-watcher.js' }
+    ]);
+  });
+
+  it('runs every local uninstaller script in uninstall order', async () => {
+    const runner = vi.fn().mockResolvedValue(undefined);
+
+    const results = await runUninstallScripts({
+      runner,
+      resolveScriptPath: (scriptName) => `/dist/scripts/${scriptName}`
+    });
+
+    expect(DEFAULT_UNINSTALL_SCRIPT_NAMES).toEqual([
+      'uninstall-codex-hook.js',
+      'uninstall-claude-hook.js',
+      'uninstall-opencode-plugin.js',
+      'uninstall-shutdown-watcher.js'
+    ]);
+    expect(runner).toHaveBeenCalledTimes(4);
+    expect(runner).toHaveBeenNthCalledWith(1, '/dist/scripts/uninstall-codex-hook.js');
+    expect(runner).toHaveBeenNthCalledWith(4, '/dist/scripts/uninstall-shutdown-watcher.js');
+    expect(results).toEqual([
+      { scriptName: 'uninstall-codex-hook.js', scriptPath: '/dist/scripts/uninstall-codex-hook.js' },
+      { scriptName: 'uninstall-claude-hook.js', scriptPath: '/dist/scripts/uninstall-claude-hook.js' },
+      { scriptName: 'uninstall-opencode-plugin.js', scriptPath: '/dist/scripts/uninstall-opencode-plugin.js' },
+      { scriptName: 'uninstall-shutdown-watcher.js', scriptPath: '/dist/scripts/uninstall-shutdown-watcher.js' }
     ]);
   });
 });
