@@ -36,12 +36,9 @@ describe('Claude hook installer helpers', () => {
 
     expect(next.hooks.Stop).toHaveLength(2);
     expect(next.hooks.Stop[0]?.hooks?.[0]?.command).toBe('echo existing');
-    expect(next.hooks.Stop[1]?.hooks?.[0]?.command).toBe(
-      'agent-presence hook --source claude --event Stop --silent >/dev/null 2>/dev/null || true'
-    );
-    expect(next.hooks.SessionStart.at(-1)?.hooks?.[0]?.command).toBe(
-      'agent-presence hook --source claude --event SessionStart --silent >/dev/null 2>/dev/null || true'
-    );
+    expect(next.hooks.Stop[1]?.hooks?.[0]?.command).toContain('npx --yes --registry=https://registry.npmjs.org @rivus/agent-presence@');
+    expect(next.hooks.Stop[1]?.hooks?.[0]?.command).toContain('hook --source claude --event Stop --silent');
+    expect(next.hooks.SessionStart.at(-1)?.hooks?.[0]?.command).toContain('hook --source claude --event SessionStart --silent');
   });
 
   it('recognizes current and legacy managed hook commands', () => {
@@ -69,11 +66,11 @@ describe('shutdown watcher installer helpers', () => {
     expect(script).toContain('trap cleanup TERM HUP INT EXIT');
     expect(script).toContain('export PATH="/Users/example/.nvm/versions/node/v24.8.0/bin:$PATH"');
     expect(script).toContain('/usr/bin/swift "/Users/example/.agent-presence/power-watch.swift"');
-    expect(script).toContain('agent-presence reset --force --silent');
+    expect(script).toContain('npx --yes --registry=https://registry.npmjs.org @rivus/agent-presence@');
     expect(swift).toContain('NSWorkspace.willSleepNotification');
     expect(swift).toContain('NSWorkspace.screensDidSleepNotification');
     expect(swift).toContain('NSWorkspace.didWakeNotification');
-    expect(swift).toContain('agent-presence reset --force --silent');
+    expect(swift).toContain('npx --yes --registry=https://registry.npmjs.org @rivus/agent-presence@');
   });
 });
 
@@ -81,7 +78,7 @@ describe('opencode plugin installer helpers', () => {
   it('generates an opencode plugin that feeds lifecycle events into the CLI silently', () => {
     const source = buildOpenCodePluginSource();
 
-    expect(source).toContain('agent-presence');
+    expect(source).toContain('const CLI_COMMAND = ["npx","--yes","--registry=https://registry.npmjs.org","@rivus/agent-presence@');
     expect(source).toContain('--source');
     expect(source).toContain('opencode');
     expect(source).toContain('session.created');

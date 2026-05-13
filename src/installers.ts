@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+
 export interface HookCommand {
   type: 'command';
   command: string;
@@ -24,7 +26,6 @@ const CLAUDE_EVENTS = [
   'SubagentStart',
   'SubagentStop'
 ];
-const CLI_COMMAND = 'agent-presence';
 const LEGACY_CLI_COMMAND = 'agent-signature';
 const OPENCODE_PLUGIN_REF = './plugins/agent-presence.js';
 const LEGACY_OPENCODE_PLUGIN_REF = './plugins/agent-signature.js';
@@ -59,7 +60,7 @@ export function withClaudeAgentSignatureHooks(input: Partial<HookSettings>): Hoo
       hooks: [
         {
           type: 'command',
-          command: `${CLI_COMMAND} hook --source claude --event ${event} --silent >/dev/null 2>/dev/null || true`,
+          command: `${buildAgentPresenceShellCommand(['hook', '--source', 'claude', '--event', event, '--silent'])} >/dev/null 2>/dev/null || true`,
           timeout: 5000
         }
       ]
@@ -94,14 +95,17 @@ export function withoutAgentSignatureHookGroups(groups: HookGroup[]): HookGroup[
 
 export function isAgentSignatureCommand(command: string): boolean {
   return (
-    command.includes(`${CLI_COMMAND} hook`) ||
+    command.includes('agent-presence hook') ||
+    command.includes('@rivus/agent-presence') ||
     command.includes(`${LEGACY_CLI_COMMAND} hook`) ||
     command.includes(`${LEGACY_CLI_COMMAND}.mjs hook`)
   );
 }
 
-export function buildOpenCodePluginSource(): string {
+export function buildOpenCodePluginSource(commandParts = agentPresenceCommandParts()): string {
   return `import { spawn } from "node:child_process"
+
+const CLI_COMMAND = ${JSON.stringify(commandParts)}
 
 const HEARTBEAT_EVENTS = new Set([
   "command.executed",
@@ -153,7 +157,7 @@ function pickProject(ctx, payload) {
 function runAgentPresence(eventName, payload, ctx) {
   const sessionId = pickSessionId(payload)
   if (!sessionId) return
-  const child = spawn("agent-presence", ["hook", "--source", "opencode", "--event", eventName, "--silent"], {
+  const child = spawn(CLI_COMMAND[0], [...CLI_COMMAND.slice(1), "hook", "--source", "opencode", "--event", eventName, "--silent"], {
     env: {
       ...process.env,
       OPENCODE_SESSION_ID: sessionId,
@@ -248,7 +252,7 @@ cleanup() {
   if [ -n "\${watcher_pid:-}" ]; then
     kill "$watcher_pid" >/dev/null 2>/dev/null || true
   fi
-  ${CLI_COMMAND} reset --force --silent >/dev/null 2>/dev/null || true
+  ${buildAgentPresenceShellCommand(['reset', '--force', '--silent'])} >/dev/null 2>/dev/null || true
 }
 
 trap cleanup TERM HUP INT EXIT
@@ -265,7 +269,7 @@ import Foundation
 func resetPresence(reason: String) {
     let task = Process()
     task.executableURL = URL(fileURLWithPath: "/bin/zsh")
-    task.arguments = ["-lc", "${CLI_COMMAND} reset --force --silent >/dev/null 2>/dev/null || true"]
+    task.arguments = ["-lc", "${escapeSwiftString(buildAgentPresenceShellCommand(['reset', '--force', '--silent']))} >/dev/null 2>/dev/null || true"]
     task.environment = ProcessInfo.processInfo.environment
     do {
         try task.run()
@@ -331,4 +335,37 @@ function escapePlist(value: string): string {
 
 function escapeShellDoubleQuoted(value: string): string {
   return value.replaceAll('\\', '\\\\').replaceAll('"', '\\"').replaceAll('$', '\\$').replaceAll('`', '\\`');
+}
+
+export function buildAgentPresenceShellCommand(args: string[]): string {
+  return [...agentPresenceCommandParts(), ...args].map(shellQuote).join(' ');
+}
+
+function agentPresenceCommandParts(): string[] {
+  return ['npx', '--yes', '--registry=https://registry.npmjs.org', `@rivus/agent-presence@${packageVersion()}`];
+}
+
+function packageVersion(): string {
+  for (const url of [new URL('../package.json', import.meta.url), new URL('../../package.json', import.meta.url)]) {
+    try {
+      const parsed = JSON.parse(readFileSync(url, 'utf8')) as { version?: unknown };
+      if (typeof parsed.version === 'string' && parsed.version.length > 0) {
+        return parsed.version;
+      }
+    } catch {
+      // Source and dist builds resolve package.json from different depths.
+    }
+  }
+  throw new Error('unable to resolve @rivus/agent-presence package version');
+}
+
+function shellQuote(value: string): string {
+  if (/^[A-Za-z0-9_/:=@.-]+$/.test(value)) {
+    return value;
+  }
+  return `'${value.replaceAll("'", "'\\''")}'`;
+}
+
+function escapeSwiftString(value: string): string {
+  return value.replaceAll('\\', '\\\\').replaceAll('"', '\\"');
 }

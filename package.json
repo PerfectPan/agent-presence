@@ -3,6 +3,7 @@
   "version": "0.1.1",
   "description": "Sync local coding-agent presence to Feishu signature link previews.",
   "type": "module",
+  "author": "PerfectPan <perfectpan325@gmail.com>",
   "packageManager": "pnpm@11.1.1",
   "repository": {
     "type": "git",

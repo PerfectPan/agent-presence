@@ -15,9 +15,6 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
-    environment: NPM_TOKEN
-    env:
-      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -46,12 +43,6 @@ jobs:
           commitMode: github-api
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Configure npm token
-        if: steps.changesets.outputs.hasChangesets == 'false'
-        run: |
-          test -n "$NPM_TOKEN"
-          npm config set //registry.npmjs.org/:_authToken "$NPM_TOKEN"
 
       - name: Publish to npm
         if: steps.changesets.outputs.hasChangesets == 'false'

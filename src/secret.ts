@@ -41,6 +41,14 @@ export async function writeCredential(credential: SlotCredential): Promise<void>
   await writeKeychain(SERVICE, 'slotId', credential.slotId);
 }
 
+export async function deleteCredential(): Promise<void> {
+  await Promise.all([
+    deleteKeychain(SERVICE, 'token'),
+    deleteKeychain(SERVICE, 'slotId'),
+    deleteKeychain(LEGACY_SERVICE, process.env.USER ?? 'agent-presence')
+  ]);
+}
+
 async function readKeychain(service: string, account: string): Promise<string | undefined> {
   try {
     const { stdout } = await execFileAsync('security', ['find-generic-password', '-s', service, '-a', account, '-w'], {
@@ -55,4 +63,8 @@ async function readKeychain(service: string, account: string): Promise<string | 
 
 async function writeKeychain(service: string, account: string, value: string): Promise<void> {
   await execFileAsync('security', ['add-generic-password', '-U', '-s', service, '-a', account, '-w', value]);
+}
+
+async function deleteKeychain(service: string, account: string): Promise<void> {
+  await execFileAsync('security', ['delete-generic-password', '-s', service, '-a', account]).catch(() => undefined);
 }

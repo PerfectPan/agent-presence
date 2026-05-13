@@ -4,6 +4,7 @@ export function printHelp(): void {
 Usage:
   agent-presence login [--provider feishu-signature]
   agent-presence setup [--provider feishu-signature] [--skip-login] [--no-hooks]
+  agent-presence uninstall [--credentials] [--all]
   agent-presence url [--provider feishu-signature]
   agent-presence config show
   agent-presence config provider feishu-signature [--base-url <url>] [--preview-base-url <url>] [--image-key <key>] [--target-url <url>] [--reset]

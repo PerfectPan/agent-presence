@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { join } from 'node:path';
 import { homedir } from 'node:os';
+import { buildAgentPresenceShellCommand } from '../src/installers.js';
 import { readJsonFile, writeJsonAtomic } from '../src/json-file.js';
 import { assertSupportedPlatform } from '../src/platform.js';
 
@@ -33,7 +34,7 @@ async function main(): Promise<void> {
       hooks: [
         {
           type: 'command',
-          command: `agent-presence hook --source codex --event ${event} 2>/dev/null || echo '{}'`,
+          command: `${buildAgentPresenceShellCommand(['hook', '--source', 'codex', '--event', event])} 2>/dev/null || echo '{}'`,
           timeout: 5000
         }
       ]

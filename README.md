@@ -23,6 +23,12 @@ pnpm add -g @rivus/agent-presence
 agent-presence setup --provider feishu-signature
 ```
 
+Without a global install:
+
+```bash
+npx --yes --registry=https://registry.npmjs.org @rivus/agent-presence@latest setup --provider feishu-signature
+```
+
 From a local checkout:
 
 ```bash
@@ -45,6 +51,16 @@ For the implementation shape and trust boundaries, see [docs/architecture.md](do
 4. Run `agent-presence url --provider feishu-signature`.
 5. Paste that URL into Feishu profile signature as a custom link preview.
 
+For the published package without installing globally:
+
+```bash
+npx --yes --registry=https://registry.npmjs.org @rivus/agent-presence@latest setup --provider feishu-signature
+npx --yes --registry=https://registry.npmjs.org @rivus/agent-presence@latest url --provider feishu-signature
+```
+
+`setup` installs local hooks and power watchers. It keeps credential material in Keychain and never embeds credentials in the Feishu signature URL.
+When setup is run from `npx`, installed hooks use the package's fixed published version instead of a floating `latest` or a global `agent-presence` binary.
+
 `login`, `setup`, and interactive `config` flows use Clack prompts. Hook, status, update, reset, and URL commands keep script-safe output.
 
 The URL contains only an encoded slot helper, not credentials:
@@ -60,6 +76,9 @@ agent-presence login --provider feishu-signature
 agent-presence setup --provider feishu-signature
 agent-presence setup --provider feishu-signature --skip-login
 agent-presence setup --provider feishu-signature --no-hooks
+agent-presence uninstall
+agent-presence uninstall --credentials
+agent-presence uninstall --all
 agent-presence url --provider feishu-signature
 agent-presence status --provider feishu-signature
 agent-presence status --provider feishu-signature --remote
@@ -148,7 +167,36 @@ agent-presence reset --force --silent
 
 This is best effort. Sudden power loss, forced shutdown, lost network, or provider rate limits can delay the remote slot update. Wake events reset again to pull stale remote state back to 0.
 
-Manual install/uninstall scripts remain available:
+To remove local hooks, the opencode plugin, and the macOS power watcher:
+
+```bash
+agent-presence uninstall
+```
+
+The default uninstall intentionally keeps Keychain credentials, local state, and provider config so a later `agent-presence setup --skip-login` can reinstall hooks without another QR scan.
+
+To also clear login credentials and the configured slot id:
+
+```bash
+agent-presence uninstall --credentials
+```
+
+To clear hooks, credentials, slot config, and local state:
+
+```bash
+agent-presence uninstall --all
+```
+
+Equivalent manual cleanup:
+
+```bash
+security delete-generic-password -s 'agent-signature:l-garyyang' -a token 2>/dev/null || true
+security delete-generic-password -s 'agent-signature:l-garyyang' -a slotId 2>/dev/null || true
+security delete-generic-password -s 'agent-signature-slot-credential' -a "${USER:-agent-presence}" 2>/dev/null || true
+printf '{}\n' > ~/.codex/agent-signature/config.json
+```
+
+Manual package scripts remain available from a local checkout:
 
 ```bash
 pnpm run install:all-hooks
@@ -223,6 +271,16 @@ pnpm run changeset
 
 Package management is pinned to pnpm through `packageManager`. CI and release use the checked-in `pnpm-lock.yaml`, frozen installs, dependency script blocking, and the workspace supply-chain settings in `pnpm-workspace.yaml`.
 
+Publishing uses npm Trusted Publishing / OIDC. Configure the package on npm with:
+
+```text
+GitHub owner: PerfectPan
+Repository: agent-presence
+Workflow filename: publish.yml
+```
+
+The release workflow grants `id-token: write`, uses Node 24, and publishes without a long-lived npm write token. npm automatically generates provenance for public packages published through trusted publishing from public GitHub repositories.
+
 If `@rivus/agent-presence` does not exist on npm yet, do one bootstrap publish with a temporary granular npm token:
 
 1. Create a short-lived npm granular access token with publish access to `@rivus/agent-presence` or the `@rivus` scope.
@@ -244,7 +302,7 @@ Release flow:
 1. Merge feature PRs with `.changeset/*.md` files.
 2. `.github/workflows/publish.yml` opens or updates a `chore: release package` PR.
 3. Review and merge that release PR.
-4. The same workflow publishes to npm through Changesets. The first publish can use the temporary `NPM_TOKEN`; later publishes use npm Trusted Publishing.
+4. The same workflow publishes to npm through Changesets and npm Trusted Publishing.
 
 The package starts at `0.0.0`; the initial changeset bumps it to `0.1.0` in the generated release PR.
 

@@ -11,6 +11,13 @@ export const DEFAULT_SETUP_SCRIPT_NAMES = [
   'install-shutdown-watcher.js'
 ] as const;
 
+export const DEFAULT_UNINSTALL_SCRIPT_NAMES = [
+  'uninstall-codex-hook.js',
+  'uninstall-claude-hook.js',
+  'uninstall-opencode-plugin.js',
+  'uninstall-shutdown-watcher.js'
+] as const;
+
 export interface SetupScriptResult {
   scriptName: string;
   scriptPath: string;
@@ -35,6 +42,13 @@ export async function runSetupScripts(options: RunSetupScriptsOptions = {}): Pro
   }
 
   return results;
+}
+
+export async function runUninstallScripts(options: RunSetupScriptsOptions = {}): Promise<SetupScriptResult[]> {
+  return runSetupScripts({
+    ...options,
+    scriptNames: options.scriptNames ?? DEFAULT_UNINSTALL_SCRIPT_NAMES
+  });
 }
 
 function defaultResolveScriptPath(scriptName: string): string {
