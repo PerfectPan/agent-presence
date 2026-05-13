@@ -43,6 +43,11 @@ describe('Claude hook installer helpers', () => {
 
   it('recognizes current and legacy managed hook commands', () => {
     expect(isAgentSignatureCommand('agent-presence hook --source codex --event Stop')).toBe(true);
+    expect(
+      isAgentSignatureCommand(
+        'npx --yes --registry=https://registry.npmjs.org @rivus/agent-presence@0.1.2 hook --source codex --event Stop'
+      )
+    ).toBe(true);
     expect(isAgentSignatureCommand('agent-signature hook --source codex --event Stop')).toBe(true);
     expect(isAgentSignatureCommand('agent-signature.mjs hook --source codex --event Stop')).toBe(true);
   });

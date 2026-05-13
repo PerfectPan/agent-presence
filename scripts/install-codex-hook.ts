@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { join } from 'node:path';
 import { homedir } from 'node:os';
-import { buildAgentPresenceShellCommand } from '../src/installers.js';
+import { buildAgentPresenceShellCommand, isAgentSignatureCommand } from '../src/installers.js';
 import { readJsonFile, writeJsonAtomic } from '../src/json-file.js';
 import { assertSupportedPlatform } from '../src/platform.js';
 
@@ -54,10 +54,6 @@ function withoutAgentSignatureHooks(groups: HookGroup[]): HookGroup[] {
     }
   }
   return next;
-}
-
-function isAgentSignatureCommand(command: string): boolean {
-  return command.includes('agent-presence hook') || command.includes('agent-signature hook') || command.includes('agent-signature.mjs hook');
 }
 
 async function loadHooks(path: string): Promise<HooksFile> {
