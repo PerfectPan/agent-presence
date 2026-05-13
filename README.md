@@ -14,23 +14,26 @@ Codex / Claude Code / opencode hooks
 
 ## Install
 
-From npm:
+From the package registry:
 
 ```bash
-npm install -g @rivus/agent-presence
+pnpm add -g @rivus/agent-presence
 agent-presence setup --provider feishu-signature
 ```
 
 From a local checkout:
 
 ```bash
-npm install
-npm run build
-npm link
+corepack enable
+pnpm install --frozen-lockfile --ignore-scripts
+pnpm run build
+pnpm link --global
 agent-presence setup --provider feishu-signature
 ```
 
 The package also exposes `agent-signature` as a compatibility alias, so old hooks keep working while new installs use `agent-presence`.
+
+For the implementation shape and trust boundaries, see [docs/architecture.md](docs/architecture.md).
 
 ## User Flow
 
@@ -144,10 +147,10 @@ This is best effort. Sudden power loss, forced shutdown, lost network, or provid
 Manual install/uninstall scripts remain available:
 
 ```bash
-npm run install:all-hooks
-npm run uninstall:all-hooks
-npm run install:shutdown-watcher
-npm run uninstall:shutdown-watcher
+pnpm run install:all-hooks
+pnpm run uninstall:all-hooks
+pnpm run install:shutdown-watcher
+pnpm run uninstall:shutdown-watcher
 ```
 
 ## Provider
@@ -187,9 +190,11 @@ Token and slot credentials are not written to git and are not embedded in the si
 ## Validation
 
 ```bash
-npm test
-npm run typecheck
-npm run build
+pnpm install --frozen-lockfile --ignore-scripts
+pnpm test
+pnpm run typecheck
+pnpm run build
+pnpm pack --dry-run
 
 agent-presence status
 agent-presence url
@@ -209,8 +214,10 @@ The package is published as `@rivus/agent-presence`.
 This repository uses Changesets. For user-facing changes, add a changeset in the same PR:
 
 ```bash
-npm run changeset
+pnpm run changeset
 ```
+
+Package management is pinned to pnpm through `packageManager`. CI and release use the checked-in `pnpm-lock.yaml`, frozen installs, dependency script blocking, and the workspace supply-chain settings in `pnpm-workspace.yaml`.
 
 Before merging the first implementation PR, configure npm Trusted Publishing for:
 

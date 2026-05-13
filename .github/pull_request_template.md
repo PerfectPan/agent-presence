@@ -4,10 +4,11 @@
 
 ## Validation
 
-- [ ] `npm test`
-- [ ] `npm run typecheck`
-- [ ] `npm run build`
-- [ ] `npm pack --dry-run`
+- [ ] `pnpm install --frozen-lockfile --ignore-scripts`
+- [ ] `pnpm test`
+- [ ] `pnpm run typecheck`
+- [ ] `pnpm run build`
+- [ ] `pnpm pack --dry-run`
 
 ## Follow-up Risks
 

@@ -14,18 +14,21 @@ This repository is intended to become a maintainable, publishable project. Treat
 ## Project-Specific Commands
 
 ```bash
-npm test
+pnpm install --frozen-lockfile --ignore-scripts
 
-npm run typecheck
+pnpm test
 
-npm run build
+pnpm run typecheck
 
-npm pack --dry-run
+pnpm run build
+
+pnpm pack --dry-run
 
 rg --hidden --no-ignore -n "private-token|internal-domain.example|HOME_PATH_PLACEHOLDER|bnpm|byted" . \
   --glob '!.git/**' \
   --glob '!node_modules/**' \
   --glob '!dist/**' \
+  --glob '!pnpm-lock.yaml' \
   --glob '!AGENTS.md' \
   --glob '!CONTRIBUTING.md' \
   --glob '!SECURITY.md'
@@ -36,6 +39,7 @@ Do not claim implementation work is complete until the relevant commands pass, o
 ## Documentation
 
 - Keep `README.md` focused on orientation, quick start, and current user-facing behavior.
+- Use `docs/architecture.md` for the current runtime architecture and trust boundaries.
 - Use `CONTRIBUTING.md` for contribution workflow.
 - Use `rfcs/` for substantial design proposals.
 - Update `CHANGELOG.md` for user-facing changes unless the change is docs-only or repository-only.

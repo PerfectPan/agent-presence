@@ -3,10 +3,11 @@
 ## Development Setup
 
 ```bash
-npm install
-npm test
-npm run typecheck
-npm run build
+corepack enable
+pnpm install --frozen-lockfile --ignore-scripts
+pnpm test
+pnpm run typecheck
+pnpm run build
 node dist/src/cli.js --help
 ```
 
@@ -25,13 +26,15 @@ Small typo corrections, narrow documentation fixes, and repository metadata upda
 ## Required Checks
 
 ```bash
-npm test
+pnpm install --frozen-lockfile --ignore-scripts
 
-npm run typecheck
+pnpm test
 
-npm run build
+pnpm run typecheck
 
-npm pack --dry-run
+pnpm run build
+
+pnpm pack --dry-run
 ```
 
 ## When to Write an RFC
@@ -62,6 +65,8 @@ Every PR should answer:
 Do not commit private tokens, local config, generated workspaces, internal hostnames, or personal filesystem paths.
 
 Keep package or deploy contents intentional. If a file should ship, verify it appears in the package or deployment dry-run.
+
+Use the pinned pnpm version from `packageManager`. Do not commit `package-lock.json`, local `.npmrc` credentials, generated `dist/`, or `node_modules/`.
 
 ## Security Reports
 

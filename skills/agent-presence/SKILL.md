@@ -20,7 +20,7 @@ description: Use when installing, configuring, verifying, or debugging @rivus/ag
 ## Quick Commands
 
 ```bash
-npm install -g @rivus/agent-presence
+pnpm add -g @rivus/agent-presence
 agent-presence setup --provider feishu-signature
 agent-presence url --provider feishu-signature
 agent-presence status --provider feishu-signature
@@ -32,9 +32,10 @@ agent-presence reset --provider feishu-signature --force
 Local checkout:
 
 ```bash
-npm install
-npm run build
-npm link
+corepack enable
+pnpm install --frozen-lockfile --ignore-scripts
+pnpm run build
+pnpm link --global
 agent-presence setup --provider feishu-signature
 ```
 
