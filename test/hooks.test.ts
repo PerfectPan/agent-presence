@@ -41,6 +41,29 @@ describe('Claude hook context', () => {
     });
   });
 
+  it('prefers stable Claude payload session ids over process env ids', () => {
+    expect(
+      resolveClaudeHookContext(
+        {
+          session: {
+            hook_event_name: 'Stop',
+            session_id: 'payload-claude-session',
+            cwd: '/repo'
+          }
+        },
+        {
+          CLAUDE_HOOK_EVENT_NAME: 'UserPromptSubmit',
+          CLAUDE_SESSION_ID: 'env-claude-session',
+          PWD: '/env-repo'
+        }
+      )
+    ).toEqual({
+      event: 'Stop',
+      project: '/repo',
+      sessionId: 'payload-claude-session'
+    });
+  });
+
   it('tracks Claude subagents as separate sessions under the parent session', () => {
     expect(
       resolveClaudeHookContext({

@@ -10,15 +10,20 @@ export function resolveClaudeHookContext(payload: unknown, env: StringEnv = proc
   const event = pickString(payload, {
     env,
     envKeys: ['CLAUDE_HOOK_EVENT_NAME'],
-    payloadKeys: ['hook_event_name']
+    payloadKeys: ['hook_event_name'],
+    nestedPayloadKeys: ['event', 'session', 'input', 'context'],
+    payloadFirst: true
   });
   const parentSessionId = pickString(payload, {
     env,
     envKeys: ['CLAUDE_SESSION_ID'],
-    payloadKeys: ['session_id', 'sessionId', 'sessionID']
+    payloadKeys: ['session_id', 'sessionId', 'sessionID'],
+    nestedPayloadKeys: ['event', 'session', 'input', 'context'],
+    payloadFirst: true
   });
   const agentId = pickString(payload, {
-    payloadKeys: ['agent_id', 'agentId', 'agentID']
+    payloadKeys: ['agent_id', 'agentId', 'agentID'],
+    nestedPayloadKeys: ['event', 'session', 'input', 'context']
   });
   const sessionId = event?.startsWith('Subagent') && parentSessionId && agentId ? `${parentSessionId}:subagent:${agentId}` : parentSessionId;
 
@@ -28,7 +33,8 @@ export function resolveClaudeHookContext(payload: unknown, env: StringEnv = proc
     project: pickString(payload, {
       env,
       envKeys: ['PWD'],
-      payloadKeys: ['cwd'],
+      payloadKeys: ['cwd', 'project'],
+      nestedPayloadKeys: ['event', 'session', 'input', 'context'],
       payloadFirst: true
     })
   };
