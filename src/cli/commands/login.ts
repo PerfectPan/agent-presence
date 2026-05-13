@@ -39,6 +39,16 @@ export async function login(args: string[] = []): Promise<void> {
       return;
     }
 
+    if (status.status === 'expired') {
+      pollSpinner.error('QR code expired');
+      throw new Error('login qrcode expired before authorization completed');
+    }
+
+    if (status.status === 'confirmed' || status.status === 'authorized' || status.status === 'success') {
+      pollSpinner.error('Authorization response missing credential');
+      throw new Error('login authorization completed but provider did not return credential and slot id');
+    }
+
     await sleep(DEFAULT_LOGIN_POLL_MS);
   }
 

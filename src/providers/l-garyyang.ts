@@ -43,8 +43,8 @@ export class LGaryYangProvider {
       throw new Error('unexpected login status response from l.garyyang provider');
     }
 
-    const token = pickString(response, ['token', 'authToken', 'accessToken'], ['data', 'credential']);
-    const slotId = pickString(response, ['slotId', 'slot_id'], ['data', 'slot']);
+    const token = pickString(response, ['token', 'authToken', 'accessToken', 'credential'], ['data', 'credential']);
+    const slotId = pickSlotId(response);
     if (token && slotId) {
       return { status: response.status, token, slotId };
     }
@@ -179,6 +179,37 @@ function pickString(root: Record<string, unknown>, directKeys: string[], nestedK
   }
 
   return undefined;
+}
+
+function pickSlotId(root: Record<string, unknown>): string | undefined {
+  const direct = pickString(root, ['slotId', 'slot_id'], ['data', 'slot']);
+  if (direct) {
+    return direct;
+  }
+
+  for (const parent of [root, root.data, root.user]) {
+    if (!isRecord(parent)) {
+      continue;
+    }
+
+    const fromParent = pickFirstString(parent.slotIds) ?? pickFirstString(parent.slot_ids);
+    if (fromParent) {
+      return fromParent;
+    }
+
+    if (isRecord(parent.user)) {
+      const fromNestedUser = pickFirstString(parent.user.slotIds) ?? pickFirstString(parent.user.slot_ids);
+      if (fromNestedUser) {
+        return fromNestedUser;
+      }
+    }
+  }
+
+  return undefined;
+}
+
+function pickFirstString(value: unknown): string | undefined {
+  return Array.isArray(value) ? value.find((item): item is string => typeof item === 'string' && item.length > 0) : undefined;
 }
 
 function readRetryAfter(value: string | null): number | undefined {
