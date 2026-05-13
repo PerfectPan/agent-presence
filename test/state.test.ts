@@ -76,4 +76,36 @@ describe('agent state lifecycle', () => {
     expect(state.sessions['thread-1']).toMatchObject({ status: 'finished', finishedAt: 3_000 });
     expect(state.sessions['thread-2']).toMatchObject({ status: 'finished', finishedAt: 3_000 });
   });
+
+  it('finishes the latest matching running session when a stop event has an unstable session id', () => {
+    const state = createEmptyState();
+
+    applyAgentEvent(state, {
+      source: 'codex',
+      event: 'SessionStart',
+      sessionId: 'stable-thread-1',
+      now: 1_000,
+      project: '/repo'
+    });
+    applyAgentEvent(state, {
+      source: 'codex',
+      event: 'SessionStart',
+      sessionId: 'stable-thread-2',
+      now: 2_000,
+      project: '/repo'
+    });
+
+    applyAgentEvent(state, {
+      source: 'codex',
+      event: 'Stop',
+      sessionId: 'stop-only-id',
+      now: 3_000,
+      project: '/repo'
+    });
+
+    expect(state.sessions['stable-thread-1']?.status).toBe('running');
+    expect(state.sessions['stable-thread-2']).toMatchObject({ status: 'finished', finishedAt: 3_000 });
+    expect(state.sessions['stop-only-id']).toBeUndefined();
+    expect(getActiveSessions(state, 3_000, 180_000).map((session) => session.id)).toEqual(['stable-thread-1']);
+  });
 });

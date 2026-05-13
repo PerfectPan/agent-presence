@@ -90,18 +90,19 @@ export function applyAgentEvent(state: PresenceState, input: AgentEventInput): P
       if (input.project) {
         existing.project = input.project;
       }
-    } else {
-      state.sessions[input.sessionId] = {
-        id: input.sessionId,
-        source: input.source,
-        kind: 'coding',
-        status: 'finished',
-        startedAt: input.now,
-        lastHeartbeatAt: input.now,
-        finishedAt: input.now,
-        project: input.project
-      };
+      return state;
     }
+
+    const fallback = findFallbackSessionForFinish(state, input);
+    if (fallback) {
+      fallback.status = 'finished';
+      fallback.lastHeartbeatAt = input.now;
+      fallback.finishedAt = input.now;
+      if (input.project) {
+        fallback.project = input.project;
+      }
+    }
+
     return state;
   }
 
@@ -117,6 +118,17 @@ export function applyAgentEvent(state: PresenceState, input: AgentEventInput): P
   };
 
   return state;
+}
+
+function findFallbackSessionForFinish(state: PresenceState, input: AgentEventInput): AgentSession | undefined {
+  const runningSessions = Object.values(state.sessions).filter((session) => {
+    if (session.status !== 'running' || session.source !== input.source) {
+      return false;
+    }
+    return input.project ? session.project === input.project : true;
+  });
+
+  return runningSessions.sort((left, right) => right.lastHeartbeatAt - left.lastHeartbeatAt)[0];
 }
 
 export function expireStaleSessions(state: PresenceState, now: number, ttlMs: number): PresenceState {
