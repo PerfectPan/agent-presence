@@ -206,19 +206,13 @@ agent-presence status
 
 The package is published as `@rivus/agent-presence`.
 
-First public publish:
+This repository uses Changesets. For user-facing changes, add a changeset in the same PR:
 
 ```bash
-npm login
-npm whoami
-npm test
-npm run typecheck
-npm run build
-npm pack --dry-run
-npm publish --access public
+npm run changeset
 ```
 
-After the first publish, configure npm Trusted Publishing for:
+Before merging the first implementation PR, configure npm Trusted Publishing for:
 
 ```text
 GitHub owner: PerfectPan
@@ -226,17 +220,14 @@ Repository: agent-presence
 Workflow filename: publish.yml
 ```
 
-Then release from Git tags:
+Release flow:
 
-```bash
-npm version patch --no-git-tag-version
-git add package.json package-lock.json
-git commit -S -m "chore: release v0.1.1"
-git tag -s v0.1.1 -m "v0.1.1"
-git push origin main --tags
-```
+1. Merge feature PRs with `.changeset/*.md` files.
+2. `.github/workflows/publish.yml` opens or updates a `chore: release package` PR.
+3. Review and merge that release PR.
+4. The same workflow publishes to npm through Changesets and npm Trusted Publishing.
 
-`.github/workflows/publish.yml` runs `npm ci`, tests, typecheck, build, and `npm publish` through npm OIDC trusted publishing.
+The package starts at `0.0.0`; the initial changeset bumps it to `0.1.0` in the generated release PR.
 
 ## Agent Skill
 

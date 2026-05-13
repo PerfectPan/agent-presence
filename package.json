@@ -1,6 +1,6 @@
 {
   "name": "@rivus/agent-presence",
-  "version": "0.1.0",
+  "version": "0.0.0",
   "description": "Sync local coding-agent presence to Feishu signature link previews.",
   "type": "module",
   "repository": {
@@ -27,9 +27,12 @@
     "uninstall:codex-hook": "node dist/scripts/uninstall-codex-hook.js",
     "uninstall:opencode-plugin": "node dist/scripts/uninstall-opencode-plugin.js",
     "uninstall:shutdown-watcher": "node dist/scripts/uninstall-shutdown-watcher.js",
+    "changeset": "changeset",
     "prepack": "npm test && npm run typecheck && npm run build",
+    "release": "changeset publish",
     "test": "vitest run",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "version": "changeset version"
   },
   "publishConfig": {
     "access": "public"
@@ -43,6 +46,7 @@
     "node": ">=20"
   },
   "devDependencies": {
+    "@changesets/cli": "^2.31.0",
     "@types/node": "^24.10.2",
     "typescript": "^6.0.3",
     "vitest": "^4.1.6"
