@@ -1,3 +1,5 @@
+import { findPayloadString, pickString, type StringEnv } from './context.js';
+
 export interface OpenCodeHookContext {
   event?: string;
   sessionId?: string;
@@ -20,6 +22,7 @@ const HEARTBEAT_EVENTS = new Set([
 ]);
 
 const FINISH_EVENTS = new Set(['session.deleted', 'session.error', 'session.idle']);
+const NESTED_PAYLOAD_KEYS = ['event', 'session', 'input', 'context', 'project'];
 
 export function mapOpenCodeEvent(payload: unknown): string | undefined {
   const type = openCodeEventType(payload);
@@ -38,45 +41,25 @@ export function mapOpenCodeEvent(payload: unknown): string | undefined {
   return undefined;
 }
 
-export function resolveOpenCodeHookContext(payload: unknown, env: Record<string, string | undefined> = process.env): OpenCodeHookContext {
+export function resolveOpenCodeHookContext(payload: unknown, env: StringEnv = process.env): OpenCodeHookContext {
+  const event = pickString(payload, { env, envKeys: ['OPENCODE_HOOK_EVENT'] });
   return {
-    event: env.OPENCODE_HOOK_EVENT ?? mapOpenCodeEvent(payload),
-    sessionId: env.OPENCODE_SESSION_ID ?? findString(payload, ['session_id', 'sessionId', 'sessionID', 'id']),
-    project:
-      env.OPENCODE_PROJECT ??
-      env.OPENCODE_CWD ??
-      findString(payload, ['cwd', 'directory', 'worktree']) ??
-      findString(payload, ['path'])
+    event: event ? event : mapOpenCodeEvent(payload),
+    sessionId: pickString(payload, {
+      env,
+      envKeys: ['OPENCODE_SESSION_ID'],
+      payloadKeys: ['session_id', 'sessionId', 'sessionID', 'id'],
+      nestedPayloadKeys: NESTED_PAYLOAD_KEYS
+    }),
+    project: pickString(payload, {
+      env,
+      envKeys: ['OPENCODE_PROJECT', 'OPENCODE_CWD'],
+      payloadKeys: ['cwd', 'directory', 'worktree', 'path'],
+      nestedPayloadKeys: NESTED_PAYLOAD_KEYS
+    })
   };
 }
 
 function openCodeEventType(payload: unknown): string | undefined {
-  return findString(payload, ['type']);
-}
-
-function findString(value: unknown, keys: string[]): string | undefined {
-  if (!isRecord(value)) {
-    return undefined;
-  }
-
-  for (const key of keys) {
-    const field = value[key];
-    if (typeof field === 'string' && field.length > 0) {
-      return field;
-    }
-  }
-
-  for (const nestedKey of ['event', 'session', 'input', 'context', 'project']) {
-    const nested = value[nestedKey];
-    const found = findString(nested, keys);
-    if (found) {
-      return found;
-    }
-  }
-
-  return undefined;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
+  return findPayloadString(payload, ['type'], NESTED_PAYLOAD_KEYS);
 }

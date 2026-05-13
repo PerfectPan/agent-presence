@@ -1,32 +1,35 @@
+import { pickString, type StringEnv } from './context.js';
+
 export interface ClaudeHookContext {
   event?: string;
   sessionId?: string;
   project?: string;
 }
 
-export function resolveClaudeHookContext(payload: unknown, env: Record<string, string | undefined> = process.env): ClaudeHookContext {
-  const record = isRecord(payload) ? payload : {};
-  const event = stringField(record, 'hook_event_name') ?? env.CLAUDE_HOOK_EVENT_NAME;
-  const parentSessionId =
-    env.CLAUDE_SESSION_ID ??
-    stringField(record, 'session_id') ??
-    stringField(record, 'sessionId') ??
-    stringField(record, 'sessionID');
-  const agentId = stringField(record, 'agent_id') ?? stringField(record, 'agentId') ?? stringField(record, 'agentID');
+export function resolveClaudeHookContext(payload: unknown, env: StringEnv = process.env): ClaudeHookContext {
+  const event = pickString(payload, {
+    env,
+    envKeys: ['CLAUDE_HOOK_EVENT_NAME'],
+    payloadKeys: ['hook_event_name']
+  });
+  const parentSessionId = pickString(payload, {
+    env,
+    envKeys: ['CLAUDE_SESSION_ID'],
+    payloadKeys: ['session_id', 'sessionId', 'sessionID']
+  });
+  const agentId = pickString(payload, {
+    payloadKeys: ['agent_id', 'agentId', 'agentID']
+  });
   const sessionId = event?.startsWith('Subagent') && parentSessionId && agentId ? `${parentSessionId}:subagent:${agentId}` : parentSessionId;
 
   return {
     event,
     sessionId,
-    project: stringField(record, 'cwd') ?? env.PWD
+    project: pickString(payload, {
+      env,
+      envKeys: ['PWD'],
+      payloadKeys: ['cwd'],
+      payloadFirst: true
+    })
   };
-}
-
-function stringField(record: Record<string, unknown>, field: string): string | undefined {
-  const value = record[field];
-  return typeof value === 'string' && value.length > 0 ? value : undefined;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
 }
