@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { hasAnyOption, hasFlag, optionValue, parseArgs } from '../src/cli/args.js';
 import { resolveHookContext } from '../src/cli/hook-context.js';
+import { assertSupportedPlatform, isSupportedPlatform } from '../src/platform.js';
 
 describe('cli args', () => {
   it('splits the command from command arguments', () => {
@@ -37,5 +38,13 @@ describe('cli hook context', () => {
     } finally {
       process.env.CODEX_THREAD_ID = previousThreadId;
     }
+  });
+});
+
+describe('platform support', () => {
+  it('supports macOS and rejects Windows', () => {
+    expect(isSupportedPlatform('darwin')).toBe(true);
+    expect(isSupportedPlatform('win32')).toBe(false);
+    expect(() => assertSupportedPlatform('win32')).toThrow('macOS only');
   });
 });

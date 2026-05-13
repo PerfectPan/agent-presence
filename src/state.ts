@@ -1,7 +1,8 @@
-import { mkdir, readFile, rm, stat } from 'node:fs/promises';
+import { mkdir, rm, stat } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
-import { getStatePath, writeJsonAtomic } from './config.js';
+import { getStatePath } from './config.js';
+import { hasNodeErrorCode, readJsonFile, writeJsonAtomic } from './json-file.js';
 
 export type AgentStatus = 'running' | 'finished' | 'expired';
 
@@ -41,14 +42,7 @@ export function createEmptyState(): PresenceState {
 }
 
 export async function loadState(statePath = getStatePath()): Promise<PresenceState> {
-  try {
-    return normalizeState(JSON.parse(await readFile(statePath, 'utf8')) as PresenceState);
-  } catch (error) {
-    if (isMissingFile(error)) {
-      return createEmptyState();
-    }
-    throw error;
-  }
+  return normalizeState(await readJsonFile<PresenceState>(statePath, createEmptyState()));
 }
 
 export async function saveState(state: PresenceState, statePath = getStatePath()): Promise<void> {
@@ -234,10 +228,6 @@ async function isStaleLock(lockPath: string, staleMs: number): Promise<boolean> 
   }
 }
 
-function isMissingFile(error: unknown): boolean {
-  return typeof error === 'object' && error !== null && 'code' in error && error.code === 'ENOENT';
-}
-
 function isAlreadyExists(error: unknown): boolean {
-  return typeof error === 'object' && error !== null && 'code' in error && error.code === 'EEXIST';
+  return hasNodeErrorCode(error, 'EEXIST');
 }

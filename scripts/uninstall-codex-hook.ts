@@ -1,7 +1,8 @@
 #!/usr/bin/env node
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
+import { join } from 'node:path';
 import { homedir } from 'node:os';
+import { readJsonFile, writeJsonAtomic } from '../src/json-file.js';
+import { assertSupportedPlatform } from '../src/platform.js';
 
 interface HookCommand {
   command: string;
@@ -16,6 +17,7 @@ interface HooksFile {
 }
 
 async function main(): Promise<void> {
+  assertSupportedPlatform();
   const hooksPath = process.env.CODEX_HOOKS_FILE ?? join(homedir(), '.codex', 'hooks.json');
   const doc = await loadHooks(hooksPath);
   doc.hooks ??= {};
@@ -39,21 +41,7 @@ function isAgentSignatureCommand(command: string): boolean {
 }
 
 async function loadHooks(path: string): Promise<HooksFile> {
-  try {
-    return JSON.parse(await readFile(path, 'utf8')) as HooksFile;
-  } catch (error) {
-    if (typeof error === 'object' && error !== null && 'code' in error && error.code === 'ENOENT') {
-      return { hooks: {} };
-    }
-    throw error;
-  }
-}
-
-async function writeJsonAtomic(path: string, value: unknown): Promise<void> {
-  await mkdir(dirname(path), { recursive: true, mode: 0o700 });
-  const tmpPath = `${path}.${process.pid}.${Date.now()}.tmp`;
-  await writeFile(tmpPath, `${JSON.stringify(value, null, 2)}\n`, { mode: 0o600 });
-  await rename(tmpPath, path);
+  return readJsonFile<HooksFile>(path, { hooks: {} });
 }
 
 main().catch((error: unknown) => {

@@ -1,6 +1,6 @@
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
+import { join } from 'node:path';
 import { homedir } from 'node:os';
+import { readJsonFile, writeJsonAtomic } from './json-file.js';
 import type { RenderTemplates } from './render.js';
 
 export const DEFAULT_PROVIDER_BASE_URL = 'https://l.garyyang.work';
@@ -52,14 +52,7 @@ export function getLogPath(): string {
 }
 
 export async function loadConfig(configPath = getConfigPath()): Promise<AppConfig> {
-  try {
-    return JSON.parse(await readFile(configPath, 'utf8')) as AppConfig;
-  } catch (error) {
-    if (isMissingFile(error)) {
-      return {};
-    }
-    throw error;
-  }
+  return readJsonFile<AppConfig>(configPath, {});
 }
 
 export async function saveConfig(config: AppConfig, configPath = getConfigPath()): Promise<void> {
@@ -158,23 +151,12 @@ export function configSlotId(config: AppConfig): string | undefined {
   );
 }
 
-export async function writeJsonAtomic(path: string, value: unknown): Promise<void> {
-  await mkdir(dirname(path), { recursive: true, mode: 0o700 });
-  const tmpPath = `${path}.${process.pid}.${Date.now()}.tmp`;
-  await writeFile(tmpPath, `${JSON.stringify(value, null, 2)}\n`, { mode: 0o600 });
-  await rename(tmpPath, path);
-}
-
 export function readPositiveInt(value: string | undefined): number | undefined {
   if (!value) {
     return undefined;
   }
   const parsed = Number.parseInt(value, 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
-}
-
-function isMissingFile(error: unknown): boolean {
-  return typeof error === 'object' && error !== null && 'code' in error && error.code === 'ENOENT';
 }
 
 function setDefinedTemplate(templates: RenderTemplates, key: keyof RenderTemplates, value: string | undefined): void {

@@ -14,6 +14,8 @@ Codex / Claude Code / opencode hooks
 
 ## Install
 
+Agent Presence currently supports macOS only. The CLI and installer scripts detect unsupported platforms and exit with a clear error; Windows is not supported yet because credential storage, hook installation paths, and power-event reset are macOS-specific in the MVP.
+
 From the package registry:
 
 ```bash

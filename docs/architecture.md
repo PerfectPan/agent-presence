@@ -19,12 +19,14 @@ Codex / Claude Code / opencode lifecycle hooks
 - Store credentials only in Keychain or environment variables.
 - Make hooks safe to run inside coding-agent lifecycles.
 - Recover from abnormal exits with TTL and power-event reset hooks.
+- Support the macOS local-agent environment first.
 
 ## Non-Goals
 
 - Process scanning or terminal-window detection.
 - A generic status dashboard.
 - Server-side session tracking.
+- Windows or Linux runtime support in the MVP.
 - Full provider abstraction beyond the first Feishu signature slot provider.
 
 ## Runtime Components
@@ -32,6 +34,8 @@ Codex / Claude Code / opencode lifecycle hooks
 ### CLI
 
 `src/cli.ts` is the public entrypoint. It delegates immediately to `src/cli/app.ts`, which routes to one command module per command.
+
+The CLI allows help output everywhere, then rejects non-macOS runtime commands through `src/platform.ts`. The direct installer scripts use the same guard.
 
 Human-facing commands use `@clack/prompts` for interaction:
 
@@ -60,6 +64,8 @@ src/cli/ui.ts               Clack wrapper and non-TTY fallback
 src/cli/slot-sync.ts        state-lock to provider-sync bridge
 src/cli/hook-context.ts     source-specific hook context selection
 src/cli/commands/*.ts       one command or subcommand per file
+src/json-file.ts            shared JSON read and atomic write helpers
+src/hooks/context.ts        shared hook payload/env string extraction
 ```
 
 The package exposes both binaries:

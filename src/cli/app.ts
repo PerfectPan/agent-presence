@@ -8,6 +8,7 @@ import { printStatus } from './commands/status.js';
 import { update } from './commands/update.js';
 import { printSignatureUrl } from './commands/url.js';
 import { printHelp } from './help.js';
+import { assertSupportedPlatform } from '../platform.js';
 
 export async function runCli(argv: string[]): Promise<void> {
   const parsed = parseArgs(argv);
@@ -18,6 +19,12 @@ export async function runCli(argv: string[]): Promise<void> {
     case '-h':
       printHelp();
       return;
+    default:
+      assertSupportedPlatform();
+      break;
+  }
+
+  switch (parsed.command) {
     case 'login':
       await login(parsed.args);
       return;
@@ -42,8 +49,8 @@ export async function runCli(argv: string[]): Promise<void> {
     case 'hook':
       await hook(parsed.args);
       return;
-    default:
-      printHelp();
-      process.exitCode = 1;
   }
+
+  printHelp();
+  process.exitCode = 1;
 }
