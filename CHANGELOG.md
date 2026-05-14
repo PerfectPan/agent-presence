@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.0
+
+### Minor Changes
+
+- fde39ee: Add Gemini CLI support for agent presence synchronization including hooks and auto-installation scripts.
+
 ## 0.1.4
 
 ### Patch Changes
