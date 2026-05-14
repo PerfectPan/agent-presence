@@ -8,6 +8,7 @@ export const DEFAULT_SETUP_SCRIPT_NAMES = [
   'install-codex-hook.js',
   'install-claude-hook.js',
   'install-opencode-plugin.js',
+  'install-gemini-hook.js',
   'install-shutdown-watcher.js'
 ] as const;
 
@@ -15,6 +16,7 @@ export const DEFAULT_UNINSTALL_SCRIPT_NAMES = [
   'uninstall-codex-hook.js',
   'uninstall-claude-hook.js',
   'uninstall-opencode-plugin.js',
+  'uninstall-gemini-hook.js',
   'uninstall-shutdown-watcher.js'
 ] as const;
 

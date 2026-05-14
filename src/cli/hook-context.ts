@@ -1,3 +1,4 @@
+import { resolveGeminiHookContext } from '../hooks/gemini.js';
 import { resolveClaudeHookContext } from '../hooks/claude.js';
 import { resolveCodexHookContext } from '../hooks/codex.js';
 import { resolveOpenCodeHookContext } from '../hooks/opencode.js';
@@ -14,6 +15,9 @@ export function resolveHookContext(source: string, payload: unknown): HookContex
   }
   if (source === 'claude') {
     return resolveClaudeHookContext(payload);
+  }
+  if (source === 'gemini') {
+    return resolveGeminiHookContext(payload);
   }
   if (source === 'opencode') {
     return resolveOpenCodeHookContext(payload);
