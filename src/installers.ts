@@ -369,3 +369,35 @@ function shellQuote(value: string): string {
 function escapeSwiftString(value: string): string {
   return value.replaceAll('\\', '\\\\').replaceAll('"', '\\"');
 }
+
+const GEMINI_EVENTS = [
+  'SessionStart',
+  'UserPromptSubmit',
+  'PreToolUse',
+  'PostToolUse',
+  'Stop',
+  'SessionEnd'
+];
+
+export function withGeminiAgentSignatureHooks(input: Partial<HookSettings>): HookSettings {
+  const settings: HookSettings = {
+    ...input,
+    hooks: { ...(input.hooks ?? {}) }
+  };
+
+  for (const event of GEMINI_EVENTS) {
+    const groups = settings.hooks[event] ?? [];
+    settings.hooks[event] = withoutAgentSignatureHookGroups(groups);
+    settings.hooks[event].push({
+      hooks: [
+        {
+          type: 'command',
+          command: `${buildAgentPresenceShellCommand(['hook', '--source', 'gemini', '--event', event, '--silent'])} >/dev/null 2>/dev/null || true`,
+          timeout: 5000
+        }
+      ]
+    });
+  }
+
+  return settings;
+}

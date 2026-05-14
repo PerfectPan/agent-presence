@@ -14,6 +14,7 @@ Usage:
   agent-presence reset [--provider feishu-signature] [--force] [--silent]
   agent-presence hook --source codex --event <SessionStart|Heartbeat|UserPromptSubmit|PreToolUse|Stop>
   agent-presence hook --source claude --event <SessionStart|UserPromptSubmit|PreToolUse|PostToolUse|Stop|SessionEnd|SubagentStart|SubagentStop> --silent
+  agent-presence hook --source gemini --event <SessionStart|UserPromptSubmit|PreToolUse|PostToolUse|Stop|SessionEnd> --silent
   agent-presence hook --source opencode --event <SessionStart|Heartbeat|Stop> --silent
 `);
 }
