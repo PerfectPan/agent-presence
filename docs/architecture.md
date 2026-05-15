@@ -333,7 +333,7 @@ Did the provider request happen, skip, rate-limit, or fail?
 
 ### Local Command Log
 
-`src/cli/io.ts` writes a local append-only diagnostic log. The default path is:
+`src/log.ts` writes a local append-only diagnostic log. The default path is:
 
 ```text
 ~/.codex/agent-signature/agent-presence.log
@@ -360,9 +360,9 @@ This log is for watcher startup/runtime failures. It should stay credential-free
 
 ### Provider Request Log
 
-Provider request logging should be structured and redacted. The intent is to debug slot sync behavior without leaking credentials or noisy hook payloads.
+Provider request logging is structured and redacted. The intent is to debug slot sync behavior without leaking credentials or noisy hook payloads.
 
-Recommended event shape:
+Successful slot update event shape:
 
 ```json
 {

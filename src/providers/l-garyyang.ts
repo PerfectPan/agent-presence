@@ -1,5 +1,6 @@
 import { SlotRateLimitError } from '../render.js';
 import type { SlotCredential } from '../secret.js';
+import { writeLogEvent } from '../log.js';
 
 export interface QrCodeResponse {
   sceneId: string;
@@ -18,6 +19,11 @@ export interface LoginSuccess {
 }
 
 export type LoginStatus = LoginPending | LoginSuccess;
+
+interface ProviderRequestLogOptions {
+  slotId?: string;
+  value?: string;
+}
 
 export class LGaryYangProvider {
   constructor(
@@ -58,13 +64,14 @@ export class LGaryYangProvider {
       method: 'POST',
       headers: this.authHeaders(credential),
       body: JSON.stringify({ slotId: credential.slotId, value })
-    });
+    }, { slotId: credential.slotId, value });
   }
 
   async getInfo(): Promise<unknown> {
+    const credential = this.requireCredential();
     return await this.requestJson('/api/slot/info', {
-      headers: this.authHeaders(this.requireCredential())
-    });
+      headers: this.authHeaders(credential)
+    }, { slotId: credential.slotId });
   }
 
   buildSignatureUrl(options: { slotId: string; imageKey?: string; targetUrl?: string; previewBaseUrl: string }): string {
@@ -93,21 +100,111 @@ export class LGaryYangProvider {
     };
   }
 
-  private async requestJson(path: string, init: RequestInit = {}): Promise<unknown> {
-    const response = await fetch(new URL(path, this.baseUrl), init);
+  private async requestJson(path: string, init: RequestInit = {}, logOptions: ProviderRequestLogOptions = {}): Promise<unknown> {
+    const url = new URL(path, this.baseUrl);
+    const startedAt = Date.now();
+    const method = init.method ?? 'GET';
+    let response: Response;
+
+    try {
+      response = await fetch(url, init);
+    } catch (error) {
+      await this.logRequest({
+        method,
+        path: url.pathname,
+        durationMs: Date.now() - startedAt,
+        result: 'network-error',
+        slotId: logOptions.slotId,
+        valueLength: valueLength(logOptions.value)
+      });
+      throw error;
+    }
+
     const text = await response.text();
-    const json = text ? parseJson(text) : undefined;
+    let json: unknown;
+    try {
+      json = text ? parseJson(text) : undefined;
+    } catch (error) {
+      await this.logRequest({
+        method,
+        path: url.pathname,
+        status: response.status,
+        durationMs: Date.now() - startedAt,
+        result: 'invalid-json',
+        slotId: logOptions.slotId,
+        valueLength: valueLength(logOptions.value)
+      });
+      throw error;
+    }
 
     if (response.status === 429) {
-      throw new SlotRateLimitError('slot provider returned 429', readRetryAfter(response.headers.get('retry-after')));
+      const retryAfterMs = readRetryAfter(response.headers.get('retry-after'));
+      await this.logRequest({
+        method,
+        path: url.pathname,
+        status: response.status,
+        durationMs: Date.now() - startedAt,
+        result: 'rate-limited',
+        retryAfterMs,
+        slotId: logOptions.slotId,
+        valueLength: valueLength(logOptions.value)
+      });
+      throw new SlotRateLimitError('slot provider returned 429', retryAfterMs);
     }
 
     if (!response.ok) {
+      await this.logRequest({
+        method,
+        path: url.pathname,
+        status: response.status,
+        durationMs: Date.now() - startedAt,
+        result: 'failed',
+        slotId: logOptions.slotId,
+        valueLength: valueLength(logOptions.value)
+      });
       const detail = isRecord(json) && typeof json.error === 'string' ? json.error : text;
       throw new Error(`l.garyyang provider request failed: ${response.status} ${detail}`);
     }
 
+    await this.logRequest({
+      method,
+      path: url.pathname,
+      status: response.status,
+      durationMs: Date.now() - startedAt,
+      result: path === '/api/slot/update' ? 'updated' : 'ok',
+      slotId: logOptions.slotId,
+      valueLength: valueLength(logOptions.value)
+    });
+
     return json;
+  }
+
+  private async logRequest(event: {
+    method: string;
+    path: string;
+    status?: number;
+    durationMs: number;
+    result: string;
+    retryAfterMs?: number;
+    slotId?: string;
+    valueLength?: number;
+  }): Promise<void> {
+    try {
+      await writeLogEvent({
+        type: 'provider.request',
+        provider: 'feishu-signature',
+        method: event.method,
+        path: event.path,
+        status: event.status,
+        durationMs: event.durationMs,
+        slotId: redactSlotId(event.slotId),
+        valueLength: event.valueLength,
+        retryAfterMs: event.retryAfterMs,
+        result: event.result
+      });
+    } catch {
+      // Request logging is diagnostic only and must not affect provider behavior.
+    }
   }
 }
 
@@ -218,4 +315,15 @@ function readRetryAfter(value: string | null): number | undefined {
   }
   const seconds = Number.parseInt(value, 10);
   return Number.isFinite(seconds) ? seconds * 1000 : undefined;
+}
+
+function valueLength(value: string | undefined): number | undefined {
+  return typeof value === 'string' ? value.length : undefined;
+}
+
+function redactSlotId(slotId: string | undefined): string | undefined {
+  if (!slotId) {
+    return undefined;
+  }
+  return slotId.length <= 12 ? `${slotId.slice(0, 4)}...` : `${slotId.slice(0, 12)}...`;
 }

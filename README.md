@@ -249,6 +249,38 @@ export AGENT_PRESENCE_FEISHU_SIGNATURE_PREVIEW_TARGET_URL="https://example.com"
 
 Token and slot credentials are not written to git and are not embedded in the signature URL.
 
+## Logs
+
+Hook failures and provider requests are written to:
+
+```text
+~/.codex/agent-signature/agent-presence.log
+```
+
+Override the log path with:
+
+```bash
+export AGENT_PRESENCE_LOG_FILE=/path/to/agent-presence.log
+```
+
+Provider request logs are JSON lines with redacted fields:
+
+```json
+{
+  "type": "provider.request",
+  "provider": "feishu-signature",
+  "method": "POST",
+  "path": "/api/slot/update",
+  "status": 200,
+  "durationMs": 123,
+  "slotId": "slot_xxx...",
+  "valueLength": 31,
+  "result": "updated"
+}
+```
+
+The log never writes bearer tokens, full Authorization headers, QR code tickets, raw provider response bodies, or full slot values.
+
 ## Validation
 
 ```bash
