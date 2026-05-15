@@ -1,5 +1,6 @@
 import { configSlotId, getStatePath, loadConfig, providerBaseUrl, providerId, renderTemplates, ttlMs } from '../../config.js';
-import { LGaryYangProvider } from '../../providers/l-garyyang.js';
+import { createProvider } from '../../providers/registry.js';
+import { assertSupportsRemoteInfo } from '../../providers/types.js';
 import { renderPresence } from '../../render.js';
 import { readCredential } from '../../secret.js';
 import { getActiveSessions, loadState, saveState, withStateLock } from '../../state.js';
@@ -31,7 +32,9 @@ export async function printStatus(args: string[]): Promise<void> {
   });
 
   if (hasFlag(args, '--remote') && credential) {
-    requirePayload(payload).remote = await new LGaryYangProvider(providerBaseUrl(config), credential).getInfo();
+    const provider = createProvider(activeProvider, { baseUrl: providerBaseUrl(config), credential });
+    assertSupportsRemoteInfo(provider);
+    requirePayload(payload).remote = await provider.getInfo();
   }
 
   console.log(JSON.stringify(requirePayload(payload), null, 2));
