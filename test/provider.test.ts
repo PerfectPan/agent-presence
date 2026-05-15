@@ -84,6 +84,7 @@ describe('l.garyyang request logging', () => {
     const line = await waitForLogLine(logPath);
     const event = JSON.parse(line) as Record<string, unknown>;
     expect(event).toMatchObject({
+      app: 'agent-presence',
       type: 'provider.request',
       provider: 'feishu-signature',
       method: 'POST',
@@ -93,6 +94,7 @@ describe('l.garyyang request logging', () => {
       valueLength: 24,
       result: 'updated'
     });
+    expect(typeof event.pid).toBe('number');
     expect(line).not.toContain('secret_token');
     expect(line).not.toContain('sensitive rendered value');
     expect(line).not.toContain('slot_123456789abcdef');

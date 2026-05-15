@@ -370,6 +370,8 @@ Successful slot update event shape:
 ```json
 {
   "time": "2026-05-15T10:00:00.000Z",
+  "app": "agent-presence",
+  "pid": 12345,
   "type": "provider.request",
   "provider": "feishu-signature",
   "method": "POST",
@@ -387,6 +389,8 @@ For failures:
 ```json
 {
   "time": "2026-05-15T10:00:00.000Z",
+  "app": "agent-presence",
+  "pid": 12345,
   "type": "provider.request",
   "provider": "feishu-signature",
   "method": "POST",

@@ -270,6 +270,7 @@ Provider request logs are JSON lines with redacted fields:
 
 ```json
 {
+  "app": "agent-presence",
   "type": "provider.request",
   "provider": "feishu-signature",
   "method": "POST",

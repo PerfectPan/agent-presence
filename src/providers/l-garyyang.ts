@@ -1,6 +1,6 @@
 import { SlotRateLimitError } from '../render.js';
 import type { SlotCredential } from '../secret.js';
-import { writeLogEvent } from '../log.js';
+import { createLogWriter } from '../log.js';
 
 export interface QrCodeResponse {
   sceneId: string;
@@ -19,6 +19,10 @@ export interface LoginSuccess {
 }
 
 export type LoginStatus = LoginPending | LoginSuccess;
+
+const log = createLogWriter({
+  provider: 'feishu-signature'
+});
 
 interface ProviderRequestLogOptions {
   slotId?: string;
@@ -189,9 +193,8 @@ export class LGaryYangProvider {
     slotId?: string;
     valueLength?: number;
   }): void {
-    void writeLogEvent({
+    void log.event({
       type: 'provider.request',
-      provider: 'feishu-signature',
       method: event.method,
       path: event.path,
       status: event.status,
