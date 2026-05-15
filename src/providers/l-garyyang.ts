@@ -25,11 +25,13 @@ const log = createLogWriter({
 });
 
 interface ProviderRequestLogOptions {
+  logSuccess?: boolean;
   slotId?: string;
   value?: string;
 }
 
 interface ProviderRequestLogBase {
+  logSuccess: boolean;
   method: string;
   path: string;
   startedAt: number;
@@ -76,14 +78,14 @@ export class LGaryYangProvider {
       method: 'POST',
       headers: this.authHeaders(credential),
       body: JSON.stringify({ slotId: credential.slotId, value })
-    }, { slotId: credential.slotId, value });
+    }, { logSuccess: true, slotId: credential.slotId, value });
   }
 
   async getInfo(): Promise<unknown> {
     const credential = this.requireCredential();
     return await this.requestJson('/api/slot/info', {
       headers: this.authHeaders(credential)
-    }, { slotId: credential.slotId });
+    }, { logSuccess: true, slotId: credential.slotId });
   }
 
   buildSignatureUrl(options: { slotId: string; imageKey?: string; targetUrl?: string; previewBaseUrl: string }): string {
@@ -120,6 +122,7 @@ export class LGaryYangProvider {
       method,
       path: url.pathname,
       startedAt,
+      logSuccess: logOptions.logSuccess ?? false,
       ...logOptions
     });
     let response: Response;
@@ -152,7 +155,7 @@ export class LGaryYangProvider {
       throw new Error(`l.garyyang provider request failed: ${response.status} ${detail}`);
     }
 
-    logRequest({ status: response.status, result: path === '/api/slot/update' ? 'updated' : 'ok' });
+    logRequest({ status: response.status, result: path === '/api/slot/update' ? 'updated' : 'ok', success: true });
 
     return json;
   }
@@ -271,8 +274,12 @@ function createProviderRequestLogger(base: ProviderRequestLogBase): (event: {
   status?: number;
   result: string;
   retryAfterMs?: number;
+  success?: boolean;
 }) => void {
   return (event) => {
+    if (event.success && !base.logSuccess) {
+      return;
+    }
     void log.event({
       type: 'provider.request',
       method: base.method,

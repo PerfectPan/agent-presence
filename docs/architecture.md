@@ -363,7 +363,7 @@ This log is for watcher startup/runtime failures. It should stay credential-free
 
 ### Provider Request Log
 
-Provider request logging is structured and redacted. The intent is to debug slot sync behavior without leaking credentials or noisy hook payloads.
+Provider request logging is structured and redacted. The intent is to debug slot sync behavior without leaking credentials or noisy hook payloads. Successful login QR and login polling requests are intentionally not logged by default because login polls every few seconds; failures, rate limits, slot updates, and slot info reads are logged.
 
 Successful slot update event shape:
 

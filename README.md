@@ -254,7 +254,7 @@ Token and slot credentials are not written to git and are not embedded in the si
 
 ## Logs
 
-Hook failures and provider requests are written to:
+Hook failures and selected provider requests are written to:
 
 ```text
 ~/.agent-presence/agent-presence.log
@@ -266,7 +266,7 @@ Override the log path with:
 export AGENT_PRESENCE_LOG_FILE=/path/to/agent-presence.log
 ```
 
-Provider request logs are JSON lines with redacted fields:
+Provider request logs are JSON lines with redacted fields. Successful login QR and login polling requests are not logged by default; failures, rate limits, slot updates, and slot info reads are logged.
 
 ```json
 {

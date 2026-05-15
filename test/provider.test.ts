@@ -126,6 +126,24 @@ describe('l.garyyang request logging', () => {
     });
   });
 
+  it('does not log successful login polling by default', async () => {
+    const logPath = await useTempLogFile();
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ status: 'pending' }))));
+    const provider = new LGaryYangProvider('https://l.garyyang.work');
+
+    await expect(provider.getLoginStatus('cslot_test')).resolves.toEqual({ status: 'pending' });
+
+    await expect
+      .poll(async () => {
+        try {
+          return await readFile(logPath, 'utf8');
+        } catch {
+          return '';
+        }
+      })
+      .toBe('');
+  });
+
   async function useTempLogFile(): Promise<string> {
     tempDir = await mkdtemp(join(tmpdir(), 'agent-presence-provider-test-'));
     const logPath = join(tempDir, 'agent-presence.log');
