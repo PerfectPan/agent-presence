@@ -47,14 +47,14 @@ The interactive path can use prompts and rich output. The hook path must be fast
 `src/config.ts` owns the local home directory. By default it is:
 
 ```text
-~/.codex/agent-signature
+~/.agent-presence
 ```
 
 The home directory contains local state, config, and logs. It is intentionally outside the package install directory so `npx`, global installs, local checkouts, and future managed runtimes all share the same durable state.
 
 ```text
-~/.codex/agent-signature/
-  agent-presence.json      local JSON state
+~/.agent-presence/
+  state.json               local JSON state
   config.json              provider/render configuration
   agent-presence.log       hook and command diagnostics
   runtime/                 managed hook runtime, when setup materializes one
@@ -62,6 +62,8 @@ The home directory contains local state, config, and logs. It is intentionally o
 ```
 
 Credentials are not stored in this directory. They live in Keychain or environment variables.
+
+When setup finds a legacy `~/.codex/agent-signature` directory, it asks before copying known local files into `~/.agent-presence`. Existing destination files are never overwritten. The legacy `~/.codex/agent-signature/config.json` path is still read when the new config file does not exist, so a skipped migration does not break first-run setup. New writes and logs use `~/.agent-presence` unless `AGENT_PRESENCE_HOME`, `AGENT_SIGNATURE_HOME`, or file-specific environment variables override the paths.
 
 ### CLI
 
@@ -115,8 +117,8 @@ The target shape is:
 
 ```text
 npx @rivus/agent-presence@<version> setup
--> install or update a managed runtime under ~/.codex/agent-signature/runtime
--> write stable shims under ~/.codex/agent-signature/bin
+-> install or update a managed runtime under ~/.agent-presence/runtime
+-> write stable shims under ~/.agent-presence/bin
 -> install Codex / Claude Code / opencode hooks that call those shims by absolute path
 -> prompt the user to approve updated Codex hooks when Codex requires trust
 ```
@@ -124,7 +126,7 @@ npx @rivus/agent-presence@<version> setup
 The hook command should point to a stable file owned by Agent Presence, for example:
 
 ```text
-/Users/<user>/.codex/agent-signature/bin/agent-presence-hook --source codex --event SessionStart
+/Users/<user>/.agent-presence/bin/agent-presence-hook --source codex --event SessionStart
 ```
 
 It should not point to:
@@ -274,6 +276,7 @@ Idempotency is part of the installer contract, not a nice-to-have:
 | opencode plugin | Rewrite the managed plugin file from the current package; do not append duplicate plugin registrations. |
 | Power watcher | Replace the managed LaunchAgent plist and script, then reload the same label. |
 | Managed runtime | Install into a staging directory first, then atomically switch the active runtime or shim target. |
+| Legacy home migration | During interactive setup, ask before copying known files from `~/.codex/agent-signature` to `~/.agent-presence`; never overwrite existing destination files. |
 | State | Preserve local session state during setup; only `reset` or `uninstall --all` clears it. |
 | Credentials | Preserve credentials during normal setup and uninstall; only `uninstall --credentials` or `uninstall --all` removes them. |
 
@@ -336,7 +339,7 @@ Did the provider request happen, skip, rate-limit, or fail?
 `src/log.ts` writes a local append-only diagnostic log. The default path is:
 
 ```text
-~/.codex/agent-signature/agent-presence.log
+~/.agent-presence/agent-presence.log
 ```
 
 It can be overridden with:

@@ -1,4 +1,4 @@
-import { cancel, intro, isCancel, note, outro, spinner, text } from '@clack/prompts';
+import { cancel, confirm, intro, isCancel, note, outro, spinner, text } from '@clack/prompts';
 
 interface SpinnerLike {
   start(message?: string): void;
@@ -86,6 +86,18 @@ export function createSpinner(): SpinnerLike {
 
 export async function promptText(options: TextPromptOptions): Promise<string> {
   const value = await text(options);
+  if (isCancel(value)) {
+    cancel('cancelled');
+    throw new Error('operation cancelled');
+  }
+  return value;
+}
+
+export async function promptConfirm(message: string, initialValue = true): Promise<boolean> {
+  if (!isInteractiveTerminal()) {
+    return false;
+  }
+  const value = await confirm({ message, initialValue });
   if (isCancel(value)) {
     cancel('cancelled');
     throw new Error('operation cancelled');

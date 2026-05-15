@@ -1,5 +1,17 @@
 import { describe, expect, it, vi } from 'vitest';
-import { configSlotId, feishuSignatureConfig, providerBaseUrl, providerId, renderTemplates } from '../src/config.js';
+import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
+import {
+  configSlotId,
+  feishuSignatureConfig,
+  getConfigPath,
+  getHomeDir,
+  loadConfig,
+  providerBaseUrl,
+  providerId,
+  renderTemplates
+} from '../src/config.js';
 
 describe('renderTemplates', () => {
   it('omits unset template keys instead of overriding defaults with undefined', () => {
@@ -39,6 +51,35 @@ describe('agent-presence env aliases', () => {
     expect(configSlotId({})).toBe('slot_presence');
 
     vi.unstubAllEnvs();
+  });
+});
+
+describe('home directory', () => {
+  it('defaults durable files to ~/.agent-presence', () => {
+    vi.stubEnv('HOME', '/Users/example');
+    vi.stubEnv('AGENT_PRESENCE_HOME', '');
+    vi.stubEnv('AGENT_SIGNATURE_HOME', '');
+    vi.unstubAllEnvs();
+    vi.stubEnv('HOME', '/Users/example');
+
+    expect(getHomeDir()).toBe('/Users/example/.agent-presence');
+    expect(getConfigPath()).toBe('/Users/example/.agent-presence/config.json');
+
+    vi.unstubAllEnvs();
+  });
+
+  it('reads a legacy config when the new config does not exist', async () => {
+    const home = await mkdtemp(join(tmpdir(), 'agent-presence-config-test-'));
+    vi.stubEnv('HOME', home);
+    const legacyDir = join(home, '.codex', 'agent-signature');
+    await mkdir(legacyDir, { recursive: true });
+    await writeFile(join(legacyDir, 'config.json'), JSON.stringify({ slot_id: 'slot_legacy' }));
+
+    await expect(loadConfig()).resolves.toMatchObject({ slot_id: 'slot_legacy' });
+    expect(getConfigPath()).toBe(join(home, '.agent-presence', 'config.json'));
+
+    vi.unstubAllEnvs();
+    await rm(home, { recursive: true, force: true });
   });
 });
 

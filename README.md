@@ -69,6 +69,7 @@ npx --yes --registry=https://registry.npmjs.org @rivus/agent-presence@latest url
 
 `setup` installs local hooks and power watchers. It keeps credential material in Keychain and never embeds credentials in the Feishu signature URL.
 When setup is run from `npx`, installed hooks use the package's fixed published version instead of a floating `latest` or a global `agent-presence` binary.
+Local config, state, logs, and future managed runtimes live under `~/.agent-presence/`. If setup finds an older `~/.codex/agent-signature/` directory, it asks before copying known files into the new home.
 
 `login`, `setup`, and interactive `config` flows use Clack prompts. Hook, status, update, reset, and URL commands keep script-safe output.
 
@@ -203,6 +204,8 @@ Equivalent manual cleanup:
 security delete-generic-password -s 'agent-signature:l-garyyang' -a token 2>/dev/null || true
 security delete-generic-password -s 'agent-signature:l-garyyang' -a slotId 2>/dev/null || true
 security delete-generic-password -s 'agent-signature-slot-credential' -a "${USER:-agent-presence}" 2>/dev/null || true
+printf '{}\n' > ~/.agent-presence/config.json
+# Legacy config path, used by older installs:
 printf '{}\n' > ~/.codex/agent-signature/config.json
 ```
 
@@ -254,7 +257,7 @@ Token and slot credentials are not written to git and are not embedded in the si
 Hook failures and provider requests are written to:
 
 ```text
-~/.codex/agent-signature/agent-presence.log
+~/.agent-presence/agent-presence.log
 ```
 
 Override the log path with:

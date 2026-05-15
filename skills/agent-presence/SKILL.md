@@ -81,7 +81,7 @@ sleep/lid close/screen sleep/wake                    -> reset to 0
 3. Inspect local log:
 
    ```bash
-   tail -n 120 ~/.codex/agent-signature/agent-presence.log ~/.codex/agent-signature/agent-signature.log 2>/dev/null
+   tail -n 120 ~/.agent-presence/agent-presence.log ~/.agent-presence/agent-signature.log ~/.codex/agent-signature/agent-presence.log 2>/dev/null
    ```
 
 4. Verify hooks exist:
