@@ -29,6 +29,14 @@ interface ProviderRequestLogOptions {
   value?: string;
 }
 
+interface ProviderRequestLogBase {
+  method: string;
+  path: string;
+  startedAt: number;
+  slotId?: string;
+  value?: string;
+}
+
 export class LGaryYangProvider {
   constructor(
     private readonly baseUrl: string,
@@ -108,19 +116,18 @@ export class LGaryYangProvider {
     const url = new URL(path, this.baseUrl);
     const startedAt = Date.now();
     const method = init.method ?? 'GET';
+    const logRequest = createProviderRequestLogger({
+      method,
+      path: url.pathname,
+      startedAt,
+      ...logOptions
+    });
     let response: Response;
 
     try {
       response = await fetch(url, init);
     } catch (error) {
-      this.logRequest({
-        method,
-        path: url.pathname,
-        durationMs: Date.now() - startedAt,
-        result: 'network-error',
-        slotId: logOptions.slotId,
-        valueLength: valueLength(logOptions.value)
-      });
+      logRequest({ result: 'network-error' });
       throw error;
     }
 
@@ -129,83 +136,25 @@ export class LGaryYangProvider {
     try {
       json = text ? parseJson(text) : undefined;
     } catch (error) {
-      this.logRequest({
-        method,
-        path: url.pathname,
-        status: response.status,
-        durationMs: Date.now() - startedAt,
-        result: 'invalid-json',
-        slotId: logOptions.slotId,
-        valueLength: valueLength(logOptions.value)
-      });
+      logRequest({ status: response.status, result: 'invalid-json' });
       throw error;
     }
 
     if (response.status === 429) {
       const retryAfterMs = readRetryAfter(response.headers.get('retry-after'));
-      this.logRequest({
-        method,
-        path: url.pathname,
-        status: response.status,
-        durationMs: Date.now() - startedAt,
-        result: 'rate-limited',
-        retryAfterMs,
-        slotId: logOptions.slotId,
-        valueLength: valueLength(logOptions.value)
-      });
+      logRequest({ status: response.status, result: 'rate-limited', retryAfterMs });
       throw new SlotRateLimitError('slot provider returned 429', retryAfterMs);
     }
 
     if (!response.ok) {
-      this.logRequest({
-        method,
-        path: url.pathname,
-        status: response.status,
-        durationMs: Date.now() - startedAt,
-        result: 'failed',
-        slotId: logOptions.slotId,
-        valueLength: valueLength(logOptions.value)
-      });
+      logRequest({ status: response.status, result: 'failed' });
       const detail = isRecord(json) && typeof json.error === 'string' ? json.error : text;
       throw new Error(`l.garyyang provider request failed: ${response.status} ${detail}`);
     }
 
-    this.logRequest({
-      method,
-      path: url.pathname,
-      status: response.status,
-      durationMs: Date.now() - startedAt,
-      result: path === '/api/slot/update' ? 'updated' : 'ok',
-      slotId: logOptions.slotId,
-      valueLength: valueLength(logOptions.value)
-    });
+    logRequest({ status: response.status, result: path === '/api/slot/update' ? 'updated' : 'ok' });
 
     return json;
-  }
-
-  private logRequest(event: {
-    method: string;
-    path: string;
-    status?: number;
-    durationMs: number;
-    result: string;
-    retryAfterMs?: number;
-    slotId?: string;
-    valueLength?: number;
-  }): void {
-    void log.event({
-      type: 'provider.request',
-      method: event.method,
-      path: event.path,
-      status: event.status,
-      durationMs: event.durationMs,
-      slotId: redactSlotId(event.slotId),
-      valueLength: event.valueLength,
-      retryAfterMs: event.retryAfterMs,
-      result: event.result
-    }).catch(() => {
-      // Request logging is diagnostic only and must not affect provider behavior.
-    });
   }
 }
 
@@ -316,6 +265,28 @@ function readRetryAfter(value: string | null): number | undefined {
   }
   const seconds = Number.parseInt(value, 10);
   return Number.isFinite(seconds) ? seconds * 1000 : undefined;
+}
+
+function createProviderRequestLogger(base: ProviderRequestLogBase): (event: {
+  status?: number;
+  result: string;
+  retryAfterMs?: number;
+}) => void {
+  return (event) => {
+    void log.event({
+      type: 'provider.request',
+      method: base.method,
+      path: base.path,
+      status: event.status,
+      durationMs: Date.now() - base.startedAt,
+      slotId: redactSlotId(base.slotId),
+      valueLength: valueLength(base.value),
+      retryAfterMs: event.retryAfterMs,
+      result: event.result
+    }).catch(() => {
+      // Request logging is diagnostic only and must not affect provider behavior.
+    });
+  };
 }
 
 function valueLength(value: string | undefined): number | undefined {
