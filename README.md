@@ -35,9 +35,8 @@ For agent environments that launch hooks with a restricted `PATH`, install hooks
 npx --yes --registry=https://registry.npmjs.org @rivus/agent-presence@latest setup --provider feishu-signature --hook-command absolute
 ```
 
-For Codex, setup also asks the local Codex app-server for the newly installed hook hashes and marks
-only the managed `agent-presence` hooks as trusted in `~/.codex/config.toml`. Set
-`AGENT_PRESENCE_TRUST_CODEX_HOOKS=0` to skip that step and approve hooks manually in Codex settings.
+Codex may require you to approve updated hooks in Codex settings before they run. `setup` installs the
+hooks and prints a reminder, but does not modify Codex trust state directly.
 
 From a local checkout:
 

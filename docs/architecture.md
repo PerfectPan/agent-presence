@@ -118,7 +118,7 @@ npx @rivus/agent-presence@<version> setup
 -> install or update a managed runtime under ~/.codex/agent-signature/runtime
 -> write stable shims under ~/.codex/agent-signature/bin
 -> install Codex / Claude Code / opencode hooks that call those shims by absolute path
--> trust the installed Codex hook hashes
+-> prompt the user to approve updated Codex hooks when Codex requires trust
 ```
 
 The hook command should point to a stable file owned by Agent Presence, for example:
@@ -269,7 +269,7 @@ Idempotency is part of the installer contract, not a nice-to-have:
 | --- | --- |
 | Provider login | Reuse existing Keychain credential and configured slot unless login is explicitly run again. |
 | Config | Merge provider/render settings without deleting unrelated keys. |
-| Codex hooks | Remove prior managed Agent Presence hooks, add exactly one current managed group per event, then update trust hashes. |
+| Codex hooks | Remove prior managed Agent Presence hooks, add exactly one current managed group per event, then remind the user to approve changed hooks in Codex settings. |
 | Claude Code hooks | Remove prior managed Agent Presence hooks, add exactly one current managed group per event. |
 | opencode plugin | Rewrite the managed plugin file from the current package; do not append duplicate plugin registrations. |
 | Power watcher | Replace the managed LaunchAgent plist and script, then reload the same label. |
@@ -292,13 +292,12 @@ Codex Desktop stores a trust hash for each hook entry. Rewriting `~/.codex/hooks
 Setup should:
 
 1. Write the managed Codex hooks.
-2. Ask the local Codex app-server for `hooks/list`.
-3. Select only entries from the managed hooks file whose commands belong to Agent Presence.
-4. Write their `currentHash` into `~/.codex/config.toml`.
+2. Print a clear reminder that Codex may require approval before updated hooks run.
+3. Leave `~/.codex/config.toml` trust state untouched.
 
-The trust step must never trust unrelated user hooks.
+This keeps Agent Presence from silently changing Codex's trust database. The cost is one manual approval step when Codex marks hooks as new or modified.
 
-If the trust API is unavailable, setup should keep the hooks file valid and surface a clear installer warning. Codex itself must still receive pass-through `{}` output if a hook command is later invoked.
+If Codex later exposes an official trust API or CLI command, setup can call that supported interface for the managed Agent Presence hooks only. Until then, the CLI should prompt instead of editing TOML trust hashes directly.
 
 ### Uninstall
 
@@ -426,7 +425,7 @@ remote value is wrong but local is correct      -> provider sync path bug or del
 | Keychain is unavailable | Explicit environment variables can supply token and slot id. |
 | `npx` cache disappears after setup | Managed hooks keep working because they target the stable runtime or shim. |
 | Setup is interrupted halfway | The previous runtime/config remains usable; the next setup run can repair managed files. |
-| Codex hooks are present but not trusted | Setup recalculates and writes trust hashes for managed hooks only. |
+| Codex hooks are present but not trusted | Setup prints a reminder; approve the managed hooks in Codex settings. |
 
 ## Security Boundaries
 

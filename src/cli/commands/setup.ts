@@ -31,6 +31,10 @@ export async function setup(args: string[]): Promise<void> {
     for (const result of results) {
       showInfo(`setup installed: ${result.scriptName}`);
     }
+    showNote(
+      'Codex may require you to approve the updated Agent Presence hooks in Codex settings before they run.',
+      'Codex hook trust'
+    );
   }
 
   const credential = await readCredential(configSlotId(config));

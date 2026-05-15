@@ -7,7 +7,6 @@ import {
   isAgentSignatureCommand,
   withClaudeAgentSignatureHooks,
   withOpenCodeAgentSignaturePluginConfig,
-  withTrustedCodexHookHashes,
   withoutOpenCodeAgentSignaturePluginConfig
 } from '../src/installers.js';
 import type { HookSettings } from '../src/installers.js';
@@ -97,34 +96,6 @@ describe('Claude hook installer helpers', () => {
       expect(command).not.toContain('npx');
       expect(command).toContain('/usr/local/lib/node_modules/@rivus/agent-presence/dist/src/cli.js');
     });
-  });
-});
-
-describe('Codex hook trust helpers', () => {
-  it('updates existing trusted hashes and appends missing hook state entries', () => {
-    const next = withTrustedCodexHookHashes(
-      `[features]
-hooks = true
-
-[hooks.state."/Users/example/.codex/hooks.json:pre_tool_use:1:0"]
-trusted_hash = "sha256:old"
-`,
-      [
-        {
-          key: '/Users/example/.codex/hooks.json:pre_tool_use:1:0',
-          trustedHash: 'sha256:new-pre'
-        },
-        {
-          key: '/Users/example/.codex/hooks.json:session_start:2:0',
-          trustedHash: 'sha256:new-start'
-        }
-      ]
-    );
-
-    expect(next).toContain('trusted_hash = "sha256:new-pre"');
-    expect(next).not.toContain('trusted_hash = "sha256:old"');
-    expect(next).toContain('[hooks.state."/Users/example/.codex/hooks.json:session_start:2:0"]');
-    expect(next).toContain('trusted_hash = "sha256:new-start"');
   });
 });
 
