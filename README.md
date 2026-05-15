@@ -29,6 +29,15 @@ Without a global install:
 npx --yes --registry=https://registry.npmjs.org @rivus/agent-presence@latest setup --provider feishu-signature
 ```
 
+For agent environments that launch hooks with a restricted `PATH`, install hooks with absolute `node` and CLI paths:
+
+```bash
+npx --yes --registry=https://registry.npmjs.org @rivus/agent-presence@latest setup --provider feishu-signature --hook-command absolute
+```
+
+Codex may require you to approve updated hooks in Codex settings before they run. `setup` installs the
+hooks and prints a reminder, but does not modify Codex trust state directly.
+
 From a local checkout:
 
 ```bash
@@ -60,6 +69,7 @@ npx --yes --registry=https://registry.npmjs.org @rivus/agent-presence@latest url
 
 `setup` installs local hooks and power watchers. It keeps credential material in Keychain and never embeds credentials in the Feishu signature URL.
 When setup is run from `npx`, installed hooks use the package's fixed published version instead of a floating `latest` or a global `agent-presence` binary.
+Local config, state, logs, and future managed runtimes live under `~/.agent-presence/`. If setup finds an older `~/.codex/agent-signature/` directory, it asks before copying known files into the new home.
 
 `login`, `setup`, and interactive `config` flows use Clack prompts. Hook, status, update, reset, and URL commands keep script-safe output.
 
@@ -76,6 +86,7 @@ agent-presence login --provider feishu-signature
 agent-presence setup --provider feishu-signature
 agent-presence setup --provider feishu-signature --skip-login
 agent-presence setup --provider feishu-signature --no-hooks
+agent-presence setup --provider feishu-signature --hook-command absolute
 agent-presence uninstall
 agent-presence uninstall --credentials
 agent-presence uninstall --all
@@ -193,6 +204,8 @@ Equivalent manual cleanup:
 security delete-generic-password -s 'agent-signature:l-garyyang' -a token 2>/dev/null || true
 security delete-generic-password -s 'agent-signature:l-garyyang' -a slotId 2>/dev/null || true
 security delete-generic-password -s 'agent-signature-slot-credential' -a "${USER:-agent-presence}" 2>/dev/null || true
+printf '{}\n' > ~/.agent-presence/config.json
+# Legacy config path, used by older installs:
 printf '{}\n' > ~/.codex/agent-signature/config.json
 ```
 
@@ -238,6 +251,39 @@ export AGENT_PRESENCE_FEISHU_SIGNATURE_PREVIEW_TARGET_URL="https://example.com"
 ```
 
 Token and slot credentials are not written to git and are not embedded in the signature URL.
+
+## Logs
+
+Hook failures and selected provider requests are written to:
+
+```text
+~/.agent-presence/agent-presence.log
+```
+
+Override the log path with:
+
+```bash
+export AGENT_PRESENCE_LOG_FILE=/path/to/agent-presence.log
+```
+
+Provider request logs are JSON lines with redacted fields. Successful login QR and login polling requests are not logged by default; failures, rate limits, slot updates, and slot info reads are logged.
+
+```json
+{
+  "app": "agent-presence",
+  "type": "provider.request",
+  "provider": "feishu-signature",
+  "method": "POST",
+  "path": "/api/slot/update",
+  "status": 200,
+  "durationMs": 123,
+  "slotId": "slot_xxx...",
+  "valueLength": 31,
+  "result": "updated"
+}
+```
+
+The log never writes bearer tokens, full Authorization headers, QR code tickets, raw provider response bodies, or full slot values.
 
 ## Validation
 

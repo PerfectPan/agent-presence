@@ -1,5 +1,6 @@
 import { join } from 'node:path';
 import { homedir } from 'node:os';
+import { existsSync } from 'node:fs';
 import { readJsonFile, writeJsonAtomic } from './json-file.js';
 import type { RenderTemplates } from './render.js';
 
@@ -35,8 +36,16 @@ export interface AppConfig {
   render?: RenderTemplates;
 }
 
+export function getDefaultHomeDir(): string {
+  return join(homedir(), '.agent-presence');
+}
+
+export function getLegacyHomeDir(): string {
+  return join(homedir(), '.codex', 'agent-signature');
+}
+
 export function getHomeDir(): string {
-  return process.env.AGENT_PRESENCE_HOME ?? process.env.AGENT_SIGNATURE_HOME ?? join(homedir(), '.codex', 'agent-signature');
+  return process.env.AGENT_PRESENCE_HOME ?? process.env.AGENT_SIGNATURE_HOME ?? getDefaultHomeDir();
 }
 
 export function getConfigPath(): string {
@@ -52,6 +61,12 @@ export function getLogPath(): string {
 }
 
 export async function loadConfig(configPath = getConfigPath()): Promise<AppConfig> {
+  if (configPath === getConfigPath() && !hasExplicitConfigPath() && !existsSync(configPath)) {
+    const legacyConfigPath = join(getLegacyHomeDir(), 'config.json');
+    if (existsSync(legacyConfigPath)) {
+      return readJsonFile<AppConfig>(legacyConfigPath, {});
+    }
+  }
   return readJsonFile<AppConfig>(configPath, {});
 }
 
@@ -163,4 +178,8 @@ function setDefinedTemplate(templates: RenderTemplates, key: keyof RenderTemplat
   if (value !== undefined) {
     templates[key] = value;
   }
+}
+
+function hasExplicitConfigPath(): boolean {
+  return Boolean(process.env.AGENT_PRESENCE_CONFIG_FILE ?? process.env.AGENT_SIGNATURE_CONFIG_FILE);
 }

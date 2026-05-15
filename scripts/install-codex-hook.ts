@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-import { join } from 'node:path';
 import { homedir } from 'node:os';
+import { join } from 'node:path';
 import { buildAgentPresenceShellCommand, isAgentSignatureCommand } from '../src/installers.js';
 import { readJsonFile, writeJsonAtomic } from '../src/json-file.js';
 import { assertSupportedPlatform } from '../src/platform.js';

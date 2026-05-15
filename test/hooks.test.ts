@@ -24,6 +24,25 @@ describe('Codex hook context', () => {
       sessionId: 'payload-thread-1'
     });
   });
+
+  it('accepts Codex desktop conversationId payload ids', () => {
+    expect(
+      resolveCodexHookContext(
+        {
+          event: {
+            conversationId: '019e2ab2-b8d7-79d2-a78d-2b171b617a11',
+            cwd: '/repo'
+          }
+        },
+        {
+          PWD: '/env-repo'
+        }
+      )
+    ).toEqual({
+      project: '/repo',
+      sessionId: '019e2ab2-b8d7-79d2-a78d-2b171b617a11'
+    });
+  });
 });
 
 describe('Claude hook context', () => {

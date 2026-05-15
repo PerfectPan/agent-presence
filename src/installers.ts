@@ -1,4 +1,5 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 
 export interface HookCommand {
   type: 'command';
@@ -98,7 +99,8 @@ export function isAgentSignatureCommand(command: string): boolean {
     command.includes('agent-presence hook') ||
     command.includes('@rivus/agent-presence') ||
     command.includes(`${LEGACY_CLI_COMMAND} hook`) ||
-    command.includes(`${LEGACY_CLI_COMMAND}.mjs hook`)
+    command.includes(`${LEGACY_CLI_COMMAND}.mjs hook`) ||
+    command.includes('dist/src/cli.js hook')
   );
 }
 
@@ -382,7 +384,27 @@ export function buildAgentPresenceShellCommand(args: string[]): string {
 }
 
 function agentPresenceCommandParts(): string[] {
+  if (process.env.AGENT_PRESENCE_HOOK_COMMAND === 'absolute') {
+    return [process.execPath, resolveCliPath()];
+  }
   return ['npx', '--yes', '--registry=https://registry.npmjs.org', `@rivus/agent-presence@${packageVersion()}`];
+}
+
+function resolveCliPath(): string {
+  if (process.env.AGENT_PRESENCE_CLI_PATH) {
+    return process.env.AGENT_PRESENCE_CLI_PATH;
+  }
+  for (const url of [
+    new URL('./cli.js', import.meta.url),
+    new URL('../cli.js', import.meta.url),
+    new URL('../dist/src/cli.js', import.meta.url)
+  ]) {
+    const resolved = fileURLToPath(url);
+    if (existsSync(resolved)) {
+      return resolved;
+    }
+  }
+  throw new Error('unable to resolve @rivus/agent-presence CLI path');
 }
 
 function packageVersion(): string {
