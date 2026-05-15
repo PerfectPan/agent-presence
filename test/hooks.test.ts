@@ -86,6 +86,7 @@ describe('opencode hook context', () => {
     expect(mapOpenCodeEvent({ type: 'session.updated' })).toBe('Heartbeat');
     expect(mapOpenCodeEvent({ type: 'tool.execute.before' })).toBe('Heartbeat');
     expect(mapOpenCodeEvent({ type: 'session.idle' })).toBe('Stop');
+    expect(mapOpenCodeEvent({ type: 'session.status', properties: { status: { type: 'idle' } } })).toBe('Stop');
   });
 
   it('extracts session id from nested opencode event payloads', () => {
@@ -101,6 +102,57 @@ describe('opencode hook context', () => {
       event: 'SessionStart',
       project: '/repo',
       sessionId: 'opencode-session-1'
+    });
+  });
+
+  it('prefers opencode session info over event ids', () => {
+    expect(
+      resolveOpenCodeHookContext({
+        event: {
+          id: 'evt_fake',
+          type: 'session.created',
+          properties: {
+            info: {
+              id: 'ses_real',
+              directory: '/repo'
+            }
+          }
+        }
+      })
+    ).toEqual({
+      event: 'SessionStart',
+      project: '/repo',
+      sessionId: 'ses_real'
+    });
+  });
+
+  it('does not extract session ids from tool input event ids', () => {
+    expect(
+      resolveOpenCodeHookContext({
+        event: { id: 'evt_fake', type: 'tool.execute.before' },
+        input: { id: 'evt_input_fake' }
+      })
+    ).toEqual({
+      event: 'Heartbeat',
+      project: undefined,
+      sessionId: undefined
+    });
+  });
+
+  it('does not treat message info ids as session ids', () => {
+    expect(
+      resolveOpenCodeHookContext({
+        event: {
+          type: 'message.updated',
+          properties: {
+            info: { id: 'msg_fake' }
+          }
+        }
+      })
+    ).toEqual({
+      event: 'Heartbeat',
+      project: undefined,
+      sessionId: undefined
     });
   });
 });

@@ -89,6 +89,10 @@ describe('opencode plugin installer helpers', () => {
     expect(source).toContain('session.created');
     expect(source).toContain('session.idle');
     expect(source).toContain('--silent');
+    expect(source).toContain('props.info?.id');
+    expect(source).toContain('value.event ? pickSessionId(value.event) : undefined');
+    expect(source).toContain('spawnSync(CLI_COMMAND[0], args');
+    expect(source).toContain('export default AgentSignaturePlugin');
   });
 
   it('adds and removes the plugin from opencode config without losing existing plugins', () => {
