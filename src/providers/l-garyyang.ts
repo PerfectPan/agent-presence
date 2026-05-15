@@ -109,7 +109,7 @@ export class LGaryYangProvider {
     try {
       response = await fetch(url, init);
     } catch (error) {
-      await this.logRequest({
+      this.logRequest({
         method,
         path: url.pathname,
         durationMs: Date.now() - startedAt,
@@ -125,7 +125,7 @@ export class LGaryYangProvider {
     try {
       json = text ? parseJson(text) : undefined;
     } catch (error) {
-      await this.logRequest({
+      this.logRequest({
         method,
         path: url.pathname,
         status: response.status,
@@ -139,7 +139,7 @@ export class LGaryYangProvider {
 
     if (response.status === 429) {
       const retryAfterMs = readRetryAfter(response.headers.get('retry-after'));
-      await this.logRequest({
+      this.logRequest({
         method,
         path: url.pathname,
         status: response.status,
@@ -153,7 +153,7 @@ export class LGaryYangProvider {
     }
 
     if (!response.ok) {
-      await this.logRequest({
+      this.logRequest({
         method,
         path: url.pathname,
         status: response.status,
@@ -166,7 +166,7 @@ export class LGaryYangProvider {
       throw new Error(`l.garyyang provider request failed: ${response.status} ${detail}`);
     }
 
-    await this.logRequest({
+    this.logRequest({
       method,
       path: url.pathname,
       status: response.status,
@@ -179,7 +179,7 @@ export class LGaryYangProvider {
     return json;
   }
 
-  private async logRequest(event: {
+  private logRequest(event: {
     method: string;
     path: string;
     status?: number;
@@ -188,23 +188,21 @@ export class LGaryYangProvider {
     retryAfterMs?: number;
     slotId?: string;
     valueLength?: number;
-  }): Promise<void> {
-    try {
-      await writeLogEvent({
-        type: 'provider.request',
-        provider: 'feishu-signature',
-        method: event.method,
-        path: event.path,
-        status: event.status,
-        durationMs: event.durationMs,
-        slotId: redactSlotId(event.slotId),
-        valueLength: event.valueLength,
-        retryAfterMs: event.retryAfterMs,
-        result: event.result
-      });
-    } catch {
+  }): void {
+    void writeLogEvent({
+      type: 'provider.request',
+      provider: 'feishu-signature',
+      method: event.method,
+      path: event.path,
+      status: event.status,
+      durationMs: event.durationMs,
+      slotId: redactSlotId(event.slotId),
+      valueLength: event.valueLength,
+      retryAfterMs: event.retryAfterMs,
+      result: event.result
+    }).catch(() => {
       // Request logging is diagnostic only and must not affect provider behavior.
-    }
+    });
   }
 }
 

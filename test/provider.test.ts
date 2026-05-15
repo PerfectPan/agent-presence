@@ -81,7 +81,7 @@ describe('l.garyyang request logging', () => {
 
     await provider.updateSlot('sensitive rendered value');
 
-    const line = (await readFile(logPath, 'utf8')).trim();
+    const line = await waitForLogLine(logPath);
     const event = JSON.parse(line) as Record<string, unknown>;
     expect(event).toMatchObject({
       type: 'provider.request',
@@ -114,7 +114,7 @@ describe('l.garyyang request logging', () => {
 
     await expect(provider.updateSlot('value')).rejects.toThrow('slot provider returned 429');
 
-    const event = JSON.parse((await readFile(logPath, 'utf8')).trim()) as Record<string, unknown>;
+    const event = JSON.parse(await waitForLogLine(logPath)) as Record<string, unknown>;
     expect(event).toMatchObject({
       type: 'provider.request',
       path: '/api/slot/update',
@@ -129,5 +129,18 @@ describe('l.garyyang request logging', () => {
     const logPath = join(tempDir, 'agent-presence.log');
     process.env.AGENT_PRESENCE_LOG_FILE = logPath;
     return logPath;
+  }
+
+  async function waitForLogLine(path: string): Promise<string> {
+    await expect
+      .poll(async () => {
+        try {
+          return (await readFile(path, 'utf8')).trim();
+        } catch {
+          return '';
+        }
+      })
+      .not.toBe('');
+    return (await readFile(path, 'utf8')).trim();
   }
 });
