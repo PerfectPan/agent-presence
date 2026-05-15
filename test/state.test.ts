@@ -108,4 +108,33 @@ describe('agent state lifecycle', () => {
     expect(state.sessions['stop-only-id']).toBeUndefined();
     expect(getActiveSessions(state, 3_000, 180_000).map((session) => session.id)).toEqual(['stable-thread-1']);
   });
+
+  it('does not resurrect a finished session when an older async heartbeat lands late', () => {
+    const state = createEmptyState();
+
+    applyAgentEvent(state, {
+      source: 'opencode',
+      event: 'SessionStart',
+      sessionId: 'opencode-session-1',
+      now: 1_000
+    });
+    applyAgentEvent(state, {
+      source: 'opencode',
+      event: 'Stop',
+      sessionId: 'opencode-session-1',
+      now: 2_000
+    });
+    applyAgentEvent(state, {
+      source: 'opencode',
+      event: 'Heartbeat',
+      sessionId: 'opencode-session-1',
+      now: 3_000
+    });
+
+    expect(state.sessions['opencode-session-1']).toMatchObject({
+      status: 'finished',
+      finishedAt: 2_000,
+      lastHeartbeatAt: 2_000
+    });
+  });
 });

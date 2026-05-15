@@ -106,6 +106,13 @@ export function applyAgentEvent(state: PresenceState, input: AgentEventInput): P
     return state;
   }
 
+  if (event === 'heartbeat' && existing && existing.status !== 'running') {
+    if (input.project && !existing.project) {
+      existing.project = input.project;
+    }
+    return state;
+  }
+
   state.sessions[input.sessionId] = {
     id: input.sessionId,
     source: input.source,

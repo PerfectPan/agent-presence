@@ -103,7 +103,7 @@ export function isAgentSignatureCommand(command: string): boolean {
 }
 
 export function buildOpenCodePluginSource(commandParts = agentPresenceCommandParts()): string {
-  return `import { spawn } from "node:child_process"
+  return `import { spawn, spawnSync } from "node:child_process"
 
 const CLI_COMMAND = ${JSON.stringify(commandParts)}
 
@@ -124,23 +124,46 @@ const HEARTBEAT_EVENTS = new Set([
 
 const FINISH_EVENTS = new Set(["session.deleted", "session.error", "session.idle"])
 
-function mapEvent(type) {
+function mapEvent(event) {
+  const type = event?.type
+  const props = eventProperties(event)
   if (type === "session.created") return "SessionStart"
+  if (type === "session.status" && props.status?.type === "idle") return "Stop"
   if (FINISH_EVENTS.has(type)) return "Stop"
   if (HEARTBEAT_EVENTS.has(type)) return "Heartbeat"
   return undefined
 }
 
-function pickSessionId(value) {
-  if (!value || typeof value !== "object") return undefined
-  for (const key of ["session_id", "sessionId", "sessionID", "id"]) {
-    if (typeof value[key] === "string" && value[key]) return value[key]
-  }
-  for (const key of ["event", "session", "input", "context"]) {
-    const found = pickSessionId(value[key])
-    if (found) return found
+let lastSessionId
+
+function firstString(...values) {
+  for (const value of values) {
+    if (typeof value === "string" && value.length > 0) return value
   }
   return undefined
+}
+
+function eventProperties(value) {
+  return (value && typeof value === "object" && value.properties && typeof value.properties === "object") ? value.properties : {}
+}
+
+function pickSessionId(value) {
+  if (!value || typeof value !== "object") return undefined
+  const props = eventProperties(value)
+  const isSessionEvent = typeof value.type === "string" && value.type.startsWith("session.")
+  return firstString(
+    value.session_id,
+    value.sessionId,
+    value.sessionID,
+    value.session?.id,
+    isSessionEvent ? props.info?.id : undefined,
+    props.sessionID,
+    props.sessionId,
+    props.session_id,
+    props.session?.id,
+    value.event ? pickSessionId(value.event) : undefined,
+    value.session ? pickSessionId(value.session) : undefined
+  )
 }
 
 function pickProject(ctx, payload) {
@@ -155,14 +178,29 @@ function pickProject(ctx, payload) {
 }
 
 function runAgentPresence(eventName, payload, ctx) {
-  const sessionId = pickSessionId(payload)
+  const sessionId = pickSessionId(payload) || lastSessionId
   if (!sessionId) return
-  const child = spawn(CLI_COMMAND[0], [...CLI_COMMAND.slice(1), "hook", "--source", "opencode", "--event", eventName, "--silent"], {
-    env: {
-      ...process.env,
-      OPENCODE_SESSION_ID: sessionId,
-      OPENCODE_PROJECT: pickProject(ctx, payload),
-    },
+  lastSessionId = sessionId
+  const args = [...CLI_COMMAND.slice(1), "hook", "--source", "opencode", "--event", eventName, "--silent"]
+  const env = {
+    ...process.env,
+    OPENCODE_SESSION_ID: sessionId,
+    OPENCODE_PROJECT: pickProject(ctx, payload),
+  }
+  if (eventName === "Stop") {
+    try {
+      spawnSync(CLI_COMMAND[0], args, {
+        input: JSON.stringify(payload),
+        encoding: "utf8",
+        env,
+        stdio: ["pipe", "ignore", "ignore"],
+        timeout: 5000,
+      })
+    } catch (_) {}
+    return
+  }
+  const child = spawn(CLI_COMMAND[0], args, {
+    env,
     stdio: ["pipe", "ignore", "ignore"],
     detached: false,
   })
@@ -173,7 +211,7 @@ function runAgentPresence(eventName, payload, ctx) {
 export const AgentSignaturePlugin = async (ctx) => {
   return {
     event: async ({ event }) => {
-      const eventName = mapEvent(event?.type)
+      const eventName = mapEvent(event)
       if (eventName) runAgentPresence(eventName, { event }, ctx)
     },
     "tool.execute.before": async (input) => {
@@ -184,6 +222,8 @@ export const AgentSignaturePlugin = async (ctx) => {
     },
   }
 }
+
+export default AgentSignaturePlugin
 `;
 }
 
