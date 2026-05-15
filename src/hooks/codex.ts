@@ -10,7 +10,17 @@ export function resolveCodexHookContext(payload: unknown, env: StringEnv = proce
     sessionId: pickString(payload, {
       env,
       envKeys: ['CODEX_THREAD_ID', 'CODEX_SESSION_ID', 'CMUX_SURFACE_ID'],
-      payloadKeys: ['thread_id', 'threadId', 'session_id', 'sessionId', 'conversation_id'],
+      payloadKeys: [
+        'thread_id',
+        'threadId',
+        'threadID',
+        'session_id',
+        'sessionId',
+        'sessionID',
+        'conversation_id',
+        'conversationId',
+        'conversationID'
+      ],
       nestedPayloadKeys: ['event', 'session', 'input', 'context'],
       payloadFirst: true
     }),

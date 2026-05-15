@@ -12,6 +12,11 @@ export async function setup(args: string[]): Promise<void> {
   const activeProvider = providerId(config, optionValue(args, '--provider'));
   const skipLogin = hasFlag(args, '--skip-login') || hasFlag(args, '--hooks-only');
   const skipHooks = hasFlag(args, '--no-hooks');
+  const hookCommandMode = optionValue(args, '--hook-command');
+
+  if (hookCommandMode) {
+    process.env.AGENT_PRESENCE_HOOK_COMMAND = hookCommandMode;
+  }
 
   startIntro('Agent Presence setup');
   if (!skipLogin && !(await hasCredential())) {

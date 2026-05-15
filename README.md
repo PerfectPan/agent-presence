@@ -29,6 +29,16 @@ Without a global install:
 npx --yes --registry=https://registry.npmjs.org @rivus/agent-presence@latest setup --provider feishu-signature
 ```
 
+For agent environments that launch hooks with a restricted `PATH`, install hooks with absolute `node` and CLI paths:
+
+```bash
+npx --yes --registry=https://registry.npmjs.org @rivus/agent-presence@latest setup --provider feishu-signature --hook-command absolute
+```
+
+For Codex, setup also asks the local Codex app-server for the newly installed hook hashes and marks
+only the managed `agent-presence` hooks as trusted in `~/.codex/config.toml`. Set
+`AGENT_PRESENCE_TRUST_CODEX_HOOKS=0` to skip that step and approve hooks manually in Codex settings.
+
 From a local checkout:
 
 ```bash
@@ -76,6 +86,7 @@ agent-presence login --provider feishu-signature
 agent-presence setup --provider feishu-signature
 agent-presence setup --provider feishu-signature --skip-login
 agent-presence setup --provider feishu-signature --no-hooks
+agent-presence setup --provider feishu-signature --hook-command absolute
 agent-presence uninstall
 agent-presence uninstall --credentials
 agent-presence uninstall --all

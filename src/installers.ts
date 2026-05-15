@@ -1,4 +1,5 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 
 export interface HookCommand {
   type: 'command';
@@ -13,6 +14,11 @@ export interface HookGroup {
 
 export interface HookSettings {
   hooks: Record<string, HookGroup[]>;
+}
+
+export interface CodexHookTrustEntry {
+  key: string;
+  trustedHash: string;
 }
 
 const CLAUDE_EVENTS = [
@@ -98,8 +104,79 @@ export function isAgentSignatureCommand(command: string): boolean {
     command.includes('agent-presence hook') ||
     command.includes('@rivus/agent-presence') ||
     command.includes(`${LEGACY_CLI_COMMAND} hook`) ||
-    command.includes(`${LEGACY_CLI_COMMAND}.mjs hook`)
+    command.includes(`${LEGACY_CLI_COMMAND}.mjs hook`) ||
+    command.includes('dist/src/cli.js hook')
   );
+}
+
+export function withTrustedCodexHookHashes(configText: string, entries: CodexHookTrustEntry[]): string {
+  if (entries.length === 0) {
+    return configText;
+  }
+
+  const entryByKey = new Map(entries.map((entry) => [entry.key, entry.trustedHash]));
+  const seen = new Set<string>();
+  const lines = configText.split(/\r?\n/);
+  const output: string[] = [];
+  let currentKey: string | undefined;
+
+  for (const line of lines) {
+    const sectionKey = parseCodexHookStateSection(line);
+    if (sectionKey !== undefined) {
+      const hash = entryByKey.get(sectionKey);
+      if (currentKey !== undefined && entryByKey.has(currentKey) && !seen.has(currentKey)) {
+        output.push(`trusted_hash = "${entryByKey.get(currentKey)}"`);
+        seen.add(currentKey);
+      }
+      currentKey = hash === undefined ? undefined : sectionKey;
+      output.push(line);
+      continue;
+    }
+
+    if (currentKey !== undefined && line.startsWith('trusted_hash = ')) {
+      output.push(`trusted_hash = "${entryByKey.get(currentKey)}"`);
+      seen.add(currentKey);
+      continue;
+    }
+
+    output.push(line);
+  }
+
+  if (currentKey !== undefined && entryByKey.has(currentKey) && !seen.has(currentKey)) {
+    output.push(`trusted_hash = "${entryByKey.get(currentKey)}"`);
+    seen.add(currentKey);
+  }
+
+  const missing = entries.filter((entry) => !seen.has(entry.key));
+  if (missing.length > 0) {
+    while (output.length > 0 && output.at(-1) === '') {
+      output.pop();
+    }
+    output.push('');
+    for (const entry of missing) {
+      output.push(`[hooks.state."${escapeTomlString(entry.key)}"]`);
+      output.push(`trusted_hash = "${entry.trustedHash}"`);
+      output.push('');
+    }
+  }
+
+  return `${output.join('\n').replace(/\n+$/, '')}\n`;
+}
+
+function parseCodexHookStateSection(line: string): string | undefined {
+  const match = line.match(/^\[hooks\.state\."((?:\\.|[^"\\])+)"\]$/);
+  if (!match) {
+    return undefined;
+  }
+  return unescapeTomlString(match[1] ?? '');
+}
+
+function escapeTomlString(value: string): string {
+  return value.replaceAll('\\', '\\\\').replaceAll('"', '\\"');
+}
+
+function unescapeTomlString(value: string): string {
+  return value.replace(/\\(["\\])/g, '$1');
 }
 
 export function buildOpenCodePluginSource(commandParts = agentPresenceCommandParts()): string {
@@ -382,7 +459,27 @@ export function buildAgentPresenceShellCommand(args: string[]): string {
 }
 
 function agentPresenceCommandParts(): string[] {
+  if (process.env.AGENT_PRESENCE_HOOK_COMMAND === 'absolute') {
+    return [process.execPath, resolveCliPath()];
+  }
   return ['npx', '--yes', '--registry=https://registry.npmjs.org', `@rivus/agent-presence@${packageVersion()}`];
+}
+
+function resolveCliPath(): string {
+  if (process.env.AGENT_PRESENCE_CLI_PATH) {
+    return process.env.AGENT_PRESENCE_CLI_PATH;
+  }
+  for (const url of [
+    new URL('./cli.js', import.meta.url),
+    new URL('../cli.js', import.meta.url),
+    new URL('../dist/src/cli.js', import.meta.url)
+  ]) {
+    const resolved = fileURLToPath(url);
+    if (existsSync(resolved)) {
+      return resolved;
+    }
+  }
+  throw new Error('unable to resolve @rivus/agent-presence CLI path');
 }
 
 function packageVersion(): string {
