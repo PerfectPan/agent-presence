@@ -12,6 +12,15 @@ Codex / Claude Code / opencode lifecycle hooks
 -> Feishu signature link preview
 ```
 
+Two paths share this pipeline:
+
+```text
+interactive path: login / setup / config / status / url / update / reset
+hook path:        agent lifecycle event -> silent CLI -> local state -> optional slot sync
+```
+
+The interactive path can use prompts and rich output. The hook path must be fast, bounded, non-interactive, and safe to call from another agent runtime.
+
 ## Goals
 
 - Count agents that are actively working.
@@ -20,6 +29,8 @@ Codex / Claude Code / opencode lifecycle hooks
 - Make hooks safe to run inside coding-agent lifecycles.
 - Recover from abnormal exits with TTL and power-event reset hooks.
 - Support the macOS local-agent environment first.
+- Let `npx @rivus/agent-presence setup` be the easy install entrypoint without making installed hooks depend on an ephemeral `npx` cache.
+- Make setup and uninstall repeatable: rerunning either command should not duplicate hooks, lose user configuration, or leave half-written managed files.
 
 ## Non-Goals
 
@@ -30,6 +41,27 @@ Codex / Claude Code / opencode lifecycle hooks
 - Full provider abstraction beyond the first Feishu signature slot provider.
 
 ## Runtime Components
+
+### Local Directories
+
+`src/config.ts` owns the local home directory. By default it is:
+
+```text
+~/.codex/agent-signature
+```
+
+The home directory contains local state, config, and logs. It is intentionally outside the package install directory so `npx`, global installs, local checkouts, and future managed runtimes all share the same durable state.
+
+```text
+~/.codex/agent-signature/
+  agent-presence.json      local JSON state
+  config.json              provider/render configuration
+  agent-presence.log       hook and command diagnostics
+  runtime/                 managed hook runtime, when setup materializes one
+  bin/                     stable hook shims, when setup materializes them
+```
+
+Credentials are not stored in this directory. They live in Keychain or environment variables.
 
 ### CLI
 
@@ -74,6 +106,35 @@ The package exposes both binaries:
 agent-presence   primary CLI
 agent-signature  compatibility alias for older hooks
 ```
+
+### Managed Hook Runtime
+
+`npx` is a convenient installer but a poor hook target. Some agent runtimes launch hooks with a minimal `PATH`, and `npx` may resolve through a temporary cache that can move or be pruned. The setup architecture therefore treats `npx` as a bootstrapper, not as the durable runtime.
+
+The target shape is:
+
+```text
+npx @rivus/agent-presence@<version> setup
+-> install or update a managed runtime under ~/.codex/agent-signature/runtime
+-> write stable shims under ~/.codex/agent-signature/bin
+-> install Codex / Claude Code / opencode hooks that call those shims by absolute path
+-> trust the installed Codex hook hashes
+```
+
+The hook command should point to a stable file owned by Agent Presence, for example:
+
+```text
+/Users/<user>/.codex/agent-signature/bin/agent-presence-hook --source codex --event SessionStart
+```
+
+It should not point to:
+
+```text
+npx @rivus/agent-presence@latest ...
+<npm-cache>/_npx/.../node_modules/@rivus/agent-presence/...
+```
+
+Versioned setup can still preserve reproducibility by materializing the exact package version that invoked setup. Future setup runs replace the managed runtime atomically and then rewrite hooks to the new stable shim.
 
 ### Configuration
 
@@ -133,6 +194,8 @@ opencode    session.created, command.executed, file.edited, message.*, permissio
 
 Codex hooks always print `{}` so they remain valid pass-through hooks. Claude Code and opencode hooks run with `--silent`.
 
+Hook commands are managed entries. Installers identify them by the `agent-presence hook` or legacy `agent-signature hook` command shape, remove the old managed entries, and then add the current managed entry. This keeps reruns from accumulating duplicate hooks.
+
 ### Active Semantics
 
 Active means "currently doing agent work", not "the terminal is open".
@@ -186,7 +249,7 @@ https://l.garyyang.work/?t2=<base62({{slot id="slot_xxx"}})>
 
 The URL references the slot helper only. It must not contain tokens, local state, or machine-specific paths.
 
-### Setup
+### Setup And Idempotency
 
 `src/setup.ts` and `src/installers.ts` coordinate first-run setup:
 
@@ -200,6 +263,157 @@ The URL references the slot helper only. It must not contain tokens, local state
 
 Each installer is idempotent. Existing unrelated user configuration is preserved.
 
+Idempotency is part of the installer contract, not a nice-to-have:
+
+| Area | Idempotency rule |
+| --- | --- |
+| Provider login | Reuse existing Keychain credential and configured slot unless login is explicitly run again. |
+| Config | Merge provider/render settings without deleting unrelated keys. |
+| Codex hooks | Remove prior managed Agent Presence hooks, add exactly one current managed group per event, then update trust hashes. |
+| Claude Code hooks | Remove prior managed Agent Presence hooks, add exactly one current managed group per event. |
+| opencode plugin | Rewrite the managed plugin file from the current package; do not append duplicate plugin registrations. |
+| Power watcher | Replace the managed LaunchAgent plist and script, then reload the same label. |
+| Managed runtime | Install into a staging directory first, then atomically switch the active runtime or shim target. |
+| State | Preserve local session state during setup; only `reset` or `uninstall --all` clears it. |
+| Credentials | Preserve credentials during normal setup and uninstall; only `uninstall --credentials` or `uninstall --all` removes them. |
+
+This makes the supported repair command simple:
+
+```bash
+npx --yes --registry=https://registry.npmjs.org @rivus/agent-presence@<version> setup --provider feishu-signature
+```
+
+Users should be able to run that command repeatedly after package upgrades, hook corruption, path changes, or partial installs.
+
+### Codex Hook Trust
+
+Codex Desktop stores a trust hash for each hook entry. Rewriting `~/.codex/hooks.json` changes those hashes, so a hook can be present but not executed until the trust state is updated.
+
+Setup should:
+
+1. Write the managed Codex hooks.
+2. Ask the local Codex app-server for `hooks/list`.
+3. Select only entries from the managed hooks file whose commands belong to Agent Presence.
+4. Write their `currentHash` into `~/.codex/config.toml`.
+
+The trust step must never trust unrelated user hooks.
+
+If the trust API is unavailable, setup should keep the hooks file valid and surface a clear installer warning. Codex itself must still receive pass-through `{}` output if a hook command is later invoked.
+
+### Uninstall
+
+`uninstall` removes managed integration points while preserving user-owned data by default:
+
+```text
+agent-presence uninstall
+-> remove managed Codex hooks
+-> remove managed Claude Code hooks
+-> remove managed opencode plugin
+-> unload and remove managed power watcher
+-> keep Keychain credentials, provider config, and state
+```
+
+Credential and data removal are explicit:
+
+```text
+agent-presence uninstall --credentials  removes credentials and slot config
+agent-presence uninstall --all          removes hooks, credentials, config, state, and managed runtime
+```
+
+Uninstall is also idempotent. Running it on a machine with no installed hooks should be a clean success.
+
+## Observability
+
+The project needs enough local observability to answer three questions quickly:
+
+```text
+Did the agent hook run?
+Did local state change?
+Did the provider request happen, skip, rate-limit, or fail?
+```
+
+### Local Command Log
+
+`src/cli/io.ts` writes a local append-only diagnostic log. The default path is:
+
+```text
+~/.codex/agent-signature/agent-presence.log
+```
+
+It can be overridden with:
+
+```text
+AGENT_PRESENCE_LOG_FILE
+AGENT_SIGNATURE_LOG_FILE
+```
+
+Current hook commands log notable failures such as missing session ids or hook exceptions. The log must not contain provider tokens, full Authorization headers, QR code tickets, or local prompt payloads.
+
+### Power Watcher Log
+
+The LaunchAgent redirects stdout and stderr to:
+
+```text
+/tmp/agent-presence-power-watch.log
+```
+
+This log is for watcher startup/runtime failures. It should stay credential-free because the watcher only invokes `agent-presence reset --force --silent`.
+
+### Provider Request Log
+
+Provider request logging should be structured and redacted. The intent is to debug slot sync behavior without leaking credentials or noisy hook payloads.
+
+Recommended event shape:
+
+```json
+{
+  "time": "2026-05-15T10:00:00.000Z",
+  "type": "provider.request",
+  "provider": "feishu-signature",
+  "method": "POST",
+  "path": "/api/slot/update",
+  "status": 200,
+  "durationMs": 123,
+  "slotId": "slot_xxx...",
+  "valueLength": 31,
+  "result": "updated"
+}
+```
+
+For failures:
+
+```json
+{
+  "time": "2026-05-15T10:00:00.000Z",
+  "type": "provider.request",
+  "provider": "feishu-signature",
+  "method": "POST",
+  "path": "/api/slot/update",
+  "status": 429,
+  "durationMs": 80,
+  "slotId": "slot_xxx...",
+  "retryAfterMs": 60000,
+  "result": "rate-limited"
+}
+```
+
+Logging rules:
+
+- Log request method, normalized path, status, duration, result, retry-after, slot id prefix, and value length.
+- Do not log bearer tokens, raw Authorization headers, QR code tickets, full login URLs, raw provider response bodies, or full slot values by default.
+- Treat 429 as a successful local outcome with `result: "rate-limited"` because local state remains correct and the next eligible sync can recover.
+- Keep provider network I/O outside the state lock; logging must not extend lock hold time.
+
+### Status Readback
+
+`status --provider feishu-signature` reads local state and rendered value. `status --provider feishu-signature --remote` additionally reads the remote slot. Together they are the primary readback tools for debugging mismatches:
+
+```text
+local activeCount/value differs from remote value -> debounce, 429, network, or provider write failure
+local value is wrong                            -> hook/session/state normalization bug
+remote value is wrong but local is correct      -> provider sync path bug or delayed write
+```
+
 ## Failure Model
 
 | Failure | Expected behavior |
@@ -210,6 +424,9 @@ Each installer is idempotent. Existing unrelated user configuration is preserved
 | Laptop sleeps or lid closes | Power watcher resets local and remote state to 0 when possible. |
 | Sudden power loss | Wake reset and TTL clear stale sessions. |
 | Keychain is unavailable | Explicit environment variables can supply token and slot id. |
+| `npx` cache disappears after setup | Managed hooks keep working because they target the stable runtime or shim. |
+| Setup is interrupted halfway | The previous runtime/config remains usable; the next setup run can repair managed files. |
+| Codex hooks are present but not trusted | Setup recalculates and writes trust hashes for managed hooks only. |
 
 ## Security Boundaries
 
@@ -219,6 +436,7 @@ Each installer is idempotent. Existing unrelated user configuration is preserved
 - The provider writes only slot value changes, not Feishu profile fields.
 - Codex hooks are pass-through and bounded by agent hook timeouts.
 - Setup modifies only known hook/plugin/watcher locations and preserves unrelated user entries.
+- Logs are local diagnostics. They must be redacted by construction and should remain useful even when shared in a bug report.
 
 ## Package And Release Safety
 
