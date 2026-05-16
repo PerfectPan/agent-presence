@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.1
+
+### Patch Changes
+
+- 5d90ef5: Reopen a finished agent session when a new user prompt arrives with the same session id, while still ignoring late async heartbeats after stop events.
+- 8adc558: Avoid repeated QR login during setup by reusing existing credentials. Setup still starts login when credentials are missing, `--skip-login` keeps hook repair login-free, and `--login` forces fresh authentication.
+
 ## 0.3.0
 
 ### Minor Changes
