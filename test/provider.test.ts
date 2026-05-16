@@ -82,19 +82,18 @@ describe('l.garyyang request logging', () => {
     await provider.updateSlot('sensitive rendered value');
 
     const line = await waitForLogLine(logPath);
-    const event = JSON.parse(line) as Record<string, unknown>;
-    expect(event).toMatchObject({
-      app: 'agent-presence',
-      type: 'provider.request',
-      provider: 'feishu-signature',
-      method: 'POST',
-      path: '/api/slot/update',
-      status: 200,
-      slotId: 'slot_1234567...',
-      valueLength: 24,
-      result: 'updated'
-    });
-    expect(typeof event.pid).toBe('number');
+    expect(line).toMatch(/^time=\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}\+08:00 /);
+    expect(line).toContain('level=info');
+    expect(line).toContain('app=agent-presence');
+    expect(line).toContain('pid=');
+    expect(line).toContain('type=provider.request');
+    expect(line).toContain('provider=feishu-signature');
+    expect(line).toContain('method=POST');
+    expect(line).toContain('path=/api/slot/update');
+    expect(line).toContain('status=200');
+    expect(line).toContain('slotId=slot_1234567...');
+    expect(line).toContain('valueLength=24');
+    expect(line).toContain('result=updated');
     expect(line).not.toContain('secret_token');
     expect(line).not.toContain('sensitive rendered value');
     expect(line).not.toContain('slot_123456789abcdef');
@@ -116,14 +115,12 @@ describe('l.garyyang request logging', () => {
 
     await expect(provider.updateSlot('value')).rejects.toThrow('slot provider returned 429');
 
-    const event = JSON.parse(await waitForLogLine(logPath)) as Record<string, unknown>;
-    expect(event).toMatchObject({
-      type: 'provider.request',
-      path: '/api/slot/update',
-      status: 429,
-      retryAfterMs: 60000,
-      result: 'rate-limited'
-    });
+    const line = await waitForLogLine(logPath);
+    expect(line).toContain('type=provider.request');
+    expect(line).toContain('path=/api/slot/update');
+    expect(line).toContain('status=429');
+    expect(line).toContain('retryAfterMs=60000');
+    expect(line).toContain('result=rate-limited');
   });
 
   it('does not log successful login polling by default', async () => {

@@ -374,7 +374,7 @@ AGENT_PRESENCE_LOG_FILE
 AGENT_SIGNATURE_LOG_FILE
 ```
 
-Current hook commands log notable failures such as missing session ids or hook exceptions. The log must not contain provider tokens, full Authorization headers, QR code tickets, or local prompt payloads.
+Current hook commands log notable failures such as missing session ids or hook exceptions. Timestamps are formatted in China time with an explicit `+08:00` offset so local traces are readable without mental UTC conversion. The log must not contain provider tokens, full Authorization headers, QR code tickets, or local prompt payloads.
 
 ### Power Watcher Log
 
@@ -388,44 +388,18 @@ This log is for watcher startup/runtime failures. It should stay credential-free
 
 ### Provider Request Log
 
-Provider request logging is structured and redacted. The intent is to debug slot sync behavior without leaking credentials or noisy hook payloads. Successful login QR and login polling requests are intentionally not logged by default because login polls every few seconds; failures, rate limits, slot updates, and slot info reads are logged.
+Provider request logging is structured, single-line, and redacted. The intent is to debug slot sync behavior without leaking credentials or noisy hook payloads. Successful login QR and login polling requests are intentionally not logged by default because login polls every few seconds; failures, rate limits, slot updates, and slot info reads are logged.
 
 Successful slot update event shape:
 
-```json
-{
-  "time": "2026-05-15T10:00:00.000Z",
-  "app": "agent-presence",
-  "pid": 12345,
-  "type": "provider.request",
-  "provider": "feishu-signature",
-  "method": "POST",
-  "path": "/api/slot/update",
-  "status": 200,
-  "durationMs": 123,
-  "slotId": "slot_xxx...",
-  "valueLength": 31,
-  "result": "updated"
-}
+```text
+time=2026-05-15T18:00:00.000+08:00 level=info app=agent-presence pid=12345 type=provider.request provider=feishu-signature method=POST path=/api/slot/update status=200 durationMs=123 slotId=slot_xxx... valueLength=31 result=updated
 ```
 
 For failures:
 
-```json
-{
-  "time": "2026-05-15T10:00:00.000Z",
-  "app": "agent-presence",
-  "pid": 12345,
-  "type": "provider.request",
-  "provider": "feishu-signature",
-  "method": "POST",
-  "path": "/api/slot/update",
-  "status": 429,
-  "durationMs": 80,
-  "slotId": "slot_xxx...",
-  "retryAfterMs": 60000,
-  "result": "rate-limited"
-}
+```text
+time=2026-05-15T18:00:00.000+08:00 level=info app=agent-presence pid=12345 type=provider.request provider=feishu-signature method=POST path=/api/slot/update status=429 durationMs=80 slotId=slot_xxx... retryAfterMs=60000 result=rate-limited
 ```
 
 Logging rules:

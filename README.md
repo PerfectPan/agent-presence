@@ -268,21 +268,11 @@ Override the log path with:
 export AGENT_PRESENCE_LOG_FILE=/path/to/agent-presence.log
 ```
 
-Provider request logs are JSON lines with redacted fields. Successful login QR and login polling requests are not logged by default; failures, rate limits, slot updates, and slot info reads are logged.
+Provider request logs are single-line key/value records with redacted fields. Successful login QR and login polling requests are not logged by default; failures, rate limits, slot updates, and slot info reads are logged.
+Timestamps are written as China time with an explicit `+08:00` offset for easier local trace reading.
 
-```json
-{
-  "app": "agent-presence",
-  "type": "provider.request",
-  "provider": "feishu-signature",
-  "method": "POST",
-  "path": "/api/slot/update",
-  "status": 200,
-  "durationMs": 123,
-  "slotId": "slot_xxx...",
-  "valueLength": 31,
-  "result": "updated"
-}
+```text
+time=2026-05-16T21:59:49.227+08:00 level=info app=agent-presence pid=12345 type=provider.request provider=feishu-signature method=POST path=/api/slot/update status=200 durationMs=123 slotId=slot_xxx... valueLength=31 result=updated
 ```
 
 The log never writes bearer tokens, full Authorization headers, QR code tickets, raw provider response bodies, or full slot values.
