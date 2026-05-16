@@ -7,7 +7,8 @@ describe('runSetupScripts', () => {
 
     const results = await runSetupScripts({
       runner,
-      resolveScriptPath: (scriptName) => `/dist/scripts/${scriptName}`
+      resolveScriptPath: (scriptName) => `/dist/scripts/${scriptName}`,
+      scriptNames: DEFAULT_SETUP_SCRIPT_NAMES
     });
 
     expect(DEFAULT_SETUP_SCRIPT_NAMES).toEqual([
@@ -34,7 +35,8 @@ describe('runSetupScripts', () => {
 
     const results = await runUninstallScripts({
       runner,
-      resolveScriptPath: (scriptName) => `/dist/scripts/${scriptName}`
+      resolveScriptPath: (scriptName) => `/dist/scripts/${scriptName}`,
+      scriptNames: DEFAULT_UNINSTALL_SCRIPT_NAMES
     });
 
     expect(DEFAULT_UNINSTALL_SCRIPT_NAMES).toEqual([
