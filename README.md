@@ -2,8 +2,10 @@
 
 Sync local coding-agent presence to Feishu signature link previews.
 
+[简体中文](README.zh-CN.md)
+
 ```text
-Codex / Claude Code / opencode hooks
+Codex / Claude Code / Gemini CLI / opencode hooks
 -> local presence state
 -> debounced renderer
 -> l.garyyang slot provider
@@ -56,7 +58,7 @@ For the implementation shape and trust boundaries, see [docs/architecture.md](do
 
 1. Run `agent-presence setup --provider feishu-signature`.
 2. Scan the QR code if login is needed.
-3. Let setup install Codex, Claude Code, opencode, and macOS power watchers.
+3. Let setup install Codex, Claude Code, Gemini CLI, opencode, and macOS power watchers.
 4. Run `agent-presence url --provider feishu-signature`.
 5. Paste that URL into Feishu profile signature as a custom link preview.
 
@@ -107,11 +109,12 @@ Hook commands are installed automatically by `setup`, but can be called directly
 ```bash
 agent-presence hook --source codex --event SessionStart
 agent-presence hook --source claude --event SessionStart --silent
+agent-presence hook --source gemini --event SessionStart --silent
 agent-presence hook --source opencode --event SessionStart --silent
 agent-presence hook --source codex --event Stop
 ```
 
-Hook commands never block the coding agent. Codex hooks print `{}`; Claude and opencode hooks run silent.
+Hook commands never block the coding agent. Codex hooks print `{}`; Claude, Gemini, and opencode hooks run silent.
 
 ## Presence Semantics
 
@@ -130,7 +133,7 @@ Default render output:
 ```text
 0 -> AI 牛马暂未开工
 1 -> 1 个 AI 牛马正在搬砖 | codex 1
-N -> N 个 AI 牛马正在搬砖 | codex X · claude Y · opencode Z
+N -> N 个 AI 牛马正在搬砖 | codex W · claude X · gemini Y · opencode Z
 ```
 
 The value is capped at 200 characters.
@@ -169,6 +172,7 @@ Legacy `AGENT_SIGNATURE_*` environment names are still accepted.
 
 - Codex hooks in `~/.codex/hooks.json`
 - Claude Code hooks in `~/.claude/settings.json`
+- Gemini CLI hooks in `~/.gemini/settings.json`
 - opencode plugin in `~/.config/opencode/plugins/agent-presence.js`
 - macOS LaunchAgent power watcher
 
@@ -309,7 +313,20 @@ pnpm run changeset
 
 Package management is pinned to pnpm through `packageManager`. CI and release use the checked-in `pnpm-lock.yaml`, frozen installs, dependency script blocking, and the workspace supply-chain settings in `pnpm-workspace.yaml`.
 
-Publishing uses npm Trusted Publishing / OIDC. Configure the package on npm with:
+Publishing uses npm Trusted Publishing / OIDC. There are two settings surfaces to keep in sync:
+
+1. GitHub repository settings for the release PR workflow.
+2. npm package settings for the trusted package publisher.
+
+In GitHub, open `PerfectPan/agent-presence` -> Settings -> Actions -> General. Under Workflow permissions, allow read and write permissions and enable GitHub Actions to create and approve pull requests. The workflow file still declares its own narrower permissions, but the repository setting must allow the Changesets action to open or update the release PR.
+
+In npm, configure Trusted Publishing from the existing package page:
+
+```text
+npmjs.com -> Packages -> @rivus/agent-presence -> Settings -> Trusted publishing
+```
+
+Use these GitHub Actions publisher fields:
 
 ```text
 GitHub owner: PerfectPan
@@ -319,15 +336,16 @@ Workflow filename: publish.yml
 
 The release workflow grants `id-token: write`, uses Node 24, and publishes without a long-lived npm write token. npm automatically generates provenance for public packages published through trusted publishing from public GitHub repositories.
 
-If `@rivus/agent-presence` does not exist on npm yet, do one bootstrap publish with a temporary granular npm token:
+If a package does not exist on npm yet, Trusted Publishing cannot be configured from its package page. Bootstrap that package once with a temporary granular npm token:
 
 1. Create a short-lived npm granular access token with publish access to `@rivus/agent-presence` or the `@rivus` scope.
 2. Add it to this GitHub repository as `NPM_TOKEN`.
 3. Merge the release PR created by Changesets.
 4. Confirm `@rivus/agent-presence` exists on npm.
-5. Configure npm Trusted Publishing for:
+5. Configure npm Trusted Publishing from the package page:
 
 ```text
+npmjs.com -> Packages -> @rivus/agent-presence -> Settings -> Trusted publishing
 GitHub owner: PerfectPan
 Repository: agent-presence
 Workflow filename: publish.yml
@@ -341,8 +359,6 @@ Release flow:
 2. `.github/workflows/publish.yml` opens or updates a `chore: release package` PR.
 3. Review and merge that release PR.
 4. The same workflow publishes to npm through Changesets and npm Trusted Publishing.
-
-The package starts at `0.0.0`; the initial changeset bumps it to `0.1.0` in the generated release PR.
 
 ## Agent Skill
 

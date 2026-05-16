@@ -44,7 +44,8 @@
     "dist",
     "docs",
     "skills",
-    "README.md"
+    "README.md",
+    "README.zh-CN.md"
   ],
   "engines": {
     "node": ">=20",

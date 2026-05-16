@@ -11,7 +11,7 @@ description: Use when installing, configuring, verifying, or debugging @rivus/ag
 
 ## Use When
 
-- A user wants Codex, Claude Code, or opencode activity shown in Feishu signature.
+- A user wants Codex, Claude Code, Gemini CLI, or opencode activity shown in Feishu signature.
 - Hooks are installed but the signature is stale.
 - The count differs from visible terminal windows.
 - Laptop sleep, lid close, or wake behavior needs verification.
@@ -89,6 +89,7 @@ sleep/lid close/screen sleep/wake                    -> reset to 0
    ```bash
    sed -n '1,240p' ~/.codex/hooks.json
    sed -n '1,320p' ~/.claude/settings.json
+   sed -n '1,220p' ~/.gemini/settings.json
    sed -n '1,220p' ~/.config/opencode/opencode.json
    ```
 
@@ -117,4 +118,4 @@ agent-presence config render \
   --many "{total} 个 AI 牛马并行搬砖 | {details}"
 ```
 
-`{total}` is active count. `{details}` is grouped source counts like `codex 1 · claude 2`.
+`{total}` is active count. `{details}` is grouped source counts like `codex 1 · claude 2 · gemini 1`.
