@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { DEFAULT_SETUP_SCRIPT_NAMES, DEFAULT_UNINSTALL_SCRIPT_NAMES, runSetupScripts, runUninstallScripts } from '../src/setup.js';
+import { DEFAULT_SETUP_SCRIPT_NAMES, DEFAULT_UNINSTALL_SCRIPT_NAMES, LINUX_WATCHER_SKIP_MESSAGE, platformSetupScriptNames, platformUninstallScriptNames, runSetupScripts, runUninstallScripts } from '../src/setup.js';
 
 describe('runSetupScripts', () => {
   it('runs every local installer script in setup order', async () => {
@@ -54,5 +54,67 @@ describe('runSetupScripts', () => {
       { scriptName: 'uninstall-gemini-hook.js', scriptPath: '/dist/scripts/uninstall-gemini-hook.js' },
       { scriptName: 'uninstall-shutdown-watcher.js', scriptPath: '/dist/scripts/uninstall-shutdown-watcher.js' }
     ]);
+  });
+});
+
+describe('platform-aware script filtering', () => {
+  it('includes watcher on macOS', () => {
+    const setupNames = platformSetupScriptNames('darwin');
+    expect(setupNames).toContain('install-shutdown-watcher.js');
+    expect(setupNames).toEqual([
+      'install-codex-hook.js',
+      'install-claude-hook.js',
+      'install-opencode-plugin.js',
+      'install-gemini-hook.js',
+      'install-shutdown-watcher.js'
+    ]);
+
+    const uninstallNames = platformUninstallScriptNames('darwin');
+    expect(uninstallNames).toContain('uninstall-shutdown-watcher.js');
+    expect(uninstallNames).toEqual([
+      'uninstall-codex-hook.js',
+      'uninstall-claude-hook.js',
+      'uninstall-opencode-plugin.js',
+      'uninstall-gemini-hook.js',
+      'uninstall-shutdown-watcher.js'
+    ]);
+  });
+
+  it('excludes watcher on Linux', () => {
+    const setupNames = platformSetupScriptNames('linux');
+    expect(setupNames).not.toContain('install-shutdown-watcher.js');
+    expect(setupNames).toEqual([
+      'install-codex-hook.js',
+      'install-claude-hook.js',
+      'install-opencode-plugin.js',
+      'install-gemini-hook.js'
+    ]);
+
+    const uninstallNames = platformUninstallScriptNames('linux');
+    expect(uninstallNames).not.toContain('uninstall-shutdown-watcher.js');
+    expect(uninstallNames).toEqual([
+      'uninstall-codex-hook.js',
+      'uninstall-claude-hook.js',
+      'uninstall-opencode-plugin.js',
+      'uninstall-gemini-hook.js'
+    ]);
+  });
+
+  it('skips watcher when running setup on Linux (via runSetupScripts)', async () => {
+    const runner = vi.fn().mockResolvedValue(undefined);
+
+    const results = await runSetupScripts({
+      runner,
+      resolveScriptPath: (name) => `/dist/scripts/${name}`,
+      scriptNames: platformSetupScriptNames('linux')
+    });
+
+    expect(runner).toHaveBeenCalledTimes(4);
+    expect(results.map((r) => r.scriptName)).not.toContain('install-shutdown-watcher.js');
+  });
+
+  it('provides a skip message for Linux watcher', () => {
+    expect(LINUX_WATCHER_SKIP_MESSAGE).toContain('skipping power watcher');
+    expect(LINUX_WATCHER_SKIP_MESSAGE).toContain('TTL pruning');
   });
 });
