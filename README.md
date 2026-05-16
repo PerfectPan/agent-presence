@@ -2,8 +2,10 @@
 
 Sync local coding-agent presence to Feishu signature link previews.
 
+[简体中文](README.zh-CN.md)
+
 ```text
-Codex / Claude Code / opencode hooks
+Codex / Claude Code / Gemini CLI / opencode hooks
 -> local presence state
 -> debounced renderer
 -> l.garyyang slot provider
@@ -14,7 +16,9 @@ Codex / Claude Code / opencode hooks
 
 ## Install
 
-Agent Presence currently supports macOS only. The CLI and installer scripts detect unsupported platforms and exit with a clear error; Windows is not supported yet because credential storage, hook installation paths, and power-event reset are macOS-specific in the MVP.
+Agent Presence currently supports macOS and Linux. The CLI and installer scripts detect unsupported platforms and exit with a clear error; Windows is not supported yet.
+
+macOS uses Keychain for credentials and installs a LaunchAgent power watcher. Linux uses libsecret through `secret-tool` for credentials and skips the power watcher because systemd user services and logind signals are not reliable across distributions; TTL pruning still clears expired sessions.
 
 From the package registry:
 
@@ -56,7 +60,7 @@ For the implementation shape and trust boundaries, see [docs/architecture.md](do
 
 1. Run `agent-presence setup --provider feishu-signature`.
 2. Scan the QR code if login is needed.
-3. Let setup install Codex, Claude Code, opencode, and macOS power watchers.
+3. Let setup install Codex, Claude Code, Gemini CLI, opencode, and platform-specific watchers where supported.
 4. Run `agent-presence url --provider feishu-signature`.
 5. Paste that URL into Feishu profile signature as a custom link preview.
 
@@ -67,8 +71,8 @@ npx --yes --registry=https://registry.npmjs.org @rivus/agent-presence@latest set
 npx --yes --registry=https://registry.npmjs.org @rivus/agent-presence@latest url --provider feishu-signature
 ```
 
-`setup` installs local hooks and power watchers. It keeps credential material in Keychain and never embeds credentials in the Feishu signature URL.
-`setup` starts QR login only when no credential is available. Rerunning setup with an existing Keychain credential will not require another QR scan. Use `agent-presence setup --skip-login --provider feishu-signature` to refresh hooks without login checks, or `agent-presence setup --login --provider feishu-signature` to force a fresh login.
+`setup` installs local hooks and platform-specific watchers where supported. It keeps credential material in Keychain on macOS, libsecret on Linux, or explicit environment variables, and never embeds credentials in the Feishu signature URL.
+`setup` starts QR login only when no credential is available. Rerunning setup with an existing credential will not require another QR scan. Use `agent-presence setup --skip-login --provider feishu-signature` to refresh hooks without login checks, or `agent-presence setup --login --provider feishu-signature` to force a fresh login.
 When setup is run from `npx`, installed hooks use the package's fixed published version instead of a floating `latest` or a global `agent-presence` binary.
 Local config, state, logs, and future managed runtimes live under `~/.agent-presence/`. If setup finds an older `~/.codex/agent-signature/` directory with known files that are still missing from the new home, it asks before copying them. Known legacy files are removed from the old home after they exist in `~/.agent-presence`; unknown files are left untouched.
 
@@ -107,11 +111,12 @@ Hook commands are installed automatically by `setup`, but can be called directly
 ```bash
 agent-presence hook --source codex --event SessionStart
 agent-presence hook --source claude --event SessionStart --silent
+agent-presence hook --source gemini --event SessionStart --silent
 agent-presence hook --source opencode --event SessionStart --silent
 agent-presence hook --source codex --event Stop
 ```
 
-Hook commands never block the coding agent. Codex hooks print `{}`; Claude and opencode hooks run silent.
+Hook commands never block the coding agent. Codex hooks print `{}`; Claude, Gemini, and opencode hooks run silent.
 
 ## Presence Semantics
 
@@ -130,7 +135,7 @@ Default render output:
 ```text
 0 -> AI 牛马暂未开工
 1 -> 1 个 AI 牛马正在搬砖 | codex 1
-N -> N 个 AI 牛马正在搬砖 | codex X · claude Y · opencode Z
+N -> N 个 AI 牛马正在搬砖 | codex W · claude X · gemini Y · opencode Z
 ```
 
 The value is capped at 200 characters.
@@ -169,8 +174,9 @@ Legacy `AGENT_SIGNATURE_*` environment names are still accepted.
 
 - Codex hooks in `~/.codex/hooks.json`
 - Claude Code hooks in `~/.claude/settings.json`
+- Gemini CLI hooks in `~/.gemini/settings.json`
 - opencode plugin in `~/.config/opencode/plugins/agent-presence.js`
-- macOS LaunchAgent power watcher
+- macOS LaunchAgent power watcher; Linux setup skips the watcher and relies on TTL pruning
 
 The power watcher listens for lid close, system sleep, screen sleep, wake, shutdown, reboot, and logout. Each event runs:
 
@@ -178,7 +184,7 @@ The power watcher listens for lid close, system sleep, screen sleep, wake, shutd
 agent-presence reset --force --silent
 ```
 
-This is best effort. Sudden power loss, forced shutdown, lost network, or provider rate limits can delay the remote slot update. Wake events reset again to pull stale remote state back to 0.
+The watcher is best effort on macOS. Sudden power loss, forced shutdown, lost network, or provider rate limits can delay the remote slot update. Wake events reset again to pull stale remote state back to 0. On Linux, setup prints a watcher-skip message and the 3-minute TTL clears expired sessions.
 
 To remove local hooks, the opencode plugin, and the macOS power watcher:
 
@@ -186,7 +192,7 @@ To remove local hooks, the opencode plugin, and the macOS power watcher:
 agent-presence uninstall
 ```
 
-The default uninstall intentionally keeps Keychain credentials, local state, and provider config so a later `agent-presence setup --skip-login` can reinstall hooks without another QR scan.
+The default uninstall intentionally keeps credentials, local state, and provider config so a later `agent-presence setup --skip-login` can reinstall hooks without another QR scan.
 
 To also clear login credentials and the configured slot id:
 
@@ -200,7 +206,7 @@ To clear hooks, credentials, slot config, and local state:
 agent-presence uninstall --all
 ```
 
-Equivalent manual cleanup:
+Equivalent macOS manual cleanup:
 
 ```bash
 security delete-generic-password -s 'agent-signature:l-garyyang' -a token 2>/dev/null || true
@@ -241,7 +247,7 @@ agent-presence config provider feishu-signature \
   --target-url "https://example.com"
 ```
 
-Credentials are stored in Keychain by default. Env overrides:
+Credentials are stored in Keychain on macOS and libsecret on Linux by default. Env overrides:
 
 ```bash
 export AGENT_PRESENCE_TOKEN=...
@@ -309,7 +315,20 @@ pnpm run changeset
 
 Package management is pinned to pnpm through `packageManager`. CI and release use the checked-in `pnpm-lock.yaml`, frozen installs, dependency script blocking, and the workspace supply-chain settings in `pnpm-workspace.yaml`.
 
-Publishing uses npm Trusted Publishing / OIDC. Configure the package on npm with:
+Publishing uses npm Trusted Publishing / OIDC. There are two settings surfaces to keep in sync:
+
+1. GitHub repository settings for the release PR workflow.
+2. npm package settings for the trusted package publisher.
+
+In GitHub, open `PerfectPan/agent-presence` -> Settings -> Actions -> General. Under Workflow permissions, allow read and write permissions and enable GitHub Actions to create and approve pull requests. The workflow file still declares its own narrower permissions, but the repository setting must allow the Changesets action to open or update the release PR.
+
+In npm, configure Trusted Publishing from the existing package page:
+
+```text
+npmjs.com -> Packages -> @rivus/agent-presence -> Settings -> Trusted publishing
+```
+
+Use these GitHub Actions publisher fields:
 
 ```text
 GitHub owner: PerfectPan
@@ -317,32 +336,33 @@ Repository: agent-presence
 Workflow filename: publish.yml
 ```
 
-The release workflow grants `id-token: write`, uses Node 24, and publishes without a long-lived npm write token. npm automatically generates provenance for public packages published through trusted publishing from public GitHub repositories.
+The release workflow grants `id-token: write`, uses Node 24, and does not pass a long-lived npm write token. npm automatically generates provenance for public packages published through trusted publishing from public GitHub repositories.
 
-If `@rivus/agent-presence` does not exist on npm yet, do one bootstrap publish with a temporary granular npm token:
+`changesets/action` owns both release PR creation and package publishing. When publishing succeeds, its default `createGithubReleases` behavior creates a GitHub Release for the published package version, so the repository Releases page shows the same version that was published to npm.
+
+If a package does not exist on npm yet, Trusted Publishing cannot be configured from its package page. Keep the committed release workflow tokenless, and bootstrap the package once with a temporary granular npm token outside the normal trusted-publishing path:
 
 1. Create a short-lived npm granular access token with publish access to `@rivus/agent-presence` or the `@rivus` scope.
-2. Add it to this GitHub repository as `NPM_TOKEN`.
-3. Merge the release PR created by Changesets.
-4. Confirm `@rivus/agent-presence` exists on npm.
-5. Configure npm Trusted Publishing for:
+2. Run one explicit bootstrap publish using that token, either from a temporary one-off workflow change or from a clean local checkout after `pnpm pack --dry-run`.
+3. Confirm `@rivus/agent-presence` exists on npm.
+4. Configure npm Trusted Publishing from the package page:
 
 ```text
+npmjs.com -> Packages -> @rivus/agent-presence -> Settings -> Trusted publishing
 GitHub owner: PerfectPan
 Repository: agent-presence
 Workflow filename: publish.yml
 ```
 
-6. Delete the GitHub `NPM_TOKEN` secret and revoke the npm token.
+5. Remove any temporary workflow/token changes and revoke the npm token.
 
 Release flow:
 
 1. Merge feature PRs with `.changeset/*.md` files.
 2. `.github/workflows/publish.yml` opens or updates a `chore: release package` PR.
 3. Review and merge that release PR.
-4. The same workflow publishes to npm through Changesets and npm Trusted Publishing.
-
-The package starts at `0.0.0`; the initial changeset bumps it to `0.1.0` in the generated release PR.
+4. `changesets/action` publishes to npm through Changesets and npm Trusted Publishing.
+5. After a successful publish, `changesets/action` creates the matching GitHub Release.
 
 ## Agent Skill
 

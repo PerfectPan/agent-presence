@@ -11,6 +11,15 @@ This repository is intended to become a maintainable, publishable project. Treat
 - Use `rg` for searches when available.
 - Update tests and documentation when behavior changes.
 
+## Collaboration Rules
+
+- Treat user corrections as required scope changes, not as optional follow-up notes. Update the code, docs, workflow files, and pull request description in the same thread when the correction changes the intended behavior or delivery story.
+- When continuing an existing branch or pull request, fetch latest refs and rebase onto the current `origin/main` before adding new commits unless the user explicitly asks for a different base.
+- After a rebase or force-push, verify the remote branch head, commit signature status, pull request issue links, and CI status before reporting completion.
+- Keep the PR body current after every meaningful change. Its summary, validation, and follow-up risks should match the branch that is actually pushed.
+- If a user says the implementation target is a UI surface, workflow behavior, release artifact, or published package state, update the executable configuration that drives that surface instead of only documenting the intended manual process.
+- If current code and docs disagree, update the docs to the current code in the same change unless the user explicitly asks to leave docs untouched.
+
 ## Project-Specific Commands
 
 ```bash

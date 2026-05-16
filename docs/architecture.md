@@ -3,7 +3,7 @@
 `@rivus/agent-presence` turns local coding-agent lifecycle events into a Feishu signature link-preview value. The important boundary is that it models active work from agent hooks, not from process scans.
 
 ```text
-Codex / Claude Code / opencode lifecycle hooks
+Codex / Claude Code / Gemini CLI / opencode lifecycle hooks
 -> CLI hook normalizer
 -> locked JSON state
 -> TTL pruning
@@ -25,7 +25,7 @@ The interactive path can use prompts and rich output. The hook path must be fast
 
 - Count agents that are actively working.
 - Keep Feishu profile writes out of the hot path by updating a reusable slot.
-- Store credentials only in Keychain or environment variables.
+- Store credentials only in Keychain, libsecret, or environment variables.
 - Make hooks safe to run inside coding-agent lifecycles.
 - Recover from abnormal exits with TTL and power-event reset hooks.
 - Support the macOS local-agent environment first, with Linux as a supported platform.
@@ -69,7 +69,7 @@ When setup finds a legacy `~/.codex/agent-signature` directory, it asks before c
 
 `src/cli.ts` is the public entrypoint. It delegates immediately to `src/cli/app.ts`, which routes to one command module per command.
 
-The CLI allows help output everywhere, then rejects non-macOS runtime commands through `src/platform.ts`. The direct installer scripts use the same guard.
+The CLI allows help output everywhere, then rejects unsupported runtime platforms through `src/platform.ts`. The direct installer scripts use the same guard.
 
 Human-facing commands use `@clack/prompts` for interaction:
 
@@ -119,7 +119,7 @@ The target shape is:
 npx @rivus/agent-presence@<version> setup
 -> install or update a managed runtime under ~/.agent-presence/runtime
 -> write stable shims under ~/.agent-presence/bin
--> install Codex / Claude Code / opencode hooks that call those shims by absolute path
+-> install Codex / Claude Code / Gemini CLI / opencode hooks that call those shims by absolute path
 -> prompt the user to approve updated Codex hooks when Codex requires trust
 ```
 
@@ -191,10 +191,11 @@ Current source mapping:
 ```text
 Codex       SessionStart, UserPromptSubmit, PreToolUse, Stop
 Claude Code SessionStart, UserPromptSubmit, PreToolUse, PostToolUse, Stop, StopFailure, SessionEnd, SubagentStart, SubagentStop
+Gemini CLI  SessionStart, UserPromptSubmit, PreToolUse, PostToolUse, Stop, SessionEnd
 opencode    session.created, command.executed, file.edited, message.*, permission.*, session.*, todo.updated, tool.execute.*
 ```
 
-Codex hooks always print `{}` so they remain valid pass-through hooks. Claude Code and opencode hooks run with `--silent`.
+Codex hooks always print `{}` so they remain valid pass-through hooks. Claude Code, Gemini CLI, and opencode hooks run with `--silent`.
 
 Hook commands are managed entries. Installers identify them by the `agent-presence hook` or legacy `agent-signature hook` command shape, remove the old managed entries, and then add the current managed entry. This keeps reruns from accumulating duplicate hooks.
 
@@ -219,7 +220,7 @@ The default TTL is 3 minutes. This handles abnormal exits, hard kills, and misse
 ```text
 0 -> AI 牛马暂未开工
 1 -> 1 个 AI 牛马正在搬砖 | codex 1
-N -> N 个 AI 牛马正在搬砖 | codex X · claude Y · opencode Z
+N -> N 个 AI 牛马正在搬砖 | codex W · claude X · gemini Y · opencode Z
 ```
 
 Templates are configurable through `agent-presence config render` and environment variables. Rendered values are capped at 200 characters before provider update.
@@ -335,6 +336,7 @@ If Codex later exposes an official trust API or CLI command, setup can call that
 agent-presence uninstall
 -> remove managed Codex hooks
 -> remove managed Claude Code hooks
+-> remove managed Gemini CLI hooks
 -> remove managed opencode plugin
 -> unload and remove managed power watcher
 -> keep Keychain credentials, provider config, and state

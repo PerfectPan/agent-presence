@@ -11,11 +11,12 @@ description: Use when installing, configuring, verifying, or debugging @rivus/ag
 
 ## Use When
 
-- A user wants Codex, Claude Code, or opencode activity shown in Feishu signature.
+- A user wants Codex, Claude Code, Gemini CLI, or opencode activity shown in Feishu signature.
 - Hooks are installed but the signature is stale.
 - The count differs from visible terminal windows.
 - Laptop sleep, lid close, or wake behavior needs verification.
 - Credentials, slot URL, or `l.garyyang.work` provider state needs checking.
+- Linux libsecret or watcher-skip behavior needs verification.
 
 ## Quick Commands
 
@@ -89,20 +90,23 @@ sleep/lid close/screen sleep/wake                    -> reset to 0
    ```bash
    sed -n '1,240p' ~/.codex/hooks.json
    sed -n '1,320p' ~/.claude/settings.json
+   sed -n '1,220p' ~/.gemini/settings.json
    sed -n '1,220p' ~/.config/opencode/opencode.json
    ```
 
-5. Verify power watcher:
+5. Verify platform watcher:
 
    ```bash
    launchctl print gui/$(id -u)/work.rivus.agent-presence.power-watch
    pgrep -fl 'agent-presence|power-watch|swift'
+   # Linux intentionally skips the watcher; TTL pruning handles expiry.
    ```
 
 ## Common Findings
 
 - Remote stale but local value correct: provider debounce or 429; wait a minute and run `agent-presence update --force`.
 - Setup asks for login unexpectedly: `setup` should start QR login only when no credential exists. If `status` shows `hasToken: true`, inspect Keychain and setup arguments; use `--skip-login` for hook-only repair.
+- Linux credential errors usually mean `secret-tool` or the system keyring is unavailable; env vars still work for automation.
 - Visible Claude window not counted: it likely emitted `Stop` and is waiting for input, which is not "working".
 - Extra Codex counted: another Codex session is still sending heartbeats; inspect `project` fields in `agent-presence status`.
 - Sleep did not clear immediately: network or provider rate limit may have blocked the sleep-time reset; wake should reset again.
@@ -117,4 +121,4 @@ agent-presence config render \
   --many "{total} 个 AI 牛马并行搬砖 | {details}"
 ```
 
-`{total}` is active count. `{details}` is grouped source counts like `codex 1 · claude 2`.
+`{total}` is active count. `{details}` is grouped source counts like `codex 1 · claude 2 · gemini 1`.
