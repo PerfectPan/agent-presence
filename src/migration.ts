@@ -1,4 +1,4 @@
-import { cp, mkdir, stat } from 'node:fs/promises';
+import { cp, mkdir, rm, rmdir, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { getDefaultHomeDir, getLegacyHomeDir } from './config.js';
 
@@ -10,6 +10,13 @@ export interface LegacyHomeMigrationResult {
   to: string;
   copied: string[];
   skipped: string[];
+  removed: string[];
+}
+
+export interface LegacyHomeCleanupResult {
+  from: string;
+  to: string;
+  removed: string[];
 }
 
 export async function hasLegacyHomeToMigrate(): Promise<boolean> {
@@ -21,19 +28,19 @@ export async function hasLegacyHomeToMigrate(): Promise<boolean> {
   if (legacyHome === defaultHome || !(await exists(legacyHome))) {
     return false;
   }
-  return (await existingEntries(legacyHome)).length > 0;
+  return (await entriesNeedingMigration(legacyHome, defaultHome)).length > 0;
 }
 
 export async function migrateLegacyHome(options: { confirm: () => Promise<boolean> }): Promise<LegacyHomeMigrationResult> {
   const from = getLegacyHomeDir();
   const to = getDefaultHomeDir();
   if (!(await hasLegacyHomeToMigrate())) {
-    return { status: 'not-needed', from, to, copied: [], skipped: [] };
+    return { status: 'not-needed', from, to, copied: [], skipped: [], removed: [] };
   }
 
   const approved = await options.confirm();
   if (!approved) {
-    return { status: 'skipped', from, to, copied: [], skipped: await existingEntries(from) };
+    return { status: 'skipped', from, to, copied: [], skipped: await existingEntries(from), removed: [] };
   }
 
   await mkdir(to, { recursive: true, mode: 0o700 });
@@ -51,13 +58,45 @@ export async function migrateLegacyHome(options: { confirm: () => Promise<boolea
     copied.push(entry);
   }
 
-  return { status: 'migrated', from, to, copied, skipped };
+  const cleanup = await cleanupMigratedLegacyHome();
+
+  return { status: 'migrated', from, to, copied, skipped, removed: cleanup.removed };
+}
+
+export async function cleanupMigratedLegacyHome(): Promise<LegacyHomeCleanupResult> {
+  const from = getLegacyHomeDir();
+  const to = getDefaultHomeDir();
+  const removed: string[] = [];
+  if (from === to || !(await exists(from))) {
+    return { from, to, removed };
+  }
+
+  for (const entry of await existingEntries(from)) {
+    if (!(await exists(join(to, entry)))) {
+      continue;
+    }
+    await rm(join(from, entry), { recursive: true, force: true });
+    removed.push(entry);
+  }
+
+  await rmdir(from).catch(() => undefined);
+  return { from, to, removed };
 }
 
 async function existingEntries(home: string): Promise<string[]> {
   const entries: string[] = [];
   for (const entry of MIGRATED_ENTRIES) {
     if (await exists(join(home, entry))) {
+      entries.push(entry);
+    }
+  }
+  return entries;
+}
+
+async function entriesNeedingMigration(from: string, to: string): Promise<string[]> {
+  const entries: string[] = [];
+  for (const entry of await existingEntries(from)) {
+    if (!(await exists(join(to, entry)))) {
       entries.push(entry);
     }
   }

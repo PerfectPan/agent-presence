@@ -69,7 +69,7 @@ npx --yes --registry=https://registry.npmjs.org @rivus/agent-presence@latest url
 
 `setup` installs local hooks and power watchers. It keeps credential material in Keychain and never embeds credentials in the Feishu signature URL.
 When setup is run from `npx`, installed hooks use the package's fixed published version instead of a floating `latest` or a global `agent-presence` binary.
-Local config, state, logs, and future managed runtimes live under `~/.agent-presence/`. If setup finds an older `~/.codex/agent-signature/` directory, it asks before copying known files into the new home.
+Local config, state, logs, and future managed runtimes live under `~/.agent-presence/`. If setup finds an older `~/.codex/agent-signature/` directory with known files that are still missing from the new home, it asks before copying them. Known legacy files are removed from the old home after they exist in `~/.agent-presence`; unknown files are left untouched.
 
 `login`, `setup`, and interactive `config` flows use Clack prompts. Hook, status, update, reset, and URL commands keep script-safe output.
 

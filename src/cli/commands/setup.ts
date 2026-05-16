@@ -1,5 +1,5 @@
 import { configSlotId, loadConfig, providerId } from '../../config.js';
-import { hasLegacyHomeToMigrate, migrateLegacyHome } from '../../migration.js';
+import { cleanupMigratedLegacyHome, hasLegacyHomeToMigrate, migrateLegacyHome } from '../../migration.js';
 import { readCredential } from '../../secret.js';
 import { runSetupScripts } from '../../setup.js';
 import { hasFlag, optionValue } from '../args.js';
@@ -18,6 +18,7 @@ export async function setup(args: string[]): Promise<void> {
   }
 
   startIntro('Agent Presence setup');
+  await cleanupMigratedLegacyHome();
   if (await hasLegacyHomeToMigrate()) {
     const migration = await migrateLegacyHome({
       confirm: () =>
@@ -25,7 +26,8 @@ export async function setup(args: string[]): Promise<void> {
     });
     if (migration.status === 'migrated') {
       const skipped = migration.skipped.length > 0 ? `; kept existing destination files: ${migration.skipped.join(', ')}` : '';
-      showInfo(`migrated local files: ${migration.copied.join(', ') || 'none'}${skipped}`);
+      const removed = migration.removed.length > 0 ? `; removed legacy files: ${migration.removed.join(', ')}` : '';
+      showInfo(`migrated local files: ${migration.copied.join(', ') || 'none'}${skipped}${removed}`);
     } else if (migration.status === 'skipped') {
       showInfo('migration skipped; legacy config can still be read for this setup run');
     }

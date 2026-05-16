@@ -63,7 +63,7 @@ The home directory contains local state, config, and logs. It is intentionally o
 
 Credentials are not stored in this directory. They live in Keychain or environment variables.
 
-When setup finds a legacy `~/.codex/agent-signature` directory, it asks before copying known local files into `~/.agent-presence`. Existing destination files are never overwritten. The legacy `~/.codex/agent-signature/config.json` path is still read when the new config file does not exist, so a skipped migration does not break first-run setup. New writes and logs use `~/.agent-presence` unless `AGENT_PRESENCE_HOME`, `AGENT_SIGNATURE_HOME`, or file-specific environment variables override the paths.
+When setup finds a legacy `~/.codex/agent-signature` directory, it asks before copying known local files that are still missing from `~/.agent-presence`. Existing destination files are never overwritten. Once a known legacy file exists in the new home, setup removes the old copy from `~/.codex/agent-signature`; unknown files are left untouched. The legacy `~/.codex/agent-signature/config.json` path is still read when the new config file does not exist, so a skipped migration does not break first-run setup. New writes and logs use `~/.agent-presence` unless `AGENT_PRESENCE_HOME`, `AGENT_SIGNATURE_HOME`, or file-specific environment variables override the paths.
 
 ### CLI
 
@@ -276,7 +276,7 @@ Idempotency is part of the installer contract, not a nice-to-have:
 | opencode plugin | Rewrite the managed plugin file from the current package; do not append duplicate plugin registrations. |
 | Power watcher | Replace the managed LaunchAgent plist and script, then reload the same label. |
 | Managed runtime | Install into a staging directory first, then atomically switch the active runtime or shim target. |
-| Legacy home migration | During interactive setup, ask before copying known files from `~/.codex/agent-signature` to `~/.agent-presence`; never overwrite existing destination files. |
+| Legacy home migration | During interactive setup, ask before copying known files from `~/.codex/agent-signature` to `~/.agent-presence`; never overwrite existing destination files; remove known legacy files after the new home has them; keep unknown files. |
 | State | Preserve local session state during setup; only `reset` or `uninstall --all` clears it. |
 | Credentials | Preserve credentials during normal setup and uninstall; only `uninstall --credentials` or `uninstall --all` removes them. |
 
