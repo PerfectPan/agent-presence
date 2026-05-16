@@ -97,6 +97,21 @@ describe('Claude hook context', () => {
       sessionId: 'claude-session-1:subagent:agent-2'
     });
   });
+
+  it('falls back to Claude transcript file names when session_id is absent', () => {
+    expect(
+      resolveClaudeHookContext({
+        transcript_path:
+          '/Users/example/.claude/projects/-Users-example-repo/41ef8ec9-cb80-489b-aa69-d328b662814e.jsonl',
+        cwd: '/repo',
+        hook_event_name: 'UserPromptSubmit'
+      })
+    ).toEqual({
+      event: 'UserPromptSubmit',
+      project: '/repo',
+      sessionId: '41ef8ec9-cb80-489b-aa69-d328b662814e'
+    });
+  });
 });
 
 describe('opencode hook context', () => {

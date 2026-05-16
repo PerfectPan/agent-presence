@@ -24,7 +24,7 @@ export interface SyncSlotOptions {
 
 export type SyncSlotResult =
   | { status: 'updated'; value: string }
-  | { status: 'skipped'; reason: 'unchanged' | 'debounced' | 'rate-limited'; value: string };
+  | { status: 'skipped'; reason: 'unchanged' | 'debounced' | 'rate-limited'; value: string; retryAfterMs?: number };
 
 export interface SlotSyncDecisionOptions {
   force: boolean;
@@ -99,7 +99,7 @@ export async function syncSlot(state: PresenceState, options: SyncSlotOptions): 
     await options.updateSlot(decision.value);
   } catch (error) {
     if (error instanceof SlotRateLimitError) {
-      return { status: 'skipped', reason: 'rate-limited', value: decision.value };
+      return { status: 'skipped', reason: 'rate-limited', value: decision.value, retryAfterMs: error.retryAfterMs };
     }
     rollbackSlotSyncClaim(state, decision);
     throw error;

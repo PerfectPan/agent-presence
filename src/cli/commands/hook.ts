@@ -5,8 +5,9 @@ import { applyAgentEvent } from '../../state.js';
 import { hasFlag, optionValue } from '../args.js';
 import { errorMessage } from '../errors.js';
 import { resolveHookContext, writeHookOutput } from '../hook-context.js';
+import { writeHookDiagnostic } from '../hook-diagnostics.js';
 import { readStdinJson, writeLog } from '../io.js';
-import { syncRenderedSlotWithStateLock } from '../slot-sync.js';
+import { syncRenderedSlotWithDeferredFlush } from '../rendered-slot-sync.js';
 
 export async function hook(args: string[]): Promise<void> {
   try {
@@ -15,6 +16,13 @@ export async function hook(args: string[]): Promise<void> {
     const payload = await readStdinJson();
     const context = resolveHookContext(source, payload);
     const event = optionValue(args, '--event') ?? context.event ?? 'Heartbeat';
+    await writeHookDiagnostic({
+      source,
+      event,
+      payload,
+      sessionId: context.sessionId,
+      project: context.project
+    });
 
     if (!context.sessionId) {
       await writeLog(`hook skipped: missing session id for source=${source} event=${event}`);
@@ -28,7 +36,7 @@ export async function hook(args: string[]): Promise<void> {
     const statePath = getStatePath();
     const now = Date.now();
 
-    await syncRenderedSlotWithStateLock(
+    await syncRenderedSlotWithDeferredFlush(
       statePath,
       {
         force: false,

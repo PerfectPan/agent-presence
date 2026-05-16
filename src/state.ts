@@ -21,6 +21,7 @@ export interface PresenceState {
   sessions: Record<string, AgentSession>;
   lastSlotUpdateAt?: number;
   lastValue?: string;
+  pendingSlotFlushAt?: number;
 }
 
 export interface AgentEventInput {
@@ -74,7 +75,8 @@ export function normalizeState(raw: PresenceState): PresenceState {
   return {
     sessions,
     lastSlotUpdateAt: state.lastSlotUpdateAt ?? 0,
-    lastValue: state.lastValue ?? ''
+    lastValue: state.lastValue ?? '',
+    pendingSlotFlushAt: typeof state.pendingSlotFlushAt === 'number' ? state.pendingSlotFlushAt : undefined
   };
 }
 

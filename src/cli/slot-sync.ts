@@ -7,6 +7,8 @@ import {
   type SlotSyncDecision,
   type SyncSlotResult
 } from '../render.js';
+import { writeLogEvent } from '../log.js';
+import { valueLength } from '../log-sanitize.js';
 import { loadState, saveState, withStateLock, type PresenceState } from '../state.js';
 
 interface RenderedSlotOptions {
@@ -36,6 +38,9 @@ export async function syncRenderedSlotWithStateLock(
     const state = await loadState(statePath);
     mutateState?.(state);
     decision = prepareSlotSync(state, options);
+    if (decision.action === 'skip' && decision.result.status === 'skipped' && decision.result.reason === 'unchanged') {
+      state.pendingSlotFlushAt = undefined;
+    }
     await saveState(state, statePath);
   });
 
@@ -85,20 +90,38 @@ async function applySlotSyncDecision(
     return decision.result;
   }
 
+  const startedAt = Date.now();
+  await writeSlotUpdateLog(decision, { result: 'start' });
+
   try {
     await updateSlot(decision.value);
   } catch (error) {
     if (error instanceof SlotRateLimitError) {
-      return { status: 'skipped', reason: 'rate-limited', value: decision.value };
+      await writeSlotUpdateLog(decision, {
+        result: 'rate-limited',
+        durationMs: Date.now() - startedAt,
+        retryAfterMs: error.retryAfterMs
+      });
+      return { status: 'skipped', reason: 'rate-limited', value: decision.value, retryAfterMs: error.retryAfterMs };
     }
     await rollbackSlotDecision(statePath, decision);
+    await writeSlotUpdateLog(decision, {
+      result: 'failed',
+      durationMs: Date.now() - startedAt
+    });
     throw error;
   }
 
   await withStateLock(statePath, async () => {
     const state = await loadState(statePath);
     markSlotSyncSuccess(state, decision);
+    state.pendingSlotFlushAt = undefined;
     await saveState(state, statePath);
+  });
+
+  await writeSlotUpdateLog(decision, {
+    result: 'updated',
+    durationMs: Date.now() - startedAt
   });
 
   return { status: 'updated', value: decision.value };
@@ -120,4 +143,27 @@ function requireDecision(decision: SlotSyncDecision | undefined): SlotSyncDecisi
     throw new Error('internal error: missing slot sync decision');
   }
   return decision;
+}
+
+async function writeSlotUpdateLog(
+  decision: SlotSyncDecision,
+  event: { result: 'start' | 'updated' | 'rate-limited' | 'failed'; durationMs?: number; retryAfterMs?: number }
+): Promise<void> {
+  if (decision.action !== 'update') {
+    return;
+  }
+
+  try {
+    await writeLogEvent({
+      type: 'slot.update',
+      result: event.result,
+      valueLength: valueLength(decision.value),
+      previousLastSlotUpdateAt: decision.previousLastSlotUpdateAt,
+      claimedLastSlotUpdateAt: decision.claimedLastSlotUpdateAt,
+      durationMs: event.durationMs,
+      retryAfterMs: event.retryAfterMs
+    });
+  } catch {
+    // Slot update logging is diagnostic only and must not affect hook execution.
+  }
 }

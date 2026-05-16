@@ -1,6 +1,20 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { createEmptyState, applyAgentEvent } from '../src/state.js';
-import { markSlotSyncSuccess, prepareSlotSync, rollbackSlotSyncClaim, syncSlot } from '../src/render.js';
+import { markSlotSyncSuccess, prepareSlotSync, rollbackSlotSyncClaim, SlotRateLimitError, syncSlot } from '../src/render.js';
+import { syncExplicitSlotValueWithStateLock } from '../src/cli/slot-sync.js';
+
+let tempDir: string | undefined;
+
+afterEach(async () => {
+  delete process.env.AGENT_PRESENCE_LOG_FILE;
+  if (tempDir) {
+    await rm(tempDir, { recursive: true, force: true });
+    tempDir = undefined;
+  }
+});
 
 describe('slot sync debounce', () => {
   it('updates when force is true even inside debounce window', async () => {
@@ -110,4 +124,86 @@ describe('slot sync debounce', () => {
     expect(state.lastSlotUpdateAt).toBe(1_000);
     expect(state.lastValue).toBe('');
   });
+
+  it('logs each slot update attempt and result without leaking the rendered value', async () => {
+    const { logPath, statePath } = await useTempFiles();
+    const updateSlot = vi.fn().mockResolvedValue(undefined);
+
+    await expect(
+      syncExplicitSlotValueWithStateLock(
+        statePath,
+        {
+          force: true,
+          now: 62_000,
+          debounceMs: 60_000,
+          value: 'sensitive rendered value'
+        },
+        updateSlot
+      )
+    ).resolves.toEqual({ status: 'updated', value: 'sensitive rendered value' });
+
+    const events = await waitForLogEvents(logPath, 2);
+    expect(events.map((event) => event.result)).toEqual(['start', 'updated']);
+    expect(events[0]).toMatchObject({
+      app: 'agent-presence',
+      type: 'slot.update',
+      valueLength: 24,
+      previousLastSlotUpdateAt: 0,
+      claimedLastSlotUpdateAt: 62_000
+    });
+    expect(typeof events[0]?.pid).toBe('number');
+    expect(JSON.stringify(events)).not.toContain('sensitive rendered value');
+  });
+
+  it('logs rate limited slot updates', async () => {
+    const { logPath, statePath } = await useTempFiles();
+    const updateSlot = vi.fn().mockRejectedValue(new SlotRateLimitError('slot provider returned 429', 60_000));
+
+    await expect(
+      syncExplicitSlotValueWithStateLock(
+        statePath,
+        {
+          force: true,
+          now: 62_000,
+          debounceMs: 60_000,
+          value: 'value'
+        },
+        updateSlot
+      )
+    ).resolves.toEqual({ status: 'skipped', reason: 'rate-limited', value: 'value', retryAfterMs: 60_000 });
+
+    const events = await waitForLogEvents(logPath, 2);
+    expect(events.map((event) => event.result)).toEqual(['start', 'rate-limited']);
+    expect(events[1]).toMatchObject({
+      type: 'slot.update',
+      valueLength: 5,
+      retryAfterMs: 60_000
+    });
+  });
 });
+
+async function useTempFiles(): Promise<{ logPath: string; statePath: string }> {
+  tempDir = await mkdtemp(join(tmpdir(), 'agent-presence-update-test-'));
+  const logPath = join(tempDir, 'agent-presence.log');
+  process.env.AGENT_PRESENCE_LOG_FILE = logPath;
+  return {
+    logPath,
+    statePath: join(tempDir, 'state.json')
+  };
+}
+
+async function waitForLogEvents(path: string, count: number): Promise<Array<Record<string, unknown>>> {
+  await expect
+    .poll(async () => {
+      try {
+        return (await readFile(path, 'utf8')).trim().split('\n').filter(Boolean).length;
+      } catch {
+        return 0;
+      }
+    })
+    .toBe(count);
+  return (await readFile(path, 'utf8'))
+    .trim()
+    .split('\n')
+    .map((line) => JSON.parse(line) as Record<string, unknown>);
+}
