@@ -243,5 +243,33 @@ async function waitForLogEvents(path: string, count: number): Promise<Array<Reco
   return (await readFile(path, 'utf8'))
     .trim()
     .split('\n')
-    .map((line) => JSON.parse(line) as Record<string, unknown>);
+    .map(parseLogLine);
+}
+
+function parseLogLine(line: string): Record<string, unknown> {
+  const fields = Object.fromEntries(
+    line.split(' ').map((part) => {
+      const separator = part.indexOf('=');
+      const key = part.slice(0, separator);
+      const rawValue = part.slice(separator + 1);
+      return [key, coerceLogValue(rawValue)];
+    })
+  );
+  return fields;
+}
+
+function coerceLogValue(value: string): unknown {
+  if (/^\d+$/.test(value)) {
+    return Number(value);
+  }
+  if (value === 'true') {
+    return true;
+  }
+  if (value === 'false') {
+    return false;
+  }
+  if (value.startsWith('"') && value.endsWith('"')) {
+    return JSON.parse(value) as string;
+  }
+  return value;
 }
