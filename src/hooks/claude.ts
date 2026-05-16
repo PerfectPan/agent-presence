@@ -1,3 +1,4 @@
+import { basename } from 'node:path';
 import { pickString, type StringEnv } from './context.js';
 
 export interface ClaudeHookContext {
@@ -14,13 +15,21 @@ export function resolveClaudeHookContext(payload: unknown, env: StringEnv = proc
     nestedPayloadKeys: ['event', 'session', 'input', 'context'],
     payloadFirst: true
   });
-  const parentSessionId = pickString(payload, {
+  const directSessionId = pickString(payload, {
     env,
     envKeys: ['CLAUDE_SESSION_ID'],
     payloadKeys: ['session_id', 'sessionId', 'sessionID'],
     nestedPayloadKeys: ['event', 'session', 'input', 'context'],
     payloadFirst: true
   });
+  const transcriptPath = pickString(payload, {
+    env,
+    envKeys: ['CLAUDE_TRANSCRIPT_PATH'],
+    payloadKeys: ['transcript_path', 'transcriptPath'],
+    nestedPayloadKeys: ['event', 'session', 'input', 'context'],
+    payloadFirst: true
+  });
+  const parentSessionId = directSessionId ?? sessionIdFromTranscriptPath(transcriptPath);
   const agentId = pickString(payload, {
     payloadKeys: ['agent_id', 'agentId', 'agentID'],
     nestedPayloadKeys: ['event', 'session', 'input', 'context']
@@ -38,4 +47,12 @@ export function resolveClaudeHookContext(payload: unknown, env: StringEnv = proc
       payloadFirst: true
     })
   };
+}
+
+function sessionIdFromTranscriptPath(path: string | undefined): string | undefined {
+  if (!path) {
+    return undefined;
+  }
+  const file = basename(path).replace(/\.jsonl$/u, '');
+  return file || undefined;
 }

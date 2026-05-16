@@ -10,7 +10,7 @@ Usage:
   agent-presence config provider feishu-signature [--base-url <url>] [--preview-base-url <url>] [--image-key <key>] [--target-url <url>] [--reset]
   agent-presence config render [--zero <template>] [--one <template>] [--many <template>] [--reset]
   agent-presence status [--provider feishu-signature] [--remote]
-  agent-presence update [--provider feishu-signature] [--force] [--value <text>]
+  agent-presence update [--provider feishu-signature] [--force] [--value <text>] [--silent]
   agent-presence reset [--provider feishu-signature] [--force] [--silent]
   agent-presence hook --source codex --event <SessionStart|Heartbeat|UserPromptSubmit|PreToolUse|Stop>
   agent-presence hook --source claude --event <SessionStart|UserPromptSubmit|PreToolUse|PostToolUse|Stop|SessionEnd|SubagentStart|SubagentStop> --silent

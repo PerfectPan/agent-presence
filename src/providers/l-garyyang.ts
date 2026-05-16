@@ -1,6 +1,7 @@
 import { SlotRateLimitError } from '../render.js';
 import type { SlotCredential } from '../secret.js';
 import { createLogWriter } from '../log.js';
+import { redactSlotId, valueLength } from '../log-sanitize.js';
 
 export interface QrCodeResponse {
   sceneId: string;
@@ -294,15 +295,4 @@ function createProviderRequestLogger(base: ProviderRequestLogBase): (event: {
       // Request logging is diagnostic only and must not affect provider behavior.
     });
   };
-}
-
-function valueLength(value: string | undefined): number | undefined {
-  return typeof value === 'string' ? value.length : undefined;
-}
-
-function redactSlotId(slotId: string | undefined): string | undefined {
-  if (!slotId) {
-    return undefined;
-  }
-  return slotId.length <= 12 ? `${slotId.slice(0, 4)}...` : `${slotId.slice(0, 12)}...`;
 }

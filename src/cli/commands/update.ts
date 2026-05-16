@@ -2,7 +2,8 @@ import { configSlotId, debounceMs, getStatePath, loadConfig, providerBaseUrl, pr
 import { LGaryYangProvider } from '../../providers/l-garyyang.js';
 import { readCredential } from '../../secret.js';
 import { hasFlag, optionValue } from '../args.js';
-import { syncExplicitSlotValueWithStateLock, syncRenderedSlotWithStateLock } from '../slot-sync.js';
+import { syncRenderedSlotWithDeferredFlush } from '../rendered-slot-sync.js';
+import { syncExplicitSlotValueWithStateLock } from '../slot-sync.js';
 
 export async function update(args: string[]): Promise<void> {
   const config = await loadConfig();
@@ -11,6 +12,7 @@ export async function update(args: string[]): Promise<void> {
   const provider = new LGaryYangProvider(providerBaseUrl(config), credential);
   const statePath = getStatePath();
   const force = hasFlag(args, '--force');
+  const silent = hasFlag(args, '--silent');
   const now = Date.now();
   const explicitValue = optionValue(args, '--value');
 
@@ -25,11 +27,13 @@ export async function update(args: string[]): Promise<void> {
       },
       (value) => provider.updateSlot(value)
     );
-    console.log(JSON.stringify(result, null, 2));
+    if (!silent) {
+      console.log(JSON.stringify(result, null, 2));
+    }
     return;
   }
 
-  const result = await syncRenderedSlotWithStateLock(
+  const result = await syncRenderedSlotWithDeferredFlush(
     statePath,
     {
       force,
@@ -40,5 +44,7 @@ export async function update(args: string[]): Promise<void> {
     },
     (value) => provider.updateSlot(value)
   );
-  console.log(JSON.stringify(result, null, 2));
+  if (!silent) {
+    console.log(JSON.stringify(result, null, 2));
+  }
 }

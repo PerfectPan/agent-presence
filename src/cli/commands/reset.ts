@@ -3,7 +3,7 @@ import { LGaryYangProvider } from '../../providers/l-garyyang.js';
 import { readCredential } from '../../secret.js';
 import { finishAllSessions } from '../../state.js';
 import { hasFlag, optionValue } from '../args.js';
-import { syncRenderedSlotWithStateLock } from '../slot-sync.js';
+import { syncRenderedSlotWithDeferredFlush } from '../rendered-slot-sync.js';
 
 export async function reset(args: string[]): Promise<void> {
   const config = await loadConfig();
@@ -15,7 +15,7 @@ export async function reset(args: string[]): Promise<void> {
   const force = hasFlag(args, '--force');
   const silent = hasFlag(args, '--silent');
 
-  const result = await syncRenderedSlotWithStateLock(
+  const result = await syncRenderedSlotWithDeferredFlush(
     statePath,
     {
       force,
