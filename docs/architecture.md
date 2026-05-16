@@ -278,7 +278,8 @@ TTL pruning (3-minute default) handles most failure modes (agent crashes, hard k
 
 `src/setup.ts` and `src/installers.ts` coordinate first-run setup:
 
-- login or reuse existing provider credentials
+- login when no provider credential exists, unless `--skip-login` is passed
+- reuse existing provider credentials without prompting again
 - write provider preview configuration
 - install Codex hooks
 - install Claude Code hooks
@@ -293,7 +294,7 @@ Idempotency is part of the installer contract, not a nice-to-have:
 
 | Area | Idempotency rule |
 | --- | --- |
-| Provider login | Reuse existing Keychain credential and configured slot unless login is explicitly run again. |
+| Provider login | Reuse existing Keychain credential and configured slot. Normal setup starts QR login only when credentials are missing; `--skip-login` refreshes hooks without login checks, and `--login` forces fresh authentication. |
 | Config | Merge provider/render settings without deleting unrelated keys. |
 | Codex hooks | Remove prior managed Agent Presence hooks, add exactly one current managed group per event, then remind the user to approve changed hooks in Codex settings. |
 | Claude Code hooks | Remove prior managed Agent Presence hooks, add exactly one current managed group per event. |

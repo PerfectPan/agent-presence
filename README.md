@@ -68,6 +68,7 @@ npx --yes --registry=https://registry.npmjs.org @rivus/agent-presence@latest url
 ```
 
 `setup` installs local hooks and power watchers. It keeps credential material in Keychain and never embeds credentials in the Feishu signature URL.
+`setup` starts QR login only when no credential is available. Rerunning setup with an existing Keychain credential will not require another QR scan. Use `agent-presence setup --skip-login --provider feishu-signature` to refresh hooks without login checks, or `agent-presence setup --login --provider feishu-signature` to force a fresh login.
 When setup is run from `npx`, installed hooks use the package's fixed published version instead of a floating `latest` or a global `agent-presence` binary.
 Local config, state, logs, and future managed runtimes live under `~/.agent-presence/`. If setup finds an older `~/.codex/agent-signature/` directory with known files that are still missing from the new home, it asks before copying them. Known legacy files are removed from the old home after they exist in `~/.agent-presence`; unknown files are left untouched.
 
@@ -84,6 +85,7 @@ https://l.garyyang.work/?t2=<base62({{slot id="slot_xxx"}})>
 ```bash
 agent-presence login --provider feishu-signature
 agent-presence setup --provider feishu-signature
+agent-presence setup --provider feishu-signature --login
 agent-presence setup --provider feishu-signature --skip-login
 agent-presence setup --provider feishu-signature --no-hooks
 agent-presence setup --provider feishu-signature --hook-command absolute
