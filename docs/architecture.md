@@ -232,9 +232,20 @@ Normal updates obey the debounce interval. `update --force` and `reset --force` 
 
 Network I/O is kept outside the state mutation lock. That keeps hook contention small and prevents a slow provider request from blocking unrelated lifecycle writes.
 
-### Provider
+### Provider Interface And Registry
 
-`src/providers/l-garyyang.ts` implements the first slot backend:
+`src/providers/types.ts` defines the `PresenceProvider` interface and a small set of capability assertions. Every method is optional because not all providers will support every capability:
+
+```text
+createQrCode / getLoginStatus  login flow (slot-style providers that pair the CLI with QR auth)
+updateSlot                     write a rendered presence value
+getInfo                        return remote presence info for `status --remote`
+buildSignatureUrl              produce a link-preview URL for the slot helper
+```
+
+`src/providers/registry.ts` maps each provider id to a factory. CLI commands never instantiate a concrete provider class anymore; they call `createProvider(id, { baseUrl, credential })` and then use `assertSupports*` helpers when a capability is required. Providers that omit a capability raise a clear `provider "<id>" does not support <capability>` error at the call site.
+
+`src/providers/l-garyyang.ts` is the first concrete implementation and conforms to `PresenceProvider`. It still owns the slot backend:
 
 ```http
 GET  /api/slot/wechat/qrcode
@@ -465,4 +476,4 @@ CI installs with a frozen pnpm lockfile and `--ignore-scripts`. Release uses Cha
 
 ## Extension Points
 
-New agent sources should add a hook adapter that emits the shared lifecycle actions. New providers should implement the same slot-style contract first, so profile-specific or network-specific write logic stays behind provider boundaries.
+New agent sources should add a hook adapter that emits the shared lifecycle actions. New providers should implement `PresenceProvider` in `src/providers/types.ts` and register a factory in `src/providers/registry.ts`. A provider only needs to expose the capabilities it actually supports; the CLI asserts each capability at the call site and surfaces a clear error if a command runs against a provider that does not implement it.

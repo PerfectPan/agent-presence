@@ -1,24 +1,14 @@
 import { SlotRateLimitError } from '../render.js';
 import type { SlotCredential } from '../secret.js';
 import { createLogWriter } from '../log.js';
+import type {
+  BuildSignatureUrlOptions,
+  LoginStatus,
+  PresenceProvider,
+  QrCodeResponse
+} from './types.js';
 
-export interface QrCodeResponse {
-  sceneId: string;
-  qrcodeUrl: string;
-  expiresIn: number;
-}
-
-export interface LoginPending {
-  status: string;
-}
-
-export interface LoginSuccess {
-  status: string;
-  token: string;
-  slotId: string;
-}
-
-export type LoginStatus = LoginPending | LoginSuccess;
+export type { BuildSignatureUrlOptions, LoginPending, LoginStatus, LoginSuccess, QrCodeResponse } from './types.js';
 
 const log = createLogWriter({
   provider: 'feishu-signature'
@@ -39,7 +29,9 @@ interface ProviderRequestLogBase {
   value?: string;
 }
 
-export class LGaryYangProvider {
+export class LGaryYangProvider implements PresenceProvider {
+  readonly id = 'feishu-signature';
+
   constructor(
     private readonly baseUrl: string,
     private readonly credential?: SlotCredential
@@ -88,7 +80,7 @@ export class LGaryYangProvider {
     }, { logSuccess: true, slotId: credential.slotId });
   }
 
-  buildSignatureUrl(options: { slotId: string; imageKey?: string; targetUrl?: string; previewBaseUrl: string }): string {
+  buildSignatureUrl(options: BuildSignatureUrlOptions): string {
     const url = new URL(options.previewBaseUrl);
     url.searchParams.set('t2', base62Encode(`{{slot id="${options.slotId}"}}`));
     if (options.imageKey) {

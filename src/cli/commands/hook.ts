@@ -1,5 +1,6 @@
-import { configSlotId, debounceMs, getStatePath, loadConfig, providerBaseUrl, renderTemplates, ttlMs } from '../../config.js';
-import { LGaryYangProvider } from '../../providers/l-garyyang.js';
+import { configSlotId, debounceMs, getStatePath, loadConfig, providerBaseUrl, providerId, renderTemplates, ttlMs } from '../../config.js';
+import { createProvider } from '../../providers/registry.js';
+import { assertSupportsSlotUpdate } from '../../providers/types.js';
 import { readCredential } from '../../secret.js';
 import { applyAgentEvent } from '../../state.js';
 import { hasFlag, optionValue } from '../args.js';
@@ -24,7 +25,8 @@ export async function hook(args: string[]): Promise<void> {
 
     const config = await loadConfig();
     const credential = await readCredential(configSlotId(config));
-    const provider = new LGaryYangProvider(providerBaseUrl(config), credential);
+    const provider = createProvider(providerId(config), { baseUrl: providerBaseUrl(config), credential });
+    assertSupportsSlotUpdate(provider);
     const statePath = getStatePath();
     const now = Date.now();
 

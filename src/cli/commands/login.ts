@@ -1,5 +1,4 @@
 import {
-  configSlotId,
   DEFAULT_LOGIN_POLL_MS,
   getConfigPath,
   loadConfig,
@@ -7,7 +6,8 @@ import {
   providerId,
   saveConfig
 } from '../../config.js';
-import { LGaryYangProvider } from '../../providers/l-garyyang.js';
+import { createProvider } from '../../providers/registry.js';
+import { assertSupportsLogin } from '../../providers/types.js';
 import { writeCredential } from '../../secret.js';
 import { optionValue } from '../args.js';
 import { sleep } from '../sleep.js';
@@ -16,7 +16,8 @@ import { createSpinner, finishOutro, showNote, startIntro } from '../ui.js';
 export async function login(args: string[] = []): Promise<void> {
   const config = await loadConfig();
   const activeProvider = providerId(config, optionValue(args, '--provider'));
-  const provider = new LGaryYangProvider(providerBaseUrl(config));
+  const provider = createProvider(activeProvider, { baseUrl: providerBaseUrl(config) });
+  assertSupportsLogin(provider);
 
   startIntro('Agent Presence login');
   const qrSpinner = createSpinner();
