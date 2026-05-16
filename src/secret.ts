@@ -14,6 +14,18 @@ const LIBSECRET_SERVICE = 'agent-presence';
 const LIBSECRET_ERROR =
   'agent-presence requires libsecret on linux (install gnome-keyring or libsecret-tools)';
 
+export interface CredentialStore {
+  readCredential(configSlotId?: string): Promise<SlotCredential | undefined>;
+  writeCredential(credential: SlotCredential): Promise<void>;
+  deleteCredential(): Promise<void>;
+}
+
+export interface CredentialStoreOptions {
+  keychainService?: string;
+  keychainLegacyService?: string;
+  libsecretService?: string;
+}
+
 interface CredentialBackend {
   readToken(): Promise<string | undefined>;
   readSlotId(): Promise<string | undefined>;
@@ -22,22 +34,39 @@ interface CredentialBackend {
 }
 
 export async function readCredential(configSlotId?: string): Promise<SlotCredential | undefined> {
-  const token = envToken() ?? (await getCredentialBackend().readToken());
-  const slotId = envSlotId() ?? (await getCredentialBackend().readSlotId()) ?? configSlotId;
-
-  if (!token || !slotId) {
-    return undefined;
-  }
-
-  return { token, slotId };
+  return createCredentialStore().readCredential(configSlotId);
 }
 
 export async function writeCredential(credential: SlotCredential): Promise<void> {
-  await getCredentialBackend().writeCredential(credential);
+  await createCredentialStore().writeCredential(credential);
 }
 
 export async function deleteCredential(): Promise<void> {
-  await getCredentialBackend().deleteCredential();
+  await createCredentialStore().deleteCredential();
+}
+
+export function createCredentialStore(options: CredentialStoreOptions = {}): CredentialStore {
+  const backend = getCredentialBackend(options);
+  return {
+    async readCredential(configSlotId?: string) {
+      const token = envToken() ?? (await backend.readToken());
+      const slotId = envSlotId() ?? (await backend.readSlotId()) ?? configSlotId;
+
+      if (!token || !slotId) {
+        return undefined;
+      }
+
+      return { token, slotId };
+    },
+
+    writeCredential(credential) {
+      return backend.writeCredential(credential);
+    },
+
+    deleteCredential() {
+      return backend.deleteCredential();
+    }
+  };
 }
 
 function envToken(): string | undefined {
@@ -61,37 +90,45 @@ function envSlotId(): string | undefined {
 
 // --- Backend selection ---
 
-function getCredentialBackend(): CredentialBackend {
+function getCredentialBackend(options: CredentialStoreOptions): CredentialBackend {
   if (process.platform === 'linux') {
-    return secretToolBackend;
+    return createSecretToolBackend(options.libsecretService ?? LIBSECRET_SERVICE);
   }
-  return keychainBackend;
+  return createKeychainBackend(
+    options.keychainService ?? KEYCHAIN_SERVICE,
+    options.keychainLegacyService ?? KEYCHAIN_LEGACY_SERVICE
+  );
 }
 
 // --- macOS Keychain backend ---
 
-const keychainBackend: CredentialBackend = {
-  async readToken() {
-    return (await readKeychain(KEYCHAIN_SERVICE, 'token')) ?? (await readKeychain(KEYCHAIN_LEGACY_SERVICE, process.env.USER ?? 'agent-presence'));
-  },
+function createKeychainBackend(service: string, legacyService: string): CredentialBackend {
+  return {
+    async readToken() {
+      return (
+        (await readKeychain(service, 'token')) ??
+        (await readKeychain(legacyService, process.env.USER ?? 'agent-presence'))
+      );
+    },
 
-  async readSlotId() {
-    return readKeychain(KEYCHAIN_SERVICE, 'slotId');
-  },
+    async readSlotId() {
+      return readKeychain(service, 'slotId');
+    },
 
-  async writeCredential(credential) {
-    await writeKeychain(KEYCHAIN_SERVICE, 'token', credential.token);
-    await writeKeychain(KEYCHAIN_SERVICE, 'slotId', credential.slotId);
-  },
+    async writeCredential(credential) {
+      await writeKeychain(service, 'token', credential.token);
+      await writeKeychain(service, 'slotId', credential.slotId);
+    },
 
-  async deleteCredential() {
-    await Promise.all([
-      deleteKeychain(KEYCHAIN_SERVICE, 'token'),
-      deleteKeychain(KEYCHAIN_SERVICE, 'slotId'),
-      deleteKeychain(KEYCHAIN_LEGACY_SERVICE, process.env.USER ?? 'agent-presence')
-    ]);
-  }
-};
+    async deleteCredential() {
+      await Promise.all([
+        deleteKeychain(service, 'token'),
+        deleteKeychain(service, 'slotId'),
+        deleteKeychain(legacyService, process.env.USER ?? 'agent-presence')
+      ]);
+    }
+  };
+}
 
 async function readKeychain(service: string, account: string): Promise<string | undefined> {
   try {
@@ -115,29 +152,31 @@ async function deleteKeychain(service: string, account: string): Promise<void> {
 
 // --- Linux libsecret backend ---
 
-const secretToolBackend: CredentialBackend = {
-  async readToken() {
-    await ensureSecretTool();
-    return readSecretTool('token');
-  },
+function createSecretToolBackend(service: string): CredentialBackend {
+  return {
+    async readToken() {
+      await ensureSecretTool();
+      return readSecretTool(service, 'token');
+    },
 
-  async readSlotId() {
-    await ensureSecretTool();
-    return readSecretTool('slotId');
-  },
+    async readSlotId() {
+      await ensureSecretTool();
+      return readSecretTool(service, 'slotId');
+    },
 
-  async writeCredential(credential) {
-    await ensureSecretTool();
-    await writeSecretTool('token', credential.token);
-    await writeSecretTool('slotId', credential.slotId);
-  },
+    async writeCredential(credential) {
+      await ensureSecretTool();
+      await writeSecretTool(service, 'token', credential.token);
+      await writeSecretTool(service, 'slotId', credential.slotId);
+    },
 
-  async deleteCredential() {
-    await ensureSecretTool();
-    await deleteSecretTool('token');
-    await deleteSecretTool('slotId');
-  }
-};
+    async deleteCredential() {
+      await ensureSecretTool();
+      await deleteSecretTool(service, 'token');
+      await deleteSecretTool(service, 'slotId');
+    }
+  };
+}
 
 async function ensureSecretTool(): Promise<void> {
   if (!(await hasSecretTool())) {
@@ -154,9 +193,9 @@ async function hasSecretTool(): Promise<boolean> {
   }
 }
 
-async function readSecretTool(account: string): Promise<string | undefined> {
+async function readSecretTool(service: string, account: string): Promise<string | undefined> {
   try {
-    const { stdout } = await execFileAsync('secret-tool', ['lookup', 'service', LIBSECRET_SERVICE, 'account', account], {
+    const { stdout } = await execFileAsync('secret-tool', ['lookup', 'service', service, 'account', account], {
       encoding: 'utf8'
     });
     const value = stdout.trim();
@@ -166,11 +205,11 @@ async function readSecretTool(account: string): Promise<string | undefined> {
   }
 }
 
-async function writeSecretTool(account: string, value: string): Promise<void> {
+async function writeSecretTool(service: string, account: string, value: string): Promise<void> {
   // execFile supports `input` at runtime but @types/node excludes it from overloads.
-  await execFileAsync('secret-tool', ['store', '--label', LIBSECRET_SERVICE, 'service', LIBSECRET_SERVICE, 'account', account], { input: value } as any);
+  await execFileAsync('secret-tool', ['store', '--label', service, 'service', service, 'account', account], { input: value } as any);
 }
 
-async function deleteSecretTool(account: string): Promise<void> {
-  await execFileAsync('secret-tool', ['clear', 'service', LIBSECRET_SERVICE, 'account', account]).catch(() => undefined);
+async function deleteSecretTool(service: string, account: string): Promise<void> {
+  await execFileAsync('secret-tool', ['clear', 'service', service, 'account', account]).catch(() => undefined);
 }
