@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createEmptyState, applyAgentEvent } from '../src/state.js';
 import { markSlotSyncSuccess, prepareSlotSync, rollbackSlotSyncClaim, SlotRateLimitError, syncSlot } from '../src/render.js';
-import { syncExplicitSlotValueWithStateLock } from '../src/cli/slot-sync.js';
+import { syncExplicitSlotValueWithStateLock, syncRenderedSlotWithStateLock } from '../src/cli/slot-sync.js';
 
 let tempDir: string | undefined;
 
@@ -179,6 +179,44 @@ describe('slot sync debounce', () => {
       valueLength: 5,
       retryAfterMs: 60_000
     });
+  });
+
+  it('persists local session state before provider IO and keeps it when provider IO fails', async () => {
+    const { statePath } = await useTempFiles();
+    const updateSlot = vi.fn().mockRejectedValue(new Error('provider unavailable'));
+
+    await expect(
+      syncRenderedSlotWithStateLock(
+        statePath,
+        {
+          force: true,
+          now: 62_000,
+          debounceMs: 60_000,
+          ttlMs: 180_000
+        },
+        updateSlot,
+        (state) => {
+          applyAgentEvent(state, {
+            source: 'codex',
+            event: 'UserPromptSubmit',
+            sessionId: 'thread-1',
+            now: 62_000,
+            project: '/repo'
+          });
+        }
+      )
+    ).rejects.toThrow('provider unavailable');
+
+    const persisted = JSON.parse(await readFile(statePath, 'utf8'));
+    expect(persisted.sessions['thread-1']).toMatchObject({
+      id: 'thread-1',
+      source: 'codex',
+      status: 'running',
+      startedAt: 62_000,
+      lastHeartbeatAt: 62_000,
+      project: '/repo'
+    });
+    expect(persisted.lastSlotUpdateAt).toBe(0);
   });
 });
 
