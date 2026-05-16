@@ -31,8 +31,6 @@ export async function hook(args: string[]): Promise<void> {
     }
 
     const config = await loadConfig();
-    const credential = await readCredential(configSlotId(config));
-    const provider = new LGaryYangProvider(providerBaseUrl(config), credential);
     const statePath = getStatePath();
     const now = Date.now();
 
@@ -45,7 +43,12 @@ export async function hook(args: string[]): Promise<void> {
         ttlMs: ttlMs(config),
         renderTemplates: renderTemplates(config)
       },
-      (value) => provider.updateSlot(value),
+      async (value) => {
+        // Keep Keychain/provider IO after the local state mutation has been persisted.
+        const credential = await readCredential(configSlotId(config));
+        const provider = new LGaryYangProvider(providerBaseUrl(config), credential);
+        await provider.updateSlot(value);
+      },
       (state) => {
         applyAgentEvent(state, {
           source,

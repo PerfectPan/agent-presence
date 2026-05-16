@@ -137,4 +137,37 @@ describe('agent state lifecycle', () => {
       lastHeartbeatAt: 2_000
     });
   });
+
+  it('reopens a finished session when a new user prompt arrives in the same agent session', () => {
+    const state = createEmptyState();
+
+    applyAgentEvent(state, {
+      source: 'claude',
+      event: 'SessionStart',
+      sessionId: 'claude-session-1',
+      now: 1_000,
+      project: '/repo'
+    });
+    applyAgentEvent(state, {
+      source: 'claude',
+      event: 'Stop',
+      sessionId: 'claude-session-1',
+      now: 2_000
+    });
+    applyAgentEvent(state, {
+      source: 'claude',
+      event: 'UserPromptSubmit',
+      sessionId: 'claude-session-1',
+      now: 5_000
+    });
+
+    expect(state.sessions['claude-session-1']).toMatchObject({
+      status: 'running',
+      startedAt: 5_000,
+      lastHeartbeatAt: 5_000,
+      finishedAt: undefined,
+      project: '/repo'
+    });
+    expect(getActiveSessions(state, 5_000, 180_000).map((session) => session.id)).toEqual(['claude-session-1']);
+  });
 });

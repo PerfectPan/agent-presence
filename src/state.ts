@@ -108,7 +108,7 @@ export function applyAgentEvent(state: PresenceState, input: AgentEventInput): P
     return state;
   }
 
-  if (event === 'heartbeat' && existing && existing.status !== 'running') {
+  if (event === 'heartbeat' && existing && existing.status !== 'running' && !isReopenHeartbeat(input.event)) {
     if (input.project && !existing.project) {
       existing.project = input.project;
     }
@@ -120,13 +120,17 @@ export function applyAgentEvent(state: PresenceState, input: AgentEventInput): P
     source: input.source,
     kind: 'coding',
     status: 'running',
-    startedAt: event === 'start' || !existing ? input.now : existing.startedAt,
+    startedAt: event === 'start' || !existing || existing.status !== 'running' ? input.now : existing.startedAt,
     lastHeartbeatAt: input.now,
     finishedAt: undefined,
     project: input.project ?? existing?.project
   };
 
   return state;
+}
+
+function isReopenHeartbeat(event: string): boolean {
+  return event === 'UserPromptSubmit';
 }
 
 function findFallbackSessionForFinish(state: PresenceState, input: AgentEventInput): AgentSession | undefined {
