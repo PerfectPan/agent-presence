@@ -28,7 +28,10 @@ jobs:
 
       - name: Install libsecret (Linux)
         if: runner.os == 'Linux'
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq libsecret-tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq gnome-keyring dbus-x11 libsecret-tools
+          echo "secret-tool path:" && which secret-tool || echo "  NOT FOUND"
 
       - run: pnpm install --frozen-lockfile --ignore-scripts
 
