@@ -16,6 +16,7 @@ description: Use when installing, configuring, verifying, or debugging @rivus/ag
 - The count differs from visible terminal windows.
 - Laptop sleep, lid close, or wake behavior needs verification.
 - Credentials, slot URL, or `l.garyyang.work` provider state needs checking.
+- Linux libsecret or watcher-skip behavior needs verification.
 
 ## Quick Commands
 
@@ -93,17 +94,19 @@ sleep/lid close/screen sleep/wake                    -> reset to 0
    sed -n '1,220p' ~/.config/opencode/opencode.json
    ```
 
-5. Verify power watcher:
+5. Verify platform watcher:
 
    ```bash
    launchctl print gui/$(id -u)/work.rivus.agent-presence.power-watch
    pgrep -fl 'agent-presence|power-watch|swift'
+   # Linux intentionally skips the watcher; TTL pruning handles expiry.
    ```
 
 ## Common Findings
 
 - Remote stale but local value correct: provider debounce or 429; wait a minute and run `agent-presence update --force`.
 - Setup asks for login unexpectedly: `setup` should start QR login only when no credential exists. If `status` shows `hasToken: true`, inspect Keychain and setup arguments; use `--skip-login` for hook-only repair.
+- Linux credential errors usually mean `secret-tool` or the system keyring is unavailable; env vars still work for automation.
 - Visible Claude window not counted: it likely emitted `Stop` and is waiting for input, which is not "working".
 - Extra Codex counted: another Codex session is still sending heartbeats; inspect `project` fields in `agent-presence status`.
 - Sleep did not clear immediately: network or provider rate limit may have blocked the sleep-time reset; wake should reset again.

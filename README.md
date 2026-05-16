@@ -16,7 +16,9 @@ Codex / Claude Code / Gemini CLI / opencode hooks
 
 ## Install
 
-Agent Presence currently supports macOS only. The CLI and installer scripts detect unsupported platforms and exit with a clear error; Windows is not supported yet because credential storage, hook installation paths, and power-event reset are macOS-specific in the MVP.
+Agent Presence currently supports macOS and Linux. The CLI and installer scripts detect unsupported platforms and exit with a clear error; Windows is not supported yet.
+
+macOS uses Keychain for credentials and installs a LaunchAgent power watcher. Linux uses libsecret through `secret-tool` for credentials and skips the power watcher because systemd user services and logind signals are not reliable across distributions; TTL pruning still clears expired sessions.
 
 From the package registry:
 
@@ -58,7 +60,7 @@ For the implementation shape and trust boundaries, see [docs/architecture.md](do
 
 1. Run `agent-presence setup --provider feishu-signature`.
 2. Scan the QR code if login is needed.
-3. Let setup install Codex, Claude Code, Gemini CLI, opencode, and macOS power watchers.
+3. Let setup install Codex, Claude Code, Gemini CLI, opencode, and platform-specific watchers where supported.
 4. Run `agent-presence url --provider feishu-signature`.
 5. Paste that URL into Feishu profile signature as a custom link preview.
 
@@ -69,8 +71,8 @@ npx --yes --registry=https://registry.npmjs.org @rivus/agent-presence@latest set
 npx --yes --registry=https://registry.npmjs.org @rivus/agent-presence@latest url --provider feishu-signature
 ```
 
-`setup` installs local hooks and power watchers. It keeps credential material in Keychain and never embeds credentials in the Feishu signature URL.
-`setup` starts QR login only when no credential is available. Rerunning setup with an existing Keychain credential will not require another QR scan. Use `agent-presence setup --skip-login --provider feishu-signature` to refresh hooks without login checks, or `agent-presence setup --login --provider feishu-signature` to force a fresh login.
+`setup` installs local hooks and platform-specific watchers where supported. It keeps credential material in Keychain on macOS, libsecret on Linux, or explicit environment variables, and never embeds credentials in the Feishu signature URL.
+`setup` starts QR login only when no credential is available. Rerunning setup with an existing credential will not require another QR scan. Use `agent-presence setup --skip-login --provider feishu-signature` to refresh hooks without login checks, or `agent-presence setup --login --provider feishu-signature` to force a fresh login.
 When setup is run from `npx`, installed hooks use the package's fixed published version instead of a floating `latest` or a global `agent-presence` binary.
 Local config, state, logs, and future managed runtimes live under `~/.agent-presence/`. If setup finds an older `~/.codex/agent-signature/` directory with known files that are still missing from the new home, it asks before copying them. Known legacy files are removed from the old home after they exist in `~/.agent-presence`; unknown files are left untouched.
 
@@ -174,7 +176,7 @@ Legacy `AGENT_SIGNATURE_*` environment names are still accepted.
 - Claude Code hooks in `~/.claude/settings.json`
 - Gemini CLI hooks in `~/.gemini/settings.json`
 - opencode plugin in `~/.config/opencode/plugins/agent-presence.js`
-- macOS LaunchAgent power watcher
+- macOS LaunchAgent power watcher; Linux setup skips the watcher and relies on TTL pruning
 
 The power watcher listens for lid close, system sleep, screen sleep, wake, shutdown, reboot, and logout. Each event runs:
 
@@ -182,7 +184,7 @@ The power watcher listens for lid close, system sleep, screen sleep, wake, shutd
 agent-presence reset --force --silent
 ```
 
-This is best effort. Sudden power loss, forced shutdown, lost network, or provider rate limits can delay the remote slot update. Wake events reset again to pull stale remote state back to 0.
+The watcher is best effort on macOS. Sudden power loss, forced shutdown, lost network, or provider rate limits can delay the remote slot update. Wake events reset again to pull stale remote state back to 0. On Linux, setup prints a watcher-skip message and the 3-minute TTL clears expired sessions.
 
 To remove local hooks, the opencode plugin, and the macOS power watcher:
 
@@ -190,7 +192,7 @@ To remove local hooks, the opencode plugin, and the macOS power watcher:
 agent-presence uninstall
 ```
 
-The default uninstall intentionally keeps Keychain credentials, local state, and provider config so a later `agent-presence setup --skip-login` can reinstall hooks without another QR scan.
+The default uninstall intentionally keeps credentials, local state, and provider config so a later `agent-presence setup --skip-login` can reinstall hooks without another QR scan.
 
 To also clear login credentials and the configured slot id:
 
@@ -204,7 +206,7 @@ To clear hooks, credentials, slot config, and local state:
 agent-presence uninstall --all
 ```
 
-Equivalent manual cleanup:
+Equivalent macOS manual cleanup:
 
 ```bash
 security delete-generic-password -s 'agent-signature:l-garyyang' -a token 2>/dev/null || true
@@ -245,7 +247,7 @@ agent-presence config provider feishu-signature \
   --target-url "https://example.com"
 ```
 
-Credentials are stored in Keychain by default. Env overrides:
+Credentials are stored in Keychain on macOS and libsecret on Linux by default. Env overrides:
 
 ```bash
 export AGENT_PRESENCE_TOKEN=...

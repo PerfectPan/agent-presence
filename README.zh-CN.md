@@ -16,7 +16,9 @@ Codex / Claude Code / Gemini CLI / opencode hooks
 
 ## 安装
 
-Agent Presence 当前支持 macOS。CLI 和安装脚本会检测不支持的平台并给出明确错误；Windows 暂不支持。
+Agent Presence 当前支持 macOS 和 Linux。CLI 和安装脚本会检测不支持的平台并给出明确错误；Windows 暂不支持。
+
+macOS 使用 Keychain 存凭据，并安装 LaunchAgent 电源 watcher。Linux 使用 `secret-tool` / libsecret 存凭据；由于 systemd user service 和 logind 信号在不同发行版上不够稳定，Linux 会跳过电源 watcher，依赖 TTL 清理过期 session。
 
 从包仓库全局安装：
 
@@ -55,17 +57,18 @@ agent-presence setup --provider feishu-signature
 
 1. 运行 `agent-presence setup --provider feishu-signature`。
 2. 如果需要登录，扫码完成授权。
-3. 让 setup 安装 Codex、Claude Code、Gemini CLI、opencode hook 和 macOS 电源 watcher。
+3. 让 setup 安装 Codex、Claude Code、Gemini CLI、opencode hook，以及当前平台支持的 watcher。
 4. 运行 `agent-presence url --provider feishu-signature`。
 5. 把输出 URL 粘贴到飞书个人资料签名的自定义链接预览中。
 
-`setup` 会把凭据放在 Keychain 中，不会把凭据写进飞书签名 URL。本地配置、状态、日志和未来托管运行时默认在 `~/.agent-presence/`。
+`setup` 会把凭据放在 macOS Keychain、Linux libsecret，或显式环境变量中，不会把凭据写进飞书签名 URL。本地配置、状态、日志和未来托管运行时默认在 `~/.agent-presence/`。
 
 ## 常用命令
 
 ```bash
 agent-presence login --provider feishu-signature
 agent-presence setup --provider feishu-signature
+agent-presence setup --provider feishu-signature --login
 agent-presence setup --provider feishu-signature --skip-login
 agent-presence setup --provider feishu-signature --no-hooks
 agent-presence setup --provider feishu-signature --hook-command absolute
@@ -124,15 +127,15 @@ N -> N 个 AI 牛马正在搬砖 | codex W · claude X · gemini Y · opencode Z
 - `~/.claude/settings.json` 里的 Claude Code hooks
 - `~/.gemini/settings.json` 里的 Gemini CLI hooks
 - `~/.config/opencode/plugins/agent-presence.js` 里的 opencode plugin
-- macOS LaunchAgent power watcher
+- macOS LaunchAgent power watcher；Linux 会跳过 watcher，并依赖 TTL 清理过期 session
 
-power watcher 会监听合盖、系统睡眠、屏幕睡眠、唤醒、关机、重启和登出，每次执行：
+macOS power watcher 会监听合盖、系统睡眠、屏幕睡眠、唤醒、关机、重启和登出，每次执行：
 
 ```bash
 agent-presence reset --force --silent
 ```
 
-突然断电、强制关机、网络异常或 provider 限频可能延迟远端 slot 更新；唤醒时会再次 reset，把远端状态拉回 0。
+突然断电、强制关机、网络异常或 provider 限频可能延迟远端 slot 更新；macOS 唤醒时会再次 reset，把远端状态拉回 0。Linux setup 会打印 watcher skip 信息，3 分钟 TTL 会清理过期 session。
 
 卸载本地 hook、opencode plugin 和 macOS power watcher：
 
@@ -140,7 +143,7 @@ agent-presence reset --force --silent
 agent-presence uninstall
 ```
 
-默认卸载会保留 Keychain 凭据、本地状态和 provider 配置，后续可以用 `agent-presence setup --skip-login` 重新安装而不重新扫码。
+默认卸载会保留凭据、本地状态和 provider 配置，后续可以用 `agent-presence setup --skip-login` 重新安装而不重新扫码。
 
 同时清理登录凭据和 slot 配置：
 
@@ -171,7 +174,7 @@ URL 只包含编码后的 slot helper，不包含凭据：
 https://l.garyyang.work/?t2=<base62({{slot id="slot_xxx"}})>
 ```
 
-凭据默认存在 Keychain，也可以用环境变量覆盖：
+凭据默认存在 macOS Keychain 或 Linux libsecret，也可以用环境变量覆盖：
 
 ```bash
 export AGENT_PRESENCE_TOKEN=...
