@@ -228,7 +228,7 @@ Repository: agent-presence
 Workflow filename: publish.yml
 ```
 
-如果新包还不存在，先用短期 npm granular token 做一次 bootstrap publish。包页面出现后，立刻在 npm package settings 里配置 Trusted Publishing，删除 GitHub `NPM_TOKEN` secret，并吊销临时 npm token。
+`.github/workflows/publish.yml` 只走 Trusted Publishing：workflow 授权 `id-token: write`，不常驻传入 `NPM_TOKEN`。如果新包还不存在，先在常态发布链路之外用短期 npm granular token 做一次 bootstrap publish，例如临时的一次性 workflow 改动，或在干净本地 checkout 里先跑 `pnpm pack --dry-run` 再显式发布。包页面出现后，立刻在 npm package settings 里配置 Trusted Publishing，删除任何临时 workflow/token 改动，并吊销临时 npm token。
 
 `changesets/action` 同时负责创建 release PR 和发布包。发布成功后，它默认会创建对应版本的 GitHub Release，所以仓库的 Releases 页面会出现同一个版本记录。
 

@@ -336,17 +336,16 @@ Repository: agent-presence
 Workflow filename: publish.yml
 ```
 
-The release workflow grants `id-token: write`, uses Node 24, and normally publishes without a long-lived npm write token. npm automatically generates provenance for public packages published through trusted publishing from public GitHub repositories.
+The release workflow grants `id-token: write`, uses Node 24, and does not pass a long-lived npm write token. npm automatically generates provenance for public packages published through trusted publishing from public GitHub repositories.
 
 `changesets/action` owns both release PR creation and package publishing. When publishing succeeds, its default `createGithubReleases` behavior creates a GitHub Release for the published package version, so the repository Releases page shows the same version that was published to npm.
 
-If a package does not exist on npm yet, Trusted Publishing cannot be configured from its package page. Bootstrap that package once with a temporary granular npm token:
+If a package does not exist on npm yet, Trusted Publishing cannot be configured from its package page. Keep the committed release workflow tokenless, and bootstrap the package once with a temporary granular npm token outside the normal trusted-publishing path:
 
 1. Create a short-lived npm granular access token with publish access to `@rivus/agent-presence` or the `@rivus` scope.
-2. Add it to this GitHub repository as `NPM_TOKEN`.
-3. Merge the release PR created by Changesets.
-4. Confirm `@rivus/agent-presence` exists on npm.
-5. Configure npm Trusted Publishing from the package page:
+2. Run one explicit bootstrap publish using that token, either from a temporary one-off workflow change or from a clean local checkout after `pnpm pack --dry-run`.
+3. Confirm `@rivus/agent-presence` exists on npm.
+4. Configure npm Trusted Publishing from the package page:
 
 ```text
 npmjs.com -> Packages -> @rivus/agent-presence -> Settings -> Trusted publishing
@@ -355,7 +354,7 @@ Repository: agent-presence
 Workflow filename: publish.yml
 ```
 
-6. Delete the GitHub `NPM_TOKEN` secret and revoke the npm token.
+5. Remove any temporary workflow/token changes and revoke the npm token.
 
 Release flow:
 
