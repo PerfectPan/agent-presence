@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.2
+
+### Patch Changes
+
+- a826641: Format diagnostic logs as China-time logfmt lines.
+
 ## 0.3.1
 
 ### Patch Changes
