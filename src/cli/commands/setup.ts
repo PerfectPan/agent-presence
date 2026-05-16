@@ -1,7 +1,8 @@
 import { configSlotId, loadConfig, providerId } from '../../config.js';
 import { cleanupMigratedLegacyHome, hasLegacyHomeToMigrate, migrateLegacyHome } from '../../migration.js';
+import { isMacOS } from '../../platform.js';
 import { readCredential } from '../../secret.js';
-import { runSetupScripts } from '../../setup.js';
+import { LINUX_WATCHER_SKIP_MESSAGE, runSetupScripts } from '../../setup.js';
 import { hasFlag, optionValue } from '../args.js';
 import { hasCredential } from '../credential.js';
 import { createSpinner, finishOutro, promptConfirm, showInfo, showNote, startIntro } from '../ui.js';
@@ -47,6 +48,9 @@ export async function setup(args: string[]): Promise<void> {
     setupSpinner.stop('Installers completed');
     for (const result of results) {
       showInfo(`setup installed: ${result.scriptName}`);
+    }
+    if (!isMacOS()) {
+      showInfo(LINUX_WATCHER_SKIP_MESSAGE);
     }
     showNote(
       'Codex may require you to approve the updated Agent Presence hooks in Codex settings before they run.',

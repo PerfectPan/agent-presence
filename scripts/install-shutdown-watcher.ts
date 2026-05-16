@@ -5,14 +5,14 @@ import { promisify } from 'node:util';
 import { dirname, join } from 'node:path';
 import { homedir } from 'node:os';
 import { buildPowerEventWatcherSwift, buildShutdownWatcherPlist, buildShutdownWatcherScript } from '../src/installers.js';
-import { assertSupportedPlatform } from '../src/platform.js';
+import { assertMacOS } from '../src/platform.js';
 
 const execFileAsync = promisify(execFile);
 const LABEL = 'work.rivus.agent-presence.power-watch';
 const LEGACY_LABEL = 'work.garyyang.agent-signature.shutdown-watch';
 
 async function main(): Promise<void> {
-  assertSupportedPlatform();
+  assertMacOS();
   const home = homedir();
   const scriptPath =
     process.env.AGENT_PRESENCE_POWER_WATCHER_SCRIPT ??

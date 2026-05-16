@@ -28,7 +28,7 @@ The interactive path can use prompts and rich output. The hook path must be fast
 - Store credentials only in Keychain or environment variables.
 - Make hooks safe to run inside coding-agent lifecycles.
 - Recover from abnormal exits with TTL and power-event reset hooks.
-- Support the macOS local-agent environment first.
+- Support the macOS local-agent environment first, with Linux as a supported platform.
 - Let `npx @rivus/agent-presence setup` be the easy install entrypoint without making installed hooks depend on an ephemeral `npx` cache.
 - Make setup and uninstall repeatable: rerunning either command should not duplicate hooks, lose user configuration, or leave half-written managed files.
 
@@ -37,7 +37,7 @@ The interactive path can use prompts and rich output. The hook path must be fast
 - Process scanning or terminal-window detection.
 - A generic status dashboard.
 - Server-side session tracking.
-- Windows or Linux runtime support in the MVP.
+- Windows runtime support.
 - Full provider abstraction beyond the first Feishu signature slot provider.
 
 ## Runtime Components
@@ -61,7 +61,7 @@ The home directory contains local state, config, and logs. It is intentionally o
   bin/                     stable hook shims, when setup materializes them
 ```
 
-Credentials are not stored in this directory. They live in Keychain or environment variables.
+Credentials are not stored in this directory. They live in Keychain (macOS), libsecret (Linux), or environment variables.
 
 When setup finds a legacy `~/.codex/agent-signature` directory, it asks before copying known local files that are still missing from `~/.agent-presence`. Existing destination files are never overwritten. Once a known legacy file exists in the new home, setup removes the old copy from `~/.codex/agent-signature`; unknown files are left untouched. The legacy `~/.codex/agent-signature/config.json` path is still read when the new config file does not exist, so a skipped migration does not break first-run setup. New writes and logs use `~/.agent-presence` unless `AGENT_PRESENCE_HOME`, `AGENT_SIGNATURE_HOME`, or file-specific environment variables override the paths.
 
@@ -251,6 +251,29 @@ https://l.garyyang.work/?t2=<base62({{slot id="slot_xxx"}})>
 
 The URL references the slot helper only. It must not contain tokens, local state, or machine-specific paths.
 
+### Linux Credential Storage
+
+On Linux, the priority order for credential resolution is:
+
+1. **Environment variables** — same cross-platform env vars as macOS (`AGENT_PRESENCE_TOKEN`, `AGENT_PRESENCE_SLOT_ID`, etc.).
+2. **libsecret** (`secret-tool` CLI) — stores credentials in the system keyring (e.g., GNOME Keyring, KDE Wallet). Uses `service=agent-presence`, `account=token` and `account=slotId` attributes.
+3. **Reject** — if neither env vars nor `secret-tool` is available, the CLI bails with a clear error instructing the user to install `gnome-keyring` or `libsecret-tools`.
+
+Credentials are never written to `config.json`.
+
+### Linux Power Watcher
+
+On Linux, agent-presence skips the power watcher. Systemd user services and logind D-Bus signals are not reliably available across distributions for the suspend/resume/lock/unlock lifecycle that the macOS LaunchAgent covers.
+
+The setup command outputs:
+
+```
+agent-presence: skipping power watcher on linux
+  (no reliable systemd/logind path); TTL pruning still covers expired sessions.
+```
+
+TTL pruning (3-minute default) handles most failure modes (agent crashes, hard kills, terminal closures). A future Linux watcher is documented in `rfcs/linux-watcher.md`.
+
 ### Setup And Idempotency
 
 `src/setup.ts` and `src/installers.ts` coordinate first-run setup:
@@ -260,7 +283,8 @@ The URL references the slot helper only. It must not contain tokens, local state
 - install Codex hooks
 - install Claude Code hooks
 - install the opencode plugin
-- install the macOS power watcher
+- install Gemini CLI hooks
+- install the macOS power watcher (skipped on Linux; TTL pruning handles expired sessions)
 - force an initial slot sync
 
 Each installer is idempotent. Existing unrelated user configuration is preserved.
@@ -274,7 +298,7 @@ Idempotency is part of the installer contract, not a nice-to-have:
 | Codex hooks | Remove prior managed Agent Presence hooks, add exactly one current managed group per event, then remind the user to approve changed hooks in Codex settings. |
 | Claude Code hooks | Remove prior managed Agent Presence hooks, add exactly one current managed group per event. |
 | opencode plugin | Rewrite the managed plugin file from the current package; do not append duplicate plugin registrations. |
-| Power watcher | Replace the managed LaunchAgent plist and script, then reload the same label. |
+| Power watcher | On macOS: replace the managed LaunchAgent plist and script, then reload the same label. On Linux: skipped with a message; TTL pruning covers expired sessions. |
 | Managed runtime | Install into a staging directory first, then atomically switch the active runtime or shim target. |
 | Legacy home migration | During interactive setup, ask before copying known files from `~/.codex/agent-signature` to `~/.agent-presence`; never overwrite existing destination files; remove known legacy files after the new home has them; keep unknown files. |
 | State | Preserve local session state during setup; only `reset` or `uninstall --all` clears it. |
@@ -427,17 +451,19 @@ remote value is wrong but local is correct      -> provider sync path bug or del
 | Agent exits without a finish hook | Session expires after TTL. |
 | Hook command fails | Coding agent continues; Codex receives `{}`. |
 | Provider returns 429 | Local state remains correct; next non-debounced update can sync. |
-| Laptop sleeps or lid closes | Power watcher resets local and remote state to 0 when possible. |
-| Sudden power loss | Wake reset and TTL clear stale sessions. |
+| Laptop sleeps or lid closes | On macOS, power watcher resets local and remote state to 0 when possible. On Linux, TTL pruning clears sessions after expiry. |
+| Sudden power loss | Wake reset (macOS) and TTL clear stale sessions. |
 | Keychain is unavailable | Explicit environment variables can supply token and slot id. |
+| Linux has no secret-tool | Credential operations bail with a clear install instruction; env vars still work. |
 | `npx` cache disappears after setup | Managed hooks keep working because they target the stable runtime or shim. |
 | Setup is interrupted halfway | The previous runtime/config remains usable; the next setup run can repair managed files. |
 | Codex hooks are present but not trusted | Setup prints a reminder; approve the managed hooks in Codex settings. |
 
 ## Security Boundaries
 
-- Credentials live in Keychain or environment variables.
-- Credentials are not written to git, the signature URL, logs, or hook files.
+- Credentials live in Keychain (macOS), libsecret (Linux), or environment variables.
+- Credentials are not written to git, the signature URL, logs, hook files, or local config files.
+- On Linux, if neither environment variables nor libsecret (secret-tool) is available, credential operations fail with a clear error instead of falling back to plaintext storage.
 - Hooks use lifecycle events instead of process scanning.
 - The provider writes only slot value changes, not Feishu profile fields.
 - Codex hooks are pass-through and bounded by agent hook timeouts.
