@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.3.0
+
+### Minor Changes
+
+- 67225e2: Add Linux platform support:
+  - Hook installers, status, update, reset, url, and config commands now work on Linux
+  - Credentials stored via secret-tool (libsecret) with env var fallback; plaintext config fallback is rejected with a clear error message
+  - Power watcher skipped on Linux (TTL pruning covers expired sessions); RFC documents the rationale
+  - Credential storage abstracted behind a `CredentialBackend` interface (`KeychainBackend` / `SecretToolBackend`)
+  - CI runs on both macOS and Linux with OS-specific integration tests
+
+### Patch Changes
+
+- 150c787: Improve Claude hook session detection from transcript paths, add redacted hook diagnostics for troubleshooting missing session ids, log each slot update attempt/result without storing rendered signature text, and schedule a deferred flush when a rendered update is debounced or rate-limited.
+
 ## 0.2.3
 
 ### Patch Changes
