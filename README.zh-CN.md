@@ -227,11 +227,14 @@ Workflow filename: publish.yml
 
 如果新包还不存在，先用短期 npm granular token 做一次 bootstrap publish。包页面出现后，立刻在 npm package settings 里配置 Trusted Publishing，删除 GitHub `NPM_TOKEN` secret，并吊销临时 npm token。
 
+`changesets/action` 同时负责创建 release PR 和发布包。发布成功后，它默认会创建对应版本的 GitHub Release，所以仓库的 Releases 页面会出现同一个版本记录。
+
 发布流程：
 
 1. 合并带 `.changeset/*.md` 的功能 PR。
 2. `.github/workflows/publish.yml` 创建或更新 `chore: release package` PR。
 3. 审核并合并 release PR。
-4. 同一个 workflow 通过 Changesets 和 npm Trusted Publishing 发布到 npm。
+4. `changesets/action` 通过 Changesets 和 npm Trusted Publishing 发布到 npm。
+5. 发布成功后，`changesets/action` 创建对应的 GitHub Release。
 
 更多实现边界见 [docs/architecture.md](docs/architecture.md)。可复用的操作员说明见 [skills/agent-presence/SKILL.md](skills/agent-presence/SKILL.md)。

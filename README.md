@@ -334,7 +334,9 @@ Repository: agent-presence
 Workflow filename: publish.yml
 ```
 
-The release workflow grants `id-token: write`, uses Node 24, and publishes without a long-lived npm write token. npm automatically generates provenance for public packages published through trusted publishing from public GitHub repositories.
+The release workflow grants `id-token: write`, uses Node 24, and normally publishes without a long-lived npm write token. npm automatically generates provenance for public packages published through trusted publishing from public GitHub repositories.
+
+`changesets/action` owns both release PR creation and package publishing. When publishing succeeds, its default `createGithubReleases` behavior creates a GitHub Release for the published package version, so the repository Releases page shows the same version that was published to npm.
 
 If a package does not exist on npm yet, Trusted Publishing cannot be configured from its package page. Bootstrap that package once with a temporary granular npm token:
 
@@ -358,7 +360,8 @@ Release flow:
 1. Merge feature PRs with `.changeset/*.md` files.
 2. `.github/workflows/publish.yml` opens or updates a `chore: release package` PR.
 3. Review and merge that release PR.
-4. The same workflow publishes to npm through Changesets and npm Trusted Publishing.
+4. `changesets/action` publishes to npm through Changesets and npm Trusted Publishing.
+5. After a successful publish, `changesets/action` creates the matching GitHub Release.
 
 ## Agent Skill
 

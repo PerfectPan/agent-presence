@@ -38,12 +38,10 @@ jobs:
         uses: changesets/action@v1
         with:
           version: pnpm run version
+          publish: pnpm run release
           title: 'chore: release package'
           commit: 'chore: release package'
           commitMode: github-api
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Publish to npm
-        if: steps.changesets.outputs.hasChangesets == 'false'
-        run: pnpm run release
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
