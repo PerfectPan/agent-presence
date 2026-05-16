@@ -11,6 +11,7 @@ import { resolveSignatureUrl } from './url.js';
 
 export async function setup(args: string[]): Promise<void> {
   const skipLogin = hasFlag(args, '--skip-login') || hasFlag(args, '--hooks-only');
+  const forceLogin = hasFlag(args, '--login') && !skipLogin;
   const skipHooks = hasFlag(args, '--no-hooks');
   const hookCommandMode = optionValue(args, '--hook-command');
 
@@ -37,7 +38,7 @@ export async function setup(args: string[]): Promise<void> {
   const config = await loadConfig();
   const activeProvider = providerId(config, optionValue(args, '--provider'));
 
-  if (!skipLogin && !(await hasCredential())) {
+  if (!skipLogin && (forceLogin || !(await hasCredential()))) {
     await login(['--provider', activeProvider]);
   }
 
@@ -62,6 +63,7 @@ export async function setup(args: string[]): Promise<void> {
   if (credential?.token && credential.slotId) {
     showNote(await resolveSignatureUrl(['--provider', activeProvider]), 'Signature URL');
   } else {
+    showInfo('login: missing; run `agent-presence login --provider feishu-signature` to enable slot updates');
     showInfo('signature url: unavailable until `agent-presence login` succeeds');
   }
 

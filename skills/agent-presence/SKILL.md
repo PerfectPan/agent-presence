@@ -102,6 +102,7 @@ sleep/lid close/screen sleep/wake                    -> reset to 0
 ## Common Findings
 
 - Remote stale but local value correct: provider debounce or 429; wait a minute and run `agent-presence update --force`.
+- Setup asks for login unexpectedly: `setup` should start QR login only when no credential exists. If `status` shows `hasToken: true`, inspect Keychain and setup arguments; use `--skip-login` for hook-only repair.
 - Visible Claude window not counted: it likely emitted `Stop` and is waiting for input, which is not "working".
 - Extra Codex counted: another Codex session is still sending heartbeats; inspect `project` fields in `agent-presence status`.
 - Sleep did not clear immediately: network or provider rate limit may have blocked the sleep-time reset; wake should reset again.
