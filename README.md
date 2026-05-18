@@ -126,9 +126,12 @@ This project counts agents that are actually working, not merely open terminal w
 SessionStart / UserPromptSubmit / PreToolUse / PostToolUse -> running / heartbeat
 Stop / SessionEnd / session.idle                              -> finished
 No heartbeat for 3 minutes                                    -> expired
+Expired + later live heartbeat                                -> running again
 Laptop sleep / lid close / screen sleep                       -> reset to 0
 Wake                                                          -> reset to 0 again
 ```
+
+`finished` is explicit and ignores late ordinary heartbeats. `expired` is TTL-inferred inactivity, so a later live heartbeat can reopen the same session.
 
 Default render output:
 

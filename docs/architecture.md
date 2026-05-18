@@ -199,6 +199,38 @@ Codex hooks always print `{}` so they remain valid pass-through hooks. Claude Co
 
 Hook commands are managed entries. Installers identify them by the `agent-presence hook` or legacy `agent-signature hook` command shape, remove the old managed entries, and then add the current managed entry. This keeps reruns from accumulating duplicate hooks.
 
+### Session State Machine
+
+Each session record has one of three statuses:
+
+```text
+running   explicit local evidence says this agent session is working
+finished  an explicit finish/idle event ended the current work turn
+expired   TTL inferred inactivity because no heartbeat arrived in time
+```
+
+`finished` and `expired` are intentionally different. `finished` comes from an explicit lifecycle event and protects the state from late async hook traffic after a turn has stopped. `expired` is only an inactivity inference, so a later live heartbeat from the same session can reopen it.
+
+The shared transition rules are:
+
+```text
+missing session + start/heartbeat       -> running
+running + heartbeat                     -> running, refresh lastHeartbeatAt
+running + finish/idle                   -> finished
+running + no heartbeat inside TTL       -> expired
+expired + start/heartbeat               -> running, refresh startedAt and lastHeartbeatAt
+finished + ordinary late heartbeat      -> finished, ignored
+finished + UserPromptSubmit/start       -> running, new active turn for same agent session
+unknown finish id + matching source/project running session
+                                         -> finish latest matching running session
+reset / power event                      -> finish all running sessions and sync zero
+```
+
+This gives the model two recovery paths without process scanning:
+
+- Missed finish hooks are cleaned up by TTL expiry.
+- Long-running sessions that keep working after a TTL expiry can become active again on the next real heartbeat.
+
 ### Active Semantics
 
 Active means "currently doing agent work", not "the terminal is open".
@@ -207,11 +239,12 @@ Active means "currently doing agent work", not "the terminal is open".
 running session with heartbeat inside TTL -> active
 finished session                         -> inactive
 no heartbeat for TTL                     -> expired and inactive
+expired session with later heartbeat     -> running again
 sleep / lid close / logout / shutdown    -> reset to 0
 wake                                     -> reset to 0 again
 ```
 
-The default TTL is 3 minutes. This handles abnormal exits, hard kills, and missed finish hooks without scanning local processes.
+The default TTL is 3 minutes. This handles abnormal exits, hard kills, and missed finish hooks without scanning local processes. An expired session is not a terminal state; it is inactive until a later real heartbeat proves that the same agent session is working again.
 
 ### Rendering
 
