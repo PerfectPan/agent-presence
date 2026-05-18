@@ -54,6 +54,35 @@ describe('agent state lifecycle', () => {
     expect(getActiveSessions(state, 181_001, 180_000)).toHaveLength(0);
   });
 
+  it('reopens an expired session when a live heartbeat arrives later', () => {
+    const state = createEmptyState();
+
+    applyAgentEvent(state, {
+      source: 'codex',
+      event: 'SessionStart',
+      sessionId: 'thread-1',
+      now: 1_000,
+      project: '/repo'
+    });
+    expireStaleSessions(state, 181_001, 180_000);
+
+    applyAgentEvent(state, {
+      source: 'codex',
+      event: 'PreToolUse',
+      sessionId: 'thread-1',
+      now: 182_000
+    });
+
+    expect(state.sessions['thread-1']).toMatchObject({
+      status: 'running',
+      startedAt: 182_000,
+      lastHeartbeatAt: 182_000,
+      finishedAt: undefined,
+      project: '/repo'
+    });
+    expect(getActiveSessions(state, 182_000, 180_000).map((session) => session.id)).toEqual(['thread-1']);
+  });
+
   it('finishes all running sessions when resetting presence', () => {
     const state = createEmptyState();
 

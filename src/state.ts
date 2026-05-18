@@ -108,7 +108,7 @@ export function applyAgentEvent(state: PresenceState, input: AgentEventInput): P
     return state;
   }
 
-  if (event === 'heartbeat' && existing && existing.status !== 'running' && !isReopenHeartbeat(input.event)) {
+  if (event === 'heartbeat' && existing?.status === 'finished' && !isReopenHeartbeat(input.event)) {
     if (input.project && !existing.project) {
       existing.project = input.project;
     }
