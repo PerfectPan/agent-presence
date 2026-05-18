@@ -201,6 +201,10 @@ Hook commands are managed entries. Installers identify them by the `agent-presen
 
 ### Session State Machine
 
+![Agent Presence session state machine](assets/presence-state-machine.png)
+
+The editable SVG source for this diagram lives at [`assets/presence-state-machine.svg`](assets/presence-state-machine.svg).
+
 Each session record has one of three statuses:
 
 ```text
