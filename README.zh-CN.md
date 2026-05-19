@@ -105,9 +105,12 @@ hook 不会阻塞编码智能体。Codex hook 输出 `{}`；Claude、Gemini 和 
 SessionStart / UserPromptSubmit / PreToolUse / PostToolUse -> running / heartbeat
 Stop / SessionEnd / session.idle                              -> finished
 3 分钟无 heartbeat                                             -> 过期
+过期后又收到真实 heartbeat                                     -> 回到 running
 睡眠 / 合盖 / 屏幕睡眠                                         -> 重置为 0
 唤醒                                                          -> 再次重置为 0
 ```
+
+`finished` 是明确结束，会忽略普通迟到 heartbeat；`expired` 只是 TTL 推断的不活跃，同一个 session 后续又有真实 heartbeat 时可以恢复为 running。
 
 默认渲染：
 
