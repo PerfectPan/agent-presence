@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.3
+
+### Patch Changes
+
+- 499c57c: Reopen expired sessions when a later live heartbeat arrives, while still ignoring late heartbeats for finished sessions.
+
 ## 0.3.2
 
 ### Patch Changes
