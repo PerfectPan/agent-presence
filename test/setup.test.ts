@@ -16,16 +16,19 @@ describe('runSetupScripts', () => {
       'install-claude-hook.js',
       'install-opencode-plugin.js',
       'install-gemini-hook.js',
+      'install-pi-extension.js',
       'install-shutdown-watcher.js'
     ]);
-    expect(runner).toHaveBeenCalledTimes(5);
+    expect(runner).toHaveBeenCalledTimes(6);
     expect(runner).toHaveBeenNthCalledWith(1, '/dist/scripts/install-codex-hook.js');
-    expect(runner).toHaveBeenNthCalledWith(5, '/dist/scripts/install-shutdown-watcher.js');
+    expect(runner).toHaveBeenNthCalledWith(5, '/dist/scripts/install-pi-extension.js');
+    expect(runner).toHaveBeenNthCalledWith(6, '/dist/scripts/install-shutdown-watcher.js');
     expect(results).toEqual([
       { scriptName: 'install-codex-hook.js', scriptPath: '/dist/scripts/install-codex-hook.js' },
       { scriptName: 'install-claude-hook.js', scriptPath: '/dist/scripts/install-claude-hook.js' },
       { scriptName: 'install-opencode-plugin.js', scriptPath: '/dist/scripts/install-opencode-plugin.js' },
       { scriptName: 'install-gemini-hook.js', scriptPath: '/dist/scripts/install-gemini-hook.js' },
+      { scriptName: 'install-pi-extension.js', scriptPath: '/dist/scripts/install-pi-extension.js' },
       { scriptName: 'install-shutdown-watcher.js', scriptPath: '/dist/scripts/install-shutdown-watcher.js' }
     ]);
   });
@@ -44,16 +47,19 @@ describe('runSetupScripts', () => {
       'uninstall-claude-hook.js',
       'uninstall-opencode-plugin.js',
       'uninstall-gemini-hook.js',
+      'uninstall-pi-extension.js',
       'uninstall-shutdown-watcher.js'
     ]);
-    expect(runner).toHaveBeenCalledTimes(5);
+    expect(runner).toHaveBeenCalledTimes(6);
     expect(runner).toHaveBeenNthCalledWith(1, '/dist/scripts/uninstall-codex-hook.js');
-    expect(runner).toHaveBeenNthCalledWith(5, '/dist/scripts/uninstall-shutdown-watcher.js');
+    expect(runner).toHaveBeenNthCalledWith(5, '/dist/scripts/uninstall-pi-extension.js');
+    expect(runner).toHaveBeenNthCalledWith(6, '/dist/scripts/uninstall-shutdown-watcher.js');
     expect(results).toEqual([
       { scriptName: 'uninstall-codex-hook.js', scriptPath: '/dist/scripts/uninstall-codex-hook.js' },
       { scriptName: 'uninstall-claude-hook.js', scriptPath: '/dist/scripts/uninstall-claude-hook.js' },
       { scriptName: 'uninstall-opencode-plugin.js', scriptPath: '/dist/scripts/uninstall-opencode-plugin.js' },
       { scriptName: 'uninstall-gemini-hook.js', scriptPath: '/dist/scripts/uninstall-gemini-hook.js' },
+      { scriptName: 'uninstall-pi-extension.js', scriptPath: '/dist/scripts/uninstall-pi-extension.js' },
       { scriptName: 'uninstall-shutdown-watcher.js', scriptPath: '/dist/scripts/uninstall-shutdown-watcher.js' }
     ]);
   });
@@ -68,6 +74,7 @@ describe('platform-aware script filtering', () => {
       'install-claude-hook.js',
       'install-opencode-plugin.js',
       'install-gemini-hook.js',
+      'install-pi-extension.js',
       'install-shutdown-watcher.js'
     ]);
 
@@ -78,27 +85,32 @@ describe('platform-aware script filtering', () => {
       'uninstall-claude-hook.js',
       'uninstall-opencode-plugin.js',
       'uninstall-gemini-hook.js',
+      'uninstall-pi-extension.js',
       'uninstall-shutdown-watcher.js'
     ]);
   });
 
-  it('excludes watcher on Linux', () => {
+  it('excludes watcher on Linux but keeps pi extension', () => {
     const setupNames = platformSetupScriptNames('linux');
     expect(setupNames).not.toContain('install-shutdown-watcher.js');
+    expect(setupNames).toContain('install-pi-extension.js');
     expect(setupNames).toEqual([
       'install-codex-hook.js',
       'install-claude-hook.js',
       'install-opencode-plugin.js',
-      'install-gemini-hook.js'
+      'install-gemini-hook.js',
+      'install-pi-extension.js'
     ]);
 
     const uninstallNames = platformUninstallScriptNames('linux');
     expect(uninstallNames).not.toContain('uninstall-shutdown-watcher.js');
+    expect(uninstallNames).toContain('uninstall-pi-extension.js');
     expect(uninstallNames).toEqual([
       'uninstall-codex-hook.js',
       'uninstall-claude-hook.js',
       'uninstall-opencode-plugin.js',
-      'uninstall-gemini-hook.js'
+      'uninstall-gemini-hook.js',
+      'uninstall-pi-extension.js'
     ]);
   });
 
@@ -111,8 +123,9 @@ describe('platform-aware script filtering', () => {
       scriptNames: platformSetupScriptNames('linux')
     });
 
-    expect(runner).toHaveBeenCalledTimes(4);
+    expect(runner).toHaveBeenCalledTimes(5);
     expect(results.map((r) => r.scriptName)).not.toContain('install-shutdown-watcher.js');
+    expect(results.map((r) => r.scriptName)).toContain('install-pi-extension.js');
   });
 
   it('provides a skip message for Linux watcher', () => {

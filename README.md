@@ -5,7 +5,7 @@ Sync local coding-agent presence to Feishu signature link previews.
 [简体中文](README.zh-CN.md)
 
 ```text
-Codex / Claude Code / Gemini CLI / opencode hooks
+Codex / Claude Code / Gemini CLI / opencode / Pi Coding Agent hooks
 -> local presence state
 -> debounced renderer
 -> l.garyyang slot provider
@@ -113,6 +113,7 @@ agent-presence hook --source codex --event SessionStart
 agent-presence hook --source claude --event SessionStart --silent
 agent-presence hook --source gemini --event SessionStart --silent
 agent-presence hook --source opencode --event SessionStart --silent
+agent-presence hook --source pi --event SessionStart --silent
 agent-presence hook --source codex --event Stop
 ```
 
@@ -124,7 +125,8 @@ This project counts agents that are actually working, not merely open terminal w
 
 ```text
 SessionStart / UserPromptSubmit / PreToolUse / PostToolUse -> running / heartbeat
-Stop / SessionEnd / session.idle                              -> finished
+Pi before_agent_start / turn_start / tool_execution_*      -> running / heartbeat
+Stop / SessionEnd / session.idle / agent_end / session_shutdown -> finished
 No heartbeat for 3 minutes                                    -> expired
 Expired + later live heartbeat                                -> running again
 Laptop sleep / lid close / screen sleep                       -> reset to 0
@@ -133,12 +135,14 @@ Wake                                                          -> reset to 0 agai
 
 `finished` is explicit and ignores late ordinary heartbeats. `expired` is TTL-inferred inactivity, so a later live heartbeat can reopen the same session.
 
+For Pi specifically, opening the `pi` TUI on its own is not counted as active: presence only activates when Pi fires `before_agent_start`, which happens once the user actually submits a task.
+
 Default render output:
 
 ```text
 0 -> AI 牛马暂未开工
 1 -> 1 个 AI 牛马正在搬砖 | codex 1
-N -> N 个 AI 牛马正在搬砖 | codex W · claude X · gemini Y · opencode Z
+N -> N 个 AI 牛马正在搬砖 | codex W · claude X · gemini Y · opencode Z · pi P
 ```
 
 The value is capped at 200 characters.
@@ -179,7 +183,10 @@ Legacy `AGENT_SIGNATURE_*` environment names are still accepted.
 - Claude Code hooks in `~/.claude/settings.json`
 - Gemini CLI hooks in `~/.gemini/settings.json`
 - opencode plugin in `~/.config/opencode/plugins/agent-presence.js`
+- Pi Coding Agent extension in `~/.pi/agent/extensions/agent-presence.ts`
 - macOS LaunchAgent power watcher; Linux setup skips the watcher and relies on TTL pruning
+
+The Pi extension is auto-discovered by Pi from `~/.pi/agent/extensions/*.ts`. It subscribes to Pi's lifecycle events (`before_agent_start`, `turn_start`, `tool_execution_*`, `agent_end`, `session_shutdown`) and never scans processes or terminal windows. Reruns of `setup` overwrite only the managed file; `uninstall` removes only that file and leaves other Pi extensions and settings untouched.
 
 The power watcher listens for lid close, system sleep, screen sleep, wake, shutdown, reboot, and logout. Each event runs:
 
@@ -305,6 +312,27 @@ agent-presence status
 CODEX_THREAD_ID=fake-2 agent-presence hook --source codex --event Stop
 agent-presence status
 ```
+
+### Verifying Pi Coding Agent locally
+
+Install Pi without running install scripts, then install Agent Presence support:
+
+```bash
+npm install -g --ignore-scripts @earendil-works/pi-coding-agent
+agent-presence setup --provider feishu-signature --skip-login --hook-command absolute
+```
+
+The Pi extension is written to `~/.pi/agent/extensions/agent-presence.ts` and is picked up automatically by `pi`. To smoke-test with a real LLM, inject your provider key from a local file and run a non-interactive Pi prompt — the example uses Z.ai's GLM-5.1 because it is the model the project tests against:
+
+```bash
+export ZAI_API_KEY="$(tr -d '\r\n' < /path/to/your/zai-key.txt)"
+pi --provider zai --model glm-5.1 -p "Reply with exactly: pi-ok"
+
+agent-presence status --provider feishu-signature
+agent-presence status --provider feishu-signature --remote
+```
+
+Read the key from a file outside the repository so it never enters your shell history, git index, or process listing as a literal value. `ZAI_API_KEY` is the standard Z.ai environment-variable name and is safe to mention in docs; the actual key value must stay out of every committed file.
 
 ## Release
 

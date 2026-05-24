@@ -13,6 +13,7 @@ export const DEFAULT_SETUP_SCRIPT_NAMES = [
   'install-claude-hook.js',
   'install-opencode-plugin.js',
   'install-gemini-hook.js',
+  'install-pi-extension.js',
   WATCHER_INSTALL_SCRIPT
 ] as const;
 
@@ -21,6 +22,7 @@ export const DEFAULT_UNINSTALL_SCRIPT_NAMES = [
   'uninstall-claude-hook.js',
   'uninstall-opencode-plugin.js',
   'uninstall-gemini-hook.js',
+  'uninstall-pi-extension.js',
   WATCHER_UNINSTALL_SCRIPT
 ] as const;
 

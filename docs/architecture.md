@@ -3,7 +3,7 @@
 `@rivus/agent-presence` turns local coding-agent lifecycle events into a Feishu signature link-preview value. The important boundary is that it models active work from agent hooks, not from process scans.
 
 ```text
-Codex / Claude Code / Gemini CLI / opencode lifecycle hooks
+Codex / Claude Code / Gemini CLI / opencode / Pi Coding Agent lifecycle hooks
 -> CLI hook normalizer
 -> locked JSON state
 -> TTL pruning
@@ -193,9 +193,12 @@ Codex       SessionStart, UserPromptSubmit, PreToolUse, Stop
 Claude Code SessionStart, UserPromptSubmit, PreToolUse, PostToolUse, Stop, StopFailure, SessionEnd, SubagentStart, SubagentStop
 Gemini CLI  SessionStart, UserPromptSubmit, PreToolUse, PostToolUse, Stop, SessionEnd
 opencode    session.created, command.executed, file.edited, message.*, permission.*, session.*, todo.updated, tool.execute.*
+Pi          before_agent_start, turn_start, tool_execution_start, tool_execution_end, agent_end, session_shutdown
 ```
 
-Codex hooks always print `{}` so they remain valid pass-through hooks. Claude Code, Gemini CLI, and opencode hooks run with `--silent`.
+Codex hooks always print `{}` so they remain valid pass-through hooks. Claude Code, Gemini CLI, opencode, and Pi hooks run with `--silent`.
+
+For Pi specifically, the extension intentionally does **not** treat the Pi `session_start` event as an active-session signal — that event fires whenever the Pi TUI opens, including when the user has not yet submitted a task. Activation is gated on `before_agent_start`, which only fires after the user submits a prompt. Heartbeats come from `turn_start` and `tool_execution_*`. Finishes come from `agent_end` (turn done) and `session_shutdown` (Pi quit, reload, or session switch).
 
 Hook commands are managed entries. Installers identify them by the `agent-presence hook` or legacy `agent-signature hook` command shape, remove the old managed entries, and then add the current managed entry. This keeps reruns from accumulating duplicate hooks.
 
@@ -323,6 +326,7 @@ TTL pruning (3-minute default) handles most failure modes (agent crashes, hard k
 - install Claude Code hooks
 - install the opencode plugin
 - install Gemini CLI hooks
+- install the Pi Coding Agent extension at `~/.pi/agent/extensions/agent-presence.ts`
 - install the macOS power watcher (skipped on Linux; TTL pruning handles expired sessions)
 - force an initial slot sync
 
@@ -337,6 +341,7 @@ Idempotency is part of the installer contract, not a nice-to-have:
 | Codex hooks | Remove prior managed Agent Presence hooks, add exactly one current managed group per event, then remind the user to approve changed hooks in Codex settings. |
 | Claude Code hooks | Remove prior managed Agent Presence hooks, add exactly one current managed group per event. |
 | opencode plugin | Rewrite the managed plugin file from the current package; do not append duplicate plugin registrations. |
+| Pi extension | Rewrite the managed `~/.pi/agent/extensions/agent-presence.ts` from the current package; refuse to overwrite a non-managed file with the same name. Pi auto-discovers the file, so settings.json is not modified by default. Uninstall removes only the managed file and only its own entry from `settings.json#/extensions`. |
 | Power watcher | On macOS: replace the managed LaunchAgent plist and script, then reload the same label. On Linux: skipped with a message; TTL pruning covers expired sessions. |
 | Managed runtime | Install into a staging directory first, then atomically switch the active runtime or shim target. |
 | Legacy home migration | During interactive setup, ask before copying known files from `~/.codex/agent-signature` to `~/.agent-presence`; never overwrite existing destination files; remove known legacy files after the new home has them; keep unknown files. |
@@ -375,6 +380,7 @@ agent-presence uninstall
 -> remove managed Claude Code hooks
 -> remove managed Gemini CLI hooks
 -> remove managed opencode plugin
+-> remove managed Pi Coding Agent extension
 -> unload and remove managed power watcher
 -> keep Keychain credentials, provider config, and state
 ```
