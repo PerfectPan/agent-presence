@@ -5,7 +5,7 @@
 Agent Presence 会把本机编码智能体的生命周期事件同步到飞书个性签名的链接预览里。
 
 ```text
-Codex / Claude Code / Gemini CLI / opencode hooks
+Codex / Claude Code / Gemini CLI / opencode / Pi Coding Agent hooks
 -> 本地 presence 状态
 -> 防抖渲染
 -> l.garyyang slot provider
@@ -57,7 +57,7 @@ agent-presence setup --provider feishu-signature
 
 1. 运行 `agent-presence setup --provider feishu-signature`。
 2. 如果需要登录，扫码完成授权。
-3. 让 setup 安装 Codex、Claude Code、Gemini CLI、opencode hook，以及当前平台支持的 watcher。
+3. 让 setup 安装 Codex、Claude Code、Gemini CLI、opencode、Pi Coding Agent 集成，以及当前平台支持的 watcher。
 4. 运行 `agent-presence url --provider feishu-signature`。
 5. 把输出 URL 粘贴到飞书个人资料签名的自定义链接预览中。
 
@@ -92,10 +92,11 @@ agent-presence hook --source codex --event SessionStart
 agent-presence hook --source claude --event SessionStart --silent
 agent-presence hook --source gemini --event SessionStart --silent
 agent-presence hook --source opencode --event SessionStart --silent
+agent-presence hook --source pi --event SessionStart --silent
 agent-presence hook --source codex --event Stop
 ```
 
-hook 不会阻塞编码智能体。Codex hook 输出 `{}`；Claude、Gemini 和 opencode hook 静默运行。
+hook 不会阻塞编码智能体。Codex hook 输出 `{}`；Claude、Gemini、opencode 和 Pi hook 静默运行。
 
 ## Presence 语义
 
@@ -103,7 +104,8 @@ hook 不会阻塞编码智能体。Codex hook 输出 `{}`；Claude、Gemini 和 
 
 ```text
 SessionStart / UserPromptSubmit / PreToolUse / PostToolUse -> running / heartbeat
-Stop / SessionEnd / session.idle                              -> finished
+Pi before_agent_start / turn_start / tool_execution_*      -> running / heartbeat
+Stop / SessionEnd / session.idle / agent_end / session_shutdown -> finished
 3 分钟无 heartbeat                                             -> 过期
 过期后又收到真实 heartbeat                                     -> 回到 running
 睡眠 / 合盖 / 屏幕睡眠                                         -> 重置为 0
@@ -112,12 +114,14 @@ Stop / SessionEnd / session.idle                              -> finished
 
 `finished` 是明确结束，会忽略普通迟到 heartbeat；`expired` 只是 TTL 推断的不活跃，同一个 session 后续又有真实 heartbeat 时可以恢复为 running。
 
+Pi 的语义与其他 source 略有不同：单纯打开 `pi` TUI 不会算作 active，只有当用户提交任务、Pi 触发 `before_agent_start` 时才开始计数。这样可以避免“打开 Pi 但没干活”被误统计。
+
 默认渲染：
 
 ```text
 0 -> AI 牛马暂未开工
 1 -> 1 个 AI 牛马正在搬砖 | codex 1
-N -> N 个 AI 牛马正在搬砖 | codex W · claude X · gemini Y · opencode Z
+N -> N 个 AI 牛马正在搬砖 | codex W · claude X · gemini Y · opencode Z · pi P
 ```
 
 渲染结果最长 200 个字符。
@@ -130,7 +134,10 @@ N -> N 个 AI 牛马正在搬砖 | codex W · claude X · gemini Y · opencode Z
 - `~/.claude/settings.json` 里的 Claude Code hooks
 - `~/.gemini/settings.json` 里的 Gemini CLI hooks
 - `~/.config/opencode/plugins/agent-presence.js` 里的 opencode plugin
+- `~/.pi/agent/extensions/agent-presence.ts` 里的 Pi Coding Agent 扩展
 - macOS LaunchAgent power watcher；Linux 会跳过 watcher，并依赖 TTL 清理过期 session
+
+Pi 扩展会被 `pi` 自动发现并加载，订阅 Pi 自己的生命周期事件（`before_agent_start`、`turn_start`、`tool_execution_*`、`agent_end`、`session_shutdown`），不会扫描进程或终端窗口。重复执行 `setup` 只会覆盖这一个托管文件；`uninstall` 只会删除这一个文件，用户自己的其他 Pi 扩展和设置都保留。
 
 macOS power watcher 会监听合盖、系统睡眠、屏幕睡眠、唤醒、关机、重启和登出，每次执行：
 
@@ -209,6 +216,27 @@ agent-presence status
 CODEX_THREAD_ID=fake-2 agent-presence hook --source codex --event Stop
 agent-presence status
 ```
+
+### Pi Coding Agent 本地验证
+
+`--ignore-scripts` 安装 Pi，然后让 Agent Presence 安装 Pi 集成：
+
+```bash
+npm install -g --ignore-scripts @earendil-works/pi-coding-agent
+agent-presence setup --provider feishu-signature --skip-login --hook-command absolute
+```
+
+Pi 扩展会写到 `~/.pi/agent/extensions/agent-presence.ts`，`pi` 启动时会自动加载。用真实 LLM 跑通时，从本机文件读取 provider key 注入环境变量，再用 Pi 非交互模式（`-p`）发一条消息，例子里用 Z.ai 的 GLM-5.1：
+
+```bash
+export ZAI_API_KEY="$(tr -d '\r\n' < /path/to/your/zai-key.txt)"
+pi --provider zai --model glm-5.1 -p "Reply with exactly: pi-ok"
+
+agent-presence status --provider feishu-signature
+agent-presence status --provider feishu-signature --remote
+```
+
+key 一定要放在仓库外部的本机文件里读取，不要直接写进命令行；只有 `ZAI_API_KEY` 这个环境变量名可以出现在文档/提交记录里，真实 key 值不能进 git、日志、PR 描述、issue。
 
 ## 发布
 

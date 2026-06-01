@@ -2,7 +2,15 @@ import { describe, expect, it } from 'vitest';
 import { resolveClaudeHookContext } from '../src/hooks/claude.js';
 import { resolveCodexHookContext } from '../src/hooks/codex.js';
 import { mapOpenCodeEvent, resolveOpenCodeHookContext } from '../src/hooks/opencode.js';
-import { applyAgentEvent, createEmptyState, getActiveSessions } from '../src/state.js';
+import { resolvePiHookContext } from '../src/hooks/pi.js';
+import { resolveHookContext } from '../src/cli/hook-context.js';
+import {
+  applyAgentEvent,
+  createEmptyState,
+  finishAllSessions,
+  getActiveSessions
+} from '../src/state.js';
+import { renderPresence } from '../src/render.js';
 
 describe('Codex hook context', () => {
   it('prefers stable payload session ids over process env ids', () => {
@@ -188,6 +196,124 @@ describe('opencode hook context', () => {
       project: undefined,
       sessionId: undefined
     });
+  });
+});
+
+describe('Pi hook context', () => {
+  it('reads pi session id and project from env when the payload is empty', () => {
+    expect(
+      resolvePiHookContext(
+        {},
+        {
+          PI_SESSION_ID: 'pi-session-1',
+          PI_PROJECT: '/repo',
+          PI_HOOK_EVENT: 'SessionStart'
+        }
+      )
+    ).toEqual({
+      event: 'SessionStart',
+      project: '/repo',
+      sessionId: 'pi-session-1'
+    });
+  });
+
+  it('prefers payload session id and event over env values', () => {
+    expect(
+      resolvePiHookContext(
+        {
+          session_id: 'payload-session',
+          cwd: '/payload-repo',
+          event: 'Heartbeat'
+        },
+        {
+          PI_SESSION_ID: 'env-session',
+          PI_PROJECT: '/env-repo',
+          PI_HOOK_EVENT: 'SessionStart'
+        }
+      )
+    ).toEqual({
+      event: 'Heartbeat',
+      project: '/payload-repo',
+      sessionId: 'payload-session'
+    });
+  });
+
+  it('routes through resolveHookContext when source is pi', () => {
+    expect(
+      resolveHookContext('pi', { session_id: 'pi-session-2', cwd: '/repo', event: 'Stop' })
+    ).toEqual({
+      event: 'Stop',
+      project: '/repo',
+      sessionId: 'pi-session-2'
+    });
+  });
+});
+
+describe('Pi lifecycle state', () => {
+  it('runs through start -> heartbeat -> stop and disappears from active set', () => {
+    const state = createEmptyState();
+
+    applyAgentEvent(state, {
+      source: 'pi',
+      event: 'SessionStart',
+      sessionId: 'pi-session-1',
+      project: '/repo',
+      now: 1_000
+    });
+    applyAgentEvent(state, {
+      source: 'pi',
+      event: 'Heartbeat',
+      sessionId: 'pi-session-1',
+      project: '/repo',
+      now: 2_000
+    });
+    expect(getActiveSessions(state, 2_000, 180_000).map((session) => session.id)).toEqual(['pi-session-1']);
+    expect(state.sessions['pi-session-1']?.source).toBe('pi');
+
+    applyAgentEvent(state, {
+      source: 'pi',
+      event: 'Stop',
+      sessionId: 'pi-session-1',
+      now: 3_000
+    });
+    expect(getActiveSessions(state, 3_000, 180_000)).toHaveLength(0);
+    expect(state.sessions['pi-session-1']?.status).toBe('finished');
+  });
+
+  it('shows pi in render grouping next to other sources', () => {
+    const state = createEmptyState();
+
+    applyAgentEvent(state, {
+      source: 'codex',
+      event: 'SessionStart',
+      sessionId: 'codex-1',
+      now: 1_000
+    });
+    applyAgentEvent(state, {
+      source: 'pi',
+      event: 'SessionStart',
+      sessionId: 'pi-1',
+      now: 2_000
+    });
+
+    const value = renderPresence(getActiveSessions(state, 2_000, 180_000));
+    expect(value).toBe('2 个 AI 牛马正在搬砖 | codex 1 · pi 1');
+  });
+
+  it('clears pi sessions on shutdown/reset (finishAllSessions)', () => {
+    const state = createEmptyState();
+
+    applyAgentEvent(state, {
+      source: 'pi',
+      event: 'SessionStart',
+      sessionId: 'pi-1',
+      now: 1_000
+    });
+
+    finishAllSessions(state, 2_000);
+
+    expect(state.sessions['pi-1']?.status).toBe('finished');
+    expect(getActiveSessions(state, 2_000, 180_000)).toHaveLength(0);
   });
 });
 

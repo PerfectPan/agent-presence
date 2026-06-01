@@ -2,6 +2,7 @@ import { resolveGeminiHookContext } from '../hooks/gemini.js';
 import { resolveClaudeHookContext } from '../hooks/claude.js';
 import { resolveCodexHookContext } from '../hooks/codex.js';
 import { resolveOpenCodeHookContext } from '../hooks/opencode.js';
+import { resolvePiHookContext } from '../hooks/pi.js';
 
 export interface HookContext {
   event?: string;
@@ -21,6 +22,9 @@ export function resolveHookContext(source: string, payload: unknown): HookContex
   }
   if (source === 'opencode') {
     return resolveOpenCodeHookContext(payload);
+  }
+  if (source === 'pi') {
+    return resolvePiHookContext(payload);
   }
   return {};
 }

@@ -1,15 +1,20 @@
 import { describe, expect, it } from 'vitest';
 import {
+  PI_EXTENSION_FILE_NAME,
+  PI_EXTENSION_MARKER,
   buildOpenCodePluginSource,
+  buildPiExtensionSource,
   buildPowerEventWatcherSwift,
   buildShutdownWatcherPlist,
   buildShutdownWatcherScript,
   isAgentSignatureCommand,
   withClaudeAgentSignatureHooks,
   withOpenCodeAgentSignaturePluginConfig,
-  withoutOpenCodeAgentSignaturePluginConfig
+  withPiAgentPresenceExtension,
+  withoutOpenCodeAgentSignaturePluginConfig,
+  withoutPiAgentPresenceExtension
 } from '../src/installers.js';
-import type { HookSettings } from '../src/installers.js';
+import type { HookSettings, PiSettings } from '../src/installers.js';
 
 function withAbsoluteCliPath<T>(fn: () => T): T {
   const previousMode = process.env.AGENT_PRESENCE_HOOK_COMMAND;
@@ -175,5 +180,82 @@ describe('opencode plugin installer helpers', () => {
     expect(withoutOpenCodeAgentSignaturePluginConfig(config)).toEqual({
       plugin: ['./plugins/cmux-session.js']
     });
+  });
+});
+
+describe('pi extension installer helpers', () => {
+  it('targets the canonical pi extension file name', () => {
+    expect(PI_EXTENSION_FILE_NAME).toBe('agent-presence.ts');
+  });
+
+  it('generates a TypeScript extension that bridges Pi lifecycle events into the presence CLI', () => {
+    const source = buildPiExtensionSource();
+
+    expect(source).toContain(PI_EXTENSION_MARKER);
+    expect(source).toContain('import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent"');
+    expect(source).toContain('const CLI_COMMAND = ["npx","--yes","--registry=https://registry.npmjs.org","@rivus/agent-presence@');
+    expect(source).toContain('--source');
+    expect(source).toContain('"pi"');
+    // We must NOT subscribe to session_start as a SessionStart trigger; opening pi
+    // without a task should never count as active.
+    expect(source).not.toContain('emit("SessionStart", false, ctx)\n  })\n\n  pi.on("session_start"');
+    expect(source).toContain('pi.on("before_agent_start"');
+    expect(source).toContain('pi.on("turn_start"');
+    expect(source).toContain('pi.on("tool_execution_start"');
+    expect(source).toContain('pi.on("tool_execution_end"');
+    expect(source).toContain('pi.on("agent_end"');
+    expect(source).toContain('pi.on("session_shutdown"');
+    expect(source).toContain('emit("SessionStart"');
+    expect(source).toContain('emit("Heartbeat"');
+    expect(source).toContain('emit("Stop", true, ctx)');
+    expect(source).toContain('spawnSync(CLI_COMMAND[0]');
+    // Hook errors must never crash Pi.
+    expect(source).toContain('// Never let presence telemetry break Pi.');
+  });
+
+  it('generates an extension that uses an absolute CLI command when requested', () => {
+    const source = buildPiExtensionSource(['/usr/local/bin/node', '/opt/agent-presence/dist/src/cli.js']);
+
+    expect(source).toContain('const CLI_COMMAND = ["/usr/local/bin/node","/opt/agent-presence/dist/src/cli.js"]');
+    expect(source).not.toContain('npx');
+  });
+
+  it('keeps unrelated pi extension entries intact and never duplicates the managed entry', () => {
+    const settings: PiSettings = { extensions: ['/Users/example/.pi/agent/extensions/user-extension.ts'] };
+    const managedPath = '/Users/example/.pi/agent/extensions/agent-presence.ts';
+
+    const next = withPiAgentPresenceExtension(settings, managedPath);
+    expect(next.extensions).toEqual(['/Users/example/.pi/agent/extensions/user-extension.ts']);
+
+    const settingsWithDup: PiSettings = {
+      extensions: [
+        '/Users/example/.pi/agent/extensions/user-extension.ts',
+        '/Users/example/.pi/agent/extensions/agent-presence.ts'
+      ]
+    };
+    const cleaned = withPiAgentPresenceExtension(settingsWithDup, managedPath);
+    expect(cleaned.extensions).toEqual(['/Users/example/.pi/agent/extensions/user-extension.ts']);
+  });
+
+  it('uninstall strips the managed entry without touching user extensions', () => {
+    const settings: PiSettings = {
+      extensions: [
+        '/Users/example/.pi/agent/extensions/user-extension.ts',
+        '/Users/example/.pi/agent/extensions/agent-presence.ts'
+      ]
+    };
+    const managedPath = '/Users/example/.pi/agent/extensions/agent-presence.ts';
+
+    expect(withoutPiAgentPresenceExtension(settings, managedPath)).toEqual({
+      extensions: ['/Users/example/.pi/agent/extensions/user-extension.ts']
+    });
+  });
+
+  it('drops the extensions key when removing the only managed entry', () => {
+    const settings: PiSettings = {
+      extensions: ['/Users/example/.pi/agent/extensions/agent-presence.ts']
+    };
+
+    expect(withoutPiAgentPresenceExtension(settings, settings.extensions![0])).toEqual({});
   });
 });

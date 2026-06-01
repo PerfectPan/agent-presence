@@ -11,7 +11,7 @@ description: Use when installing, configuring, verifying, or debugging @rivus/ag
 
 ## Use When
 
-- A user wants Codex, Claude Code, Gemini CLI, or opencode activity shown in Feishu signature.
+- A user wants Codex, Claude Code, Gemini CLI, opencode, or Pi Coding Agent activity shown in Feishu signature.
 - Hooks are installed but the signature is stale.
 - The count differs from visible terminal windows.
 - Laptop sleep, lid close, or wake behavior needs verification.
@@ -60,10 +60,13 @@ Active means "currently working", not "terminal window exists":
 
 ```text
 SessionStart/UserPromptSubmit/PreToolUse/PostToolUse -> running/heartbeat
-Stop/SessionEnd/session.idle                         -> finished
+Pi before_agent_start/turn_start/tool_execution_*    -> running/heartbeat
+Stop/SessionEnd/session.idle/agent_end/session_shutdown -> finished
 3 minutes without heartbeat                          -> expired
 sleep/lid close/screen sleep/wake                    -> reset to 0
 ```
+
+Pi only counts as active once the user submits a task (`before_agent_start`). Opening the `pi` TUI without prompting is intentionally not counted.
 
 ## Debug Flow
 
@@ -92,6 +95,8 @@ sleep/lid close/screen sleep/wake                    -> reset to 0
    sed -n '1,320p' ~/.claude/settings.json
    sed -n '1,220p' ~/.gemini/settings.json
    sed -n '1,220p' ~/.config/opencode/opencode.json
+   sed -n '1,160p' ~/.pi/agent/extensions/agent-presence.ts
+   sed -n '1,160p' ~/.pi/agent/settings.json 2>/dev/null || true
    ```
 
 5. Verify platform watcher:
@@ -121,4 +126,21 @@ agent-presence config render \
   --many "{total} 个 AI 牛马并行搬砖 | {details}"
 ```
 
-`{total}` is active count. `{details}` is grouped source counts like `codex 1 · claude 2 · gemini 1`.
+`{total}` is active count. `{details}` is grouped source counts like `codex 1 · claude 2 · gemini 1 · pi 1`.
+
+## Pi Coding Agent Notes
+
+- Setup installs the extension at `~/.pi/agent/extensions/agent-presence.ts`. Pi auto-discovers files in that directory.
+- The extension shells out to `agent-presence hook --source pi --event <name> --silent`; failures are swallowed so Pi itself never crashes.
+- Activation gates on `before_agent_start`, not `session_start`, so an idle Pi TUI is not counted.
+- `agent_end` and `session_shutdown` deliver Stop synchronously to avoid leaving stale active state after a quick `pi -p` run exits.
+- To verify locally with a real LLM, read your provider key from a file outside the repo and run a non-interactive prompt, e.g.:
+
+  ```bash
+  export ZAI_API_KEY="$(tr -d '\r\n' < /path/to/zai-key.txt)"
+  pi --provider zai --model glm-5.1 -p "Reply with exactly: pi-ok"
+  agent-presence status --provider feishu-signature
+  agent-presence status --provider feishu-signature --remote
+  ```
+
+  Never paste the literal key into shell history, commits, PR descriptions, or docs — only the file path and the environment-variable name are safe.
