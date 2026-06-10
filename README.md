@@ -275,17 +275,29 @@ Token and slot credentials are not written to git and are not embedded in the si
 `magic-builder` is an alternate provider for when the `l.garyyang.work` link-preview page is not being rendered by Feishu (e.g. Feishu has tightened the iframe whitelist for personal-signature link previews). It uses the same l.garyyang slot backend for value storage but fronts it with a Magic-Builder FaaS so the resulting signature URL lives under `magic.solutionsuite.cn`, which Feishu's link-preview pipeline accepts.
 
 ```bash
-# 1) acquire a Magic-Builder token (one-time, via browser):
-#    open https://magic.solutionsuite.cn → Feishu SSO login → copy your API token
-#    then write it to ~/.magic-token (or export MAGIC_TOKEN=...)
-echo "<your-magic-builder-token>" > ~/.magic-token
-chmod 600 ~/.magic-token
-
-# 2) setup. Requires an existing l.garyyang login so the published FaaS can
-#    read your slot value; run `agent-presence login --provider feishu-signature`
-#    first if you have not already.
+# Requires an existing l.garyyang login so the published FaaS can read your
+# slot value; run `agent-presence login --provider feishu-signature` first if
+# you have not already. Then:
 agent-presence setup --provider magic-builder --hook-command absolute
 ```
+
+When run in an interactive terminal with no token configured, setup prints the
+token instructions and prompts you to paste the token, then stores it in the OS
+keyring (Keychain on macOS, libsecret on Linux). To get the token:
+
+1. In Feishu, open the 妙笔 (Magic-Builder) bot: <https://applink.larkoffice.com/T94fcr4NqQPz>
+2. Send the message `dev`.
+3. Copy the token from its reply.
+
+Non-interactive environments can supply the token without the prompt:
+
+```bash
+export MAGIC_TOKEN=<token>          # one-off, highest precedence
+# or, skill-pack compatible plaintext file (read, never written by this CLI):
+echo <token> > ~/.magic-token && chmod 600 ~/.magic-token
+```
+
+Token resolution order: `MAGIC_TOKEN` env → OS keyring → `~/.magic-token` → `<cwd>/.magic-token`.
 
 `setup` builds a CommonJS FaaS that embeds your slot id and bearer, POSTs it to `https://magic.solutionsuite.cn/api/faas`, and stores the returned `record_id` under `providers.magic-builder.faasId`. The resulting signature URL is:
 
@@ -304,6 +316,8 @@ export AGENT_PRESENCE_MAGIC_BUILDER_FAAS_ID=rec_...   # pin an existing FaaS rec
 export AGENT_PRESENCE_MAGIC_BUILDER_FAAS_NAME=...     # override default `agent_presence_preview`
 export AGENT_PRESENCE_MAGIC_BUILDER_FALLBACK_TITLE=...# rendered when the slot read fails
 ```
+
+The token is stored in the OS keyring under service `agent-presence:magic-builder`. The published FaaS embeds your l.garyyang slot bearer so it can read the slot value; rotating that bearer requires re-running `setup --provider magic-builder` to re-publish.
 
 Inspect the live preview the FaaS would return:
 

@@ -11,7 +11,7 @@ import {
   saveConfig,
   setMagicBuilderConfig
 } from '../config.js';
-import { readMagicToken } from '../magic-token.js';
+import { readMagicToken, writeMagicToken, type MagicTokenSource } from '../magic-token.js';
 import {
   DEFAULT_MAGIC_BUILDER_FAAS_NAME,
   MagicBuilderProvider,
@@ -19,17 +19,33 @@ import {
 } from '../providers/magic-builder.js';
 import { readCredential } from '../secret.js';
 
+export const MAGIC_TOKEN_HELP =
+  'How to get your Magic-Builder token:\n' +
+  '  1) In Feishu, open the 妙笔 bot: https://applink.larkoffice.com/T94fcr4NqQPz\n' +
+  '  2) Send the message: dev\n' +
+  '  3) Copy the token it replies with.\n' +
+  'Then either re-run setup in an interactive terminal to paste it, or set it manually:\n' +
+  '  export MAGIC_TOKEN=<token>            # one-off\n' +
+  '  echo <token> > ~/.magic-token         # plaintext file (skill-pack compatible)';
+
 export interface PublishMagicBuilderFaasOptions {
   /** Override the FaaS function name (default: `agent_presence_preview`). */
   name?: string;
   /** Pass false to skip persisting the new record id back to config.json. */
   persist?: boolean;
+  /**
+   * Called when no token is found in env/keyring/file. Return a token to
+   * persist it to the OS keyring and continue, or undefined to abort with the
+   * standard missing-token error. Enables an interactive paste prompt without
+   * coupling this module to the CLI prompt layer.
+   */
+  acquireToken?: () => Promise<string | undefined>;
 }
 
 export interface PublishMagicBuilderFaasResult extends MagicBuilderPublishResult {
   url: string;
   isUpdate: boolean;
-  tokenSource: 'env' | 'file';
+  tokenSource: MagicTokenSource;
   tokenPath?: string;
 }
 
@@ -43,14 +59,16 @@ export async function publishMagicBuilderFaas(
   options: PublishMagicBuilderFaasOptions = {}
 ): Promise<PublishMagicBuilderFaasResult> {
   const config = await loadConfig();
-  const tokenInfo = await readMagicToken();
+  let tokenInfo = await readMagicToken();
+  if ((!tokenInfo.token || !tokenInfo.source) && options.acquireToken) {
+    const entered = (await options.acquireToken())?.trim();
+    if (entered) {
+      await writeMagicToken(entered);
+      tokenInfo = { token: entered, source: 'keychain' };
+    }
+  }
   if (!tokenInfo.token || !tokenInfo.source) {
-    throw new Error(
-      'missing magic-builder token. Provide it one of two ways:\n' +
-        '  1) export MAGIC_TOKEN=<your-token>\n' +
-        '  2) echo <your-token> > ~/.magic-token && chmod 600 ~/.magic-token\n' +
-        'Get the token from https://magic.solutionsuite.cn after Feishu SSO login.'
-    );
+    throw new Error(`missing magic-builder token.\n${MAGIC_TOKEN_HELP}`);
   }
 
   const credential = await readCredential(configSlotId(config));
