@@ -6,18 +6,29 @@ import type { RenderTemplates } from './render.js';
 
 export const DEFAULT_PROVIDER_BASE_URL = 'https://l.garyyang.work';
 export const DEFAULT_PREVIEW_BASE_URL = 'https://l.garyyang.work/';
+export const DEFAULT_MAGIC_BUILDER_BASE_URL = 'https://magic.solutionsuite.cn';
 export const DEFAULT_TTL_MS = 3 * 60 * 1000;
 export const DEFAULT_DEBOUNCE_MS = 60 * 1000;
 export const DEFAULT_LOGIN_POLL_MS = 3 * 1000;
 export const DEFAULT_PROVIDER_ID = 'feishu-signature';
 
-export type ProviderId = 'feishu-signature';
+export type ProviderId = 'feishu-signature' | 'magic-builder';
 
 export interface FeishuSignatureProviderConfig {
   baseUrl?: string;
   previewBaseUrl?: string;
   previewImageKey?: string;
   previewTargetUrl?: string;
+}
+
+export interface MagicBuilderProviderConfig {
+  baseUrl?: string;
+  /** record_id returned by magic.solutionsuite.cn POST /api/faas. */
+  faasId?: string;
+  /** Human-readable function name stored alongside the record. */
+  faasName?: string;
+  /** Fallback title returned when the slot fetch fails. */
+  fallbackTitle?: string;
 }
 
 export interface AppConfig {
@@ -28,6 +39,7 @@ export interface AppConfig {
   previewTargetUrl?: string;
   providers?: {
     'feishu-signature'?: FeishuSignatureProviderConfig;
+    'magic-builder'?: MagicBuilderProviderConfig;
   };
   slot_id?: string;
   slotId?: string;
@@ -84,7 +96,49 @@ export function providerId(config: AppConfig, explicitProvider?: string): Provid
   if (value === 'feishu-signature' || value === 'l-garyyang') {
     return 'feishu-signature';
   }
+  if (value === 'magic-builder') {
+    return 'magic-builder';
+  }
   throw new Error(`unsupported provider: ${value}`);
+}
+
+export function magicBuilderConfig(config: AppConfig): MagicBuilderProviderConfig {
+  return config.providers?.['magic-builder'] ?? {};
+}
+
+export function magicBuilderBaseUrl(config: AppConfig): string {
+  return (
+    process.env.AGENT_PRESENCE_MAGIC_BUILDER_BASE_URL ??
+    process.env.MAGIC_BASE_URL ??
+    magicBuilderConfig(config).baseUrl ??
+    DEFAULT_MAGIC_BUILDER_BASE_URL
+  );
+}
+
+export function magicBuilderFaasId(config: AppConfig): string | undefined {
+  return process.env.AGENT_PRESENCE_MAGIC_BUILDER_FAAS_ID ?? magicBuilderConfig(config).faasId;
+}
+
+export function magicBuilderFaasName(config: AppConfig): string | undefined {
+  return process.env.AGENT_PRESENCE_MAGIC_BUILDER_FAAS_NAME ?? magicBuilderConfig(config).faasName;
+}
+
+export function magicBuilderFallbackTitle(config: AppConfig): string {
+  return (
+    process.env.AGENT_PRESENCE_MAGIC_BUILDER_FALLBACK_TITLE ??
+    magicBuilderConfig(config).fallbackTitle ??
+    config.render?.zero ??
+    'AI 牛马暂未开工'
+  );
+}
+
+export function setMagicBuilderConfig(config: AppConfig, patch: Partial<MagicBuilderProviderConfig>): AppConfig {
+  const next: AppConfig = { ...config };
+  const providers = { ...(next.providers ?? {}) };
+  const existing = providers['magic-builder'] ?? {};
+  providers['magic-builder'] = { ...existing, ...patch };
+  next.providers = providers;
+  return next;
 }
 
 export function feishuSignatureConfig(config: AppConfig): FeishuSignatureProviderConfig {

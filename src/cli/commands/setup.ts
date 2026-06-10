@@ -5,7 +5,8 @@ import { readCredential } from '../../secret.js';
 import { LINUX_WATCHER_SKIP_MESSAGE, runSetupScripts } from '../../setup.js';
 import { hasFlag, optionValue } from '../args.js';
 import { hasCredential } from '../credential.js';
-import { createSpinner, finishOutro, promptConfirm, showInfo, showNote, startIntro } from '../ui.js';
+import { MAGIC_TOKEN_HELP, publishMagicBuilderFaas } from '../magic-builder-setup.js';
+import { createSpinner, finishOutro, isInteractiveTerminal, promptConfirm, promptText, showInfo, showNote, startIntro } from '../ui.js';
 import { login } from './login.js';
 import { resolveSignatureUrl } from './url.js';
 
@@ -60,7 +61,43 @@ export async function setup(args: string[]): Promise<void> {
   }
 
   const credential = await readCredential(configSlotId(config));
-  if (credential?.token && credential.slotId) {
+
+  if (activeProvider === 'magic-builder') {
+    if (!credential?.token || !credential.slotId) {
+      showInfo('login: missing; run `agent-presence login --provider feishu-signature` first');
+      showInfo('signature url: unavailable until `agent-presence login` succeeds');
+    } else {
+      try {
+        // The token prompt (if needed) runs via acquireToken before any
+        // spinner starts, so the Clack text input is not clobbered.
+        let promptShown = false;
+        const result = await publishMagicBuilderFaas({
+          acquireToken: async () => {
+            if (!isInteractiveTerminal()) {
+              return undefined;
+            }
+            promptShown = true;
+            showNote(MAGIC_TOKEN_HELP, 'Magic-Builder token');
+            return promptText({
+              message: 'Paste your Magic-Builder token:',
+              validate: (value) => (value && value.trim().length > 0 ? undefined : 'token cannot be empty')
+            });
+          }
+        });
+        if (promptShown) {
+          showInfo('magic-builder token saved to OS keyring');
+        }
+        showInfo(`magic-builder token source: ${result.tokenSource}${result.tokenPath ? ` (${result.tokenPath})` : ''}`);
+        showInfo(`magic-builder record_id: ${result.recordId}`);
+        showInfo(result.isUpdate ? 'magic-builder FaaS updated' : 'magic-builder FaaS published');
+        showNote(result.url, 'Signature URL');
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        showInfo(`magic-builder setup failed: ${message}`);
+        showInfo('signature url: unavailable until publish succeeds');
+      }
+    }
+  } else if (credential?.token && credential.slotId) {
     showNote(await resolveSignatureUrl(['--provider', activeProvider]), 'Signature URL');
   } else {
     showInfo('login: missing; run `agent-presence login --provider feishu-signature` to enable slot updates');

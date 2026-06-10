@@ -45,6 +45,50 @@ export async function deleteCredential(): Promise<void> {
   await createCredentialStore().deleteCredential();
 }
 
+export interface GenericSecretStore {
+  read(): Promise<string | undefined>;
+  write(value: string): Promise<void>;
+  delete(): Promise<void>;
+}
+
+/**
+ * A single named secret value stored in the same OS-keyring backends the slot
+ * credential uses (macOS Keychain, Linux libsecret). Used for secrets that are
+ * not the l.garyyang slot credential, e.g. the magic-builder publish token.
+ */
+export function createGenericSecretStore(service: string, account: string): GenericSecretStore {
+  if (process.platform === 'linux') {
+    return {
+      async read() {
+        if (!(await hasSecretTool())) {
+          return undefined;
+        }
+        return readSecretTool(service, account);
+      },
+      async write(value) {
+        await ensureSecretTool();
+        await writeSecretTool(service, account, value);
+      },
+      async delete() {
+        if (await hasSecretTool()) {
+          await deleteSecretTool(service, account);
+        }
+      }
+    };
+  }
+  return {
+    read() {
+      return readKeychain(service, account);
+    },
+    async write(value) {
+      await writeKeychain(service, account, value);
+    },
+    async delete() {
+      await deleteKeychain(service, account);
+    }
+  };
+}
+
 export function createCredentialStore(options: CredentialStoreOptions = {}): CredentialStore {
   const backend = getCredentialBackend(options);
   return {

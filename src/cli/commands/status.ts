@@ -1,5 +1,16 @@
-import { configSlotId, getStatePath, loadConfig, providerBaseUrl, providerId, renderTemplates, ttlMs } from '../../config.js';
+import {
+  configSlotId,
+  getStatePath,
+  loadConfig,
+  magicBuilderBaseUrl,
+  magicBuilderFaasId,
+  providerBaseUrl,
+  providerId,
+  renderTemplates,
+  ttlMs
+} from '../../config.js';
 import { LGaryYangProvider } from '../../providers/l-garyyang.js';
+import { MagicBuilderProvider } from '../../providers/magic-builder.js';
 import { renderPresence } from '../../render.js';
 import { readCredential } from '../../secret.js';
 import { getActiveSessions, loadState, saveState, withStateLock } from '../../state.js';
@@ -30,8 +41,30 @@ export async function printStatus(args: string[]): Promise<void> {
     };
   });
 
-  if (hasFlag(args, '--remote') && credential) {
-    requirePayload(payload).remote = await new LGaryYangProvider(providerBaseUrl(config), credential).getInfo();
+  if (hasFlag(args, '--remote')) {
+    const remote: Record<string, unknown> = {};
+    if (credential) {
+      try {
+        remote.slot = await new LGaryYangProvider(providerBaseUrl(config), credential).getInfo();
+      } catch (error) {
+        remote.slotError = error instanceof Error ? error.message : String(error);
+      }
+    }
+    if (activeProvider === 'magic-builder') {
+      const faasId = magicBuilderFaasId(config);
+      if (faasId) {
+        try {
+          remote.faas = await new MagicBuilderProvider(magicBuilderBaseUrl(config)).invokeFaas(faasId);
+        } catch (error) {
+          remote.faasError = error instanceof Error ? error.message : String(error);
+        }
+      } else {
+        remote.faasError = 'no published faas id; run `agent-presence setup --provider magic-builder` first';
+      }
+    }
+    if (Object.keys(remote).length > 0) {
+      requirePayload(payload).remote = remote;
+    }
   }
 
   console.log(JSON.stringify(requirePayload(payload), null, 2));
