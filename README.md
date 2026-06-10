@@ -270,6 +270,48 @@ export AGENT_PRESENCE_FEISHU_SIGNATURE_PREVIEW_TARGET_URL="https://example.com"
 
 Token and slot credentials are not written to git and are not embedded in the signature URL.
 
+### `magic-builder` provider (Magic-Builder FaaS bridge)
+
+`magic-builder` is an alternate provider for when the `l.garyyang.work` link-preview page is not being rendered by Feishu (e.g. Feishu has tightened the iframe whitelist for personal-signature link previews). It uses the same l.garyyang slot backend for value storage but fronts it with a Magic-Builder FaaS so the resulting signature URL lives under `magic.solutionsuite.cn`, which Feishu's link-preview pipeline accepts.
+
+```bash
+# 1) acquire a Magic-Builder token (one-time, via browser):
+#    open https://magic.solutionsuite.cn → Feishu SSO login → copy your API token
+#    then write it to ~/.magic-token (or export MAGIC_TOKEN=...)
+echo "<your-magic-builder-token>" > ~/.magic-token
+chmod 600 ~/.magic-token
+
+# 2) setup. Requires an existing l.garyyang login so the published FaaS can
+#    read your slot value; run `agent-presence login --provider feishu-signature`
+#    first if you have not already.
+agent-presence setup --provider magic-builder --hook-command absolute
+```
+
+`setup` builds a CommonJS FaaS that embeds your slot id and bearer, POSTs it to `https://magic.solutionsuite.cn/api/faas`, and stores the returned `record_id` under `providers.magic-builder.faasId`. The resulting signature URL is:
+
+```text
+https://magic.solutionsuite.cn/r?fid=<record_id>
+```
+
+Re-running `setup --provider magic-builder` updates the same FaaS in place (idempotent). Hooks continue to write into the l.garyyang slot exactly as before — the FaaS pulls from `/api/slot/info` each time Feishu refreshes the preview (default cache `60s`).
+
+Env / config overrides:
+
+```bash
+export MAGIC_TOKEN=...                                # publish token
+export AGENT_PRESENCE_MAGIC_BUILDER_BASE_URL=...      # override magic.solutionsuite.cn
+export AGENT_PRESENCE_MAGIC_BUILDER_FAAS_ID=rec_...   # pin an existing FaaS record id
+export AGENT_PRESENCE_MAGIC_BUILDER_FAAS_NAME=...     # override default `agent_presence_preview`
+export AGENT_PRESENCE_MAGIC_BUILDER_FALLBACK_TITLE=...# rendered when the slot read fails
+```
+
+Inspect the live preview the FaaS would return:
+
+```bash
+agent-presence status --provider magic-builder --remote
+# → .remote.faas.title, .remote.faas.expireStrategy
+```
+
 ## Logs
 
 Hook failures and selected provider requests are written to:

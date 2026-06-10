@@ -5,6 +5,7 @@ import { readCredential } from '../../secret.js';
 import { LINUX_WATCHER_SKIP_MESSAGE, runSetupScripts } from '../../setup.js';
 import { hasFlag, optionValue } from '../args.js';
 import { hasCredential } from '../credential.js';
+import { publishMagicBuilderFaas } from '../magic-builder-setup.js';
 import { createSpinner, finishOutro, promptConfirm, showInfo, showNote, startIntro } from '../ui.js';
 import { login } from './login.js';
 import { resolveSignatureUrl } from './url.js';
@@ -60,7 +61,27 @@ export async function setup(args: string[]): Promise<void> {
   }
 
   const credential = await readCredential(configSlotId(config));
-  if (credential?.token && credential.slotId) {
+
+  if (activeProvider === 'magic-builder') {
+    if (!credential?.token || !credential.slotId) {
+      showInfo('login: missing; run `agent-presence login --provider feishu-signature` first');
+      showInfo('signature url: unavailable until `agent-presence login` succeeds');
+    } else {
+      try {
+        const publishSpinner = createSpinner();
+        publishSpinner.start('Publishing magic-builder preview FaaS');
+        const result = await publishMagicBuilderFaas();
+        publishSpinner.stop(result.isUpdate ? 'Magic-builder FaaS updated' : 'Magic-builder FaaS published');
+        showInfo(`magic-builder token source: ${result.tokenSource}${result.tokenPath ? ` (${result.tokenPath})` : ''}`);
+        showInfo(`magic-builder record_id: ${result.recordId}`);
+        showNote(result.url, 'Signature URL');
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        showInfo(`magic-builder setup failed: ${message}`);
+        showInfo('signature url: unavailable until publish succeeds');
+      }
+    }
+  } else if (credential?.token && credential.slotId) {
     showNote(await resolveSignatureUrl(['--provider', activeProvider]), 'Signature URL');
   } else {
     showInfo('login: missing; run `agent-presence login --provider feishu-signature` to enable slot updates');
