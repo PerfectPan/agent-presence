@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.4.0
+
+### Minor Changes
+
+- 1f5e6f9: Add `magic-builder` provider as an alternate front-end for the signature URL. `agent-presence setup --provider magic-builder` publishes (or updates) a small CommonJS FaaS to `https://magic.solutionsuite.cn/api/faas` and emits `https://magic.solutionsuite.cn/r?fid=<record_id>` as the signature URL. Hooks continue to write into the l.garyyang slot exactly as before — the FaaS pulls the current value from `/api/slot/info` each time Feishu refreshes the preview (default cache 60s). Use this when the existing `feishu-signature` URL stops rendering inside Feishu (e.g. the personal-signature iframe whitelist changes).
+
+  In an interactive terminal, setup prints the token-acquisition steps (open the 妙笔 Feishu bot, send `dev`, copy the reply) and prompts for the token, then stores it in the OS keyring (Keychain / libsecret) under `agent-presence:magic-builder`. Token resolution order is `MAGIC_TOKEN` env → keyring → `~/.magic-token` → `<cwd>/.magic-token`; the plaintext file is still read for skill-pack compatibility but is no longer written by this CLI.
+
+- 3edfb19: Add Pi Coding Agent (`@earendil-works/pi-coding-agent`) as a supported source. Setup installs a managed Pi extension at `~/.pi/agent/extensions/agent-presence.ts` that bridges Pi lifecycle events (`before_agent_start`, `turn_start`, `tool_execution_*`, `agent_end`, `session_shutdown`) into the existing presence state/render/provider pipeline. Pi appears in render details as a `pi N` source group. Uninstall removes only the managed extension and never deletes user-owned Pi extensions or other settings.
+
 ## 0.3.3
 
 ### Patch Changes
