@@ -32,6 +32,8 @@ export interface SlotSyncDecisionOptions {
   debounceMs: number;
   ttlMs: number;
   renderTemplates?: RenderTemplates;
+  /** Embed the cached usage badge (state.usageBadge) in the rendered value. */
+  usageEnabled?: boolean;
 }
 
 export type SlotSyncDecision =
@@ -53,17 +55,28 @@ export class SlotRateLimitError extends Error {
   }
 }
 
-export function renderPresence(activeSessions: AgentSession[], templates: RenderTemplates = {}): string {
+export function renderPresence(
+  activeSessions: AgentSession[],
+  templates: RenderTemplates = {},
+  usage = ''
+): string {
   const resolvedTemplates = resolveRenderTemplates(templates);
   const details = renderDetails(activeSessions);
   const total = activeSessions.length;
 
-  if (activeSessions.length === 0) {
-    return formatTemplate(resolvedTemplates.zero, { total, details }).slice(0, 200);
-  }
+  const template = total === 0 ? resolvedTemplates.zero : total === 1 ? resolvedTemplates.one : resolvedTemplates.many;
+  return applyUsage(formatTemplate(template, { total, details, usage }), usage, template).slice(0, 200);
+}
 
-  const template = total === 1 ? resolvedTemplates.one : resolvedTemplates.many;
-  return formatTemplate(template, { total, details }).slice(0, 200);
+/**
+ * When a usage badge is supplied but the template never referenced `{usage}`,
+ * append it so enabling usage-in-signature works without editing templates.
+ */
+function applyUsage(rendered: string, usage: string, template: string): string {
+  if (usage.length === 0 || template.includes('{usage}')) {
+    return rendered;
+  }
+  return `${rendered} | 今日 ${usage}`;
 }
 
 function renderDetails(activeSessions: AgentSession[]): string {
@@ -77,8 +90,11 @@ function renderDetails(activeSessions: AgentSession[]): string {
     .join(' · ');
 }
 
-function formatTemplate(template: string, variables: { total: number; details: string }): string {
-  return template.replaceAll('{total}', String(variables.total)).replaceAll('{details}', variables.details);
+function formatTemplate(template: string, variables: { total: number; details: string; usage: string }): string {
+  return template
+    .replaceAll('{total}', String(variables.total))
+    .replaceAll('{details}', variables.details)
+    .replaceAll('{usage}', variables.usage);
 }
 
 function resolveRenderTemplates(templates: RenderTemplates): Required<RenderTemplates> {
@@ -111,7 +127,8 @@ export async function syncSlot(state: PresenceState, options: SyncSlotOptions): 
 
 export function prepareSlotSync(state: PresenceState, options: SlotSyncDecisionOptions): SlotSyncDecision {
   expireStaleSessions(state, options.now, options.ttlMs);
-  const value = renderPresence(getActiveSessions(state, options.now, options.ttlMs), options.renderTemplates);
+  const usage = options.usageEnabled ? state.usageBadge ?? '' : '';
+  const value = renderPresence(getActiveSessions(state, options.now, options.ttlMs), options.renderTemplates, usage);
   const elapsedMs = options.now - (state.lastSlotUpdateAt ?? 0);
 
   if (!options.force && state.lastValue === value) {

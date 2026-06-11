@@ -22,6 +22,9 @@ export interface PresenceState {
   lastSlotUpdateAt?: number;
   lastValue?: string;
   pendingSlotFlushAt?: number;
+  /** Cached usage badge for the signature, refreshed at most once per TTL. */
+  usageBadge?: string;
+  usageBadgeAt?: number;
 }
 
 export interface AgentEventInput {
@@ -76,7 +79,9 @@ export function normalizeState(raw: PresenceState): PresenceState {
     sessions,
     lastSlotUpdateAt: state.lastSlotUpdateAt ?? 0,
     lastValue: state.lastValue ?? '',
-    pendingSlotFlushAt: typeof state.pendingSlotFlushAt === 'number' ? state.pendingSlotFlushAt : undefined
+    pendingSlotFlushAt: typeof state.pendingSlotFlushAt === 'number' ? state.pendingSlotFlushAt : undefined,
+    usageBadge: typeof state.usageBadge === 'string' ? state.usageBadge : undefined,
+    usageBadgeAt: typeof state.usageBadgeAt === 'number' ? state.usageBadgeAt : undefined
   };
 }
 
@@ -206,6 +211,19 @@ export async function withStateLock<T>(
   } finally {
     await rm(lockPath, { recursive: true, force: true });
   }
+}
+
+/**
+ * Whether an event marks a session boundary (start or finish) worth refreshing
+ * the usage badge on. Subagent boundaries are excluded so a session spawning
+ * many subagents does not trigger a rescan per subagent.
+ */
+export function isSessionBoundaryEvent(event: string): boolean {
+  if (event === 'SubagentStart' || event === 'SubagentStop') {
+    return false;
+  }
+  const normalized = normalizeEvent(event);
+  return normalized === 'start' || normalized === 'finish';
 }
 
 function normalizeEvent(event: string): NormalizedEvent {

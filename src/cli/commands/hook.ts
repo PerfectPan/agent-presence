@@ -1,13 +1,14 @@
-import { configSlotId, debounceMs, getStatePath, loadConfig, providerBaseUrl, renderTemplates, ttlMs } from '../../config.js';
+import { configSlotId, debounceMs, getStatePath, loadConfig, providerBaseUrl, renderTemplates, ttlMs, usageShowInSignature } from '../../config.js';
 import { LGaryYangProvider } from '../../providers/l-garyyang.js';
 import { readCredential } from '../../secret.js';
-import { applyAgentEvent } from '../../state.js';
+import { applyAgentEvent, isSessionBoundaryEvent } from '../../state.js';
 import { hasFlag, optionValue } from '../args.js';
 import { errorMessage } from '../errors.js';
 import { resolveHookContext, writeHookOutput } from '../hook-context.js';
 import { writeHookDiagnostic } from '../hook-diagnostics.js';
 import { readStdinJson, writeLog } from '../io.js';
 import { syncRenderedSlotWithDeferredFlush } from '../rendered-slot-sync.js';
+import { refreshSignatureUsageBadge } from '../usage-badge.js';
 
 export async function hook(args: string[]): Promise<void> {
   try {
@@ -34,6 +35,13 @@ export async function hook(args: string[]): Promise<void> {
     const statePath = getStatePath();
     const now = Date.now();
 
+    // Refresh the cached usage badge only at session boundaries; other events
+    // reuse the cached value, so high-frequency tool events do no scanning.
+    const usageEnabled = usageShowInSignature(config);
+    if (usageEnabled && isSessionBoundaryEvent(event)) {
+      await refreshSignatureUsageBadge(config, statePath, now);
+    }
+
     await syncRenderedSlotWithDeferredFlush(
       statePath,
       {
@@ -41,7 +49,8 @@ export async function hook(args: string[]): Promise<void> {
         now,
         debounceMs: debounceMs(config),
         ttlMs: ttlMs(config),
-        renderTemplates: renderTemplates(config)
+        renderTemplates: renderTemplates(config),
+        usageEnabled
       },
       async (value) => {
         // Keep Keychain/provider IO after the local state mutation has been persisted.

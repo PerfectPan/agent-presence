@@ -9,6 +9,7 @@ interface RenderedSlotSyncOptions {
   debounceMs: number;
   ttlMs: number;
   renderTemplates?: RenderTemplates;
+  usageEnabled?: boolean;
 }
 
 export async function syncRenderedSlotWithDeferredFlush(

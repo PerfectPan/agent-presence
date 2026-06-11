@@ -3,6 +3,7 @@ import { homedir } from 'node:os';
 import { existsSync } from 'node:fs';
 import { readJsonFile, writeJsonAtomic } from './json-file.js';
 import type { RenderTemplates } from './render.js';
+import type { PricingOverrides } from './usage/index.js';
 
 export const DEFAULT_PROVIDER_BASE_URL = 'https://l.garyyang.work';
 export const DEFAULT_PREVIEW_BASE_URL = 'https://l.garyyang.work/';
@@ -31,6 +32,15 @@ export interface MagicBuilderProviderConfig {
   fallbackTitle?: string;
 }
 
+export interface UsageConfig {
+  /** Append a "today's usage" badge to the signature title. Opt-in. */
+  showInSignature?: boolean;
+  /** Rolling-window length (days) shown in the signature badge. Defaults to 1. */
+  signatureWindowDays?: number;
+  /** Pricing overrides keyed by model substring, USD per million tokens. */
+  pricing?: PricingOverrides;
+}
+
 export interface AppConfig {
   provider?: ProviderId | 'l-garyyang';
   providerBaseUrl?: string;
@@ -46,6 +56,7 @@ export interface AppConfig {
   ttlMs?: number;
   debounceMs?: number;
   render?: RenderTemplates;
+  usage?: UsageConfig;
 }
 
 export function getDefaultHomeDir(): string {
@@ -207,6 +218,22 @@ export function renderTemplates(config: AppConfig): RenderTemplates {
   setDefinedTemplate(templates, 'one', process.env.AGENT_PRESENCE_RENDER_ONE ?? process.env.AGENT_SIGNATURE_RENDER_ONE ?? config.render?.one);
   setDefinedTemplate(templates, 'many', process.env.AGENT_PRESENCE_RENDER_MANY ?? process.env.AGENT_SIGNATURE_RENDER_MANY ?? config.render?.many);
   return templates;
+}
+
+export function usageShowInSignature(config: AppConfig): boolean {
+  const env = process.env.AGENT_PRESENCE_USAGE_IN_SIGNATURE;
+  if (env !== undefined) {
+    return env === '1' || env.toLowerCase() === 'true';
+  }
+  return config.usage?.showInSignature ?? false;
+}
+
+export function usageSignatureWindowDays(config: AppConfig): number {
+  return readPositiveInt(process.env.AGENT_PRESENCE_USAGE_WINDOW_DAYS) ?? config.usage?.signatureWindowDays ?? 1;
+}
+
+export function usagePricingOverrides(config: AppConfig): PricingOverrides {
+  return config.usage?.pricing ?? {};
 }
 
 export function configSlotId(config: AppConfig): string | undefined {

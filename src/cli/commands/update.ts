@@ -1,9 +1,10 @@
-import { configSlotId, debounceMs, getStatePath, loadConfig, providerBaseUrl, providerId, renderTemplates, ttlMs } from '../../config.js';
+import { configSlotId, debounceMs, getStatePath, loadConfig, providerBaseUrl, providerId, renderTemplates, ttlMs, usageShowInSignature } from '../../config.js';
 import { LGaryYangProvider } from '../../providers/l-garyyang.js';
 import { readCredential } from '../../secret.js';
 import { hasFlag, optionValue } from '../args.js';
 import { syncRenderedSlotWithDeferredFlush } from '../rendered-slot-sync.js';
 import { syncExplicitSlotValueWithStateLock } from '../slot-sync.js';
+import { refreshSignatureUsageBadge } from '../usage-badge.js';
 
 export async function update(args: string[]): Promise<void> {
   const config = await loadConfig();
@@ -33,6 +34,13 @@ export async function update(args: string[]): Promise<void> {
     return;
   }
 
+  // An explicit update is infrequent, so refresh the usage badge here too (when
+  // enabled) before rendering, mirroring the hook path's boundary refresh.
+  const usageEnabled = usageShowInSignature(config);
+  if (usageEnabled) {
+    await refreshSignatureUsageBadge(config, statePath, now);
+  }
+
   const result = await syncRenderedSlotWithDeferredFlush(
     statePath,
     {
@@ -40,7 +48,8 @@ export async function update(args: string[]): Promise<void> {
       now,
       debounceMs: debounceMs(config),
       ttlMs: ttlMs(config),
-      renderTemplates: renderTemplates(config)
+      renderTemplates: renderTemplates(config),
+      usageEnabled
     },
     (value) => provider.updateSlot(value)
   );

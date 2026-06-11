@@ -7,6 +7,7 @@ import { setup } from './commands/setup.js';
 import { printStatus } from './commands/status.js';
 import { uninstall } from './commands/uninstall.js';
 import { update } from './commands/update.js';
+import { printUsage } from './commands/usage.js';
 import { printSignatureUrl } from './commands/url.js';
 import { printHelp } from './help.js';
 import { assertSupportedPlatform } from '../platform.js';
@@ -43,6 +44,9 @@ export async function runCli(argv: string[]): Promise<void> {
       return;
     case 'status':
       await printStatus(parsed.args);
+      return;
+    case 'usage':
+      await printUsage(parsed.args);
       return;
     case 'update':
       await update(parsed.args);

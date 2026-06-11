@@ -7,7 +7,8 @@ import {
   providerBaseUrl,
   providerId,
   renderTemplates,
-  ttlMs
+  ttlMs,
+  usageShowInSignature
 } from '../../config.js';
 import { LGaryYangProvider } from '../../providers/l-garyyang.js';
 import { MagicBuilderProvider } from '../../providers/magic-builder.js';
@@ -28,9 +29,10 @@ export async function printStatus(args: string[]): Promise<void> {
     const state = await loadState(statePath);
     const active = getActiveSessions(state, now, ttlMs(config));
     await saveState(state, statePath);
+    const usage = usageShowInSignature(config) ? state.usageBadge ?? '' : '';
     payload = {
       activeCount: active.length,
-      value: renderPresence(active, renderTemplates(config)),
+      value: renderPresence(active, renderTemplates(config), usage),
       active,
       provider: activeProvider,
       lastValue: state.lastValue ?? '',
