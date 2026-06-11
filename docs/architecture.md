@@ -292,6 +292,36 @@ https://l.garyyang.work/?t2=<base62({{slot id="slot_xxx"}})>
 
 The URL references the slot helper only. It must not contain tokens, local state, or machine-specific paths.
 
+### Magic-Builder Provider
+
+`src/providers/magic-builder.ts` is a second provider id, `magic-builder`. It does not replace `feishu-signature`; it is an alternate **front-end for the signature URL** that keeps the same l.garyyang slot as the value store.
+
+**Why it exists.** The `feishu-signature` URL is an `l.garyyang.work` HTML page that renders inside Feishu's personal-signature link preview via an iframe. When Feishu tightens what that preview surface will render (e.g. an iframe-host whitelist change), the `l.garyyang.work` URL can stop displaying even though the slot value is still correct. `magic-builder` re-fronts the same value through `magic.solutionsuite.cn`, whose link-preview pipeline Feishu accepts, without changing how presence is computed or written.
+
+**How it works.**
+
+```text
+hooks -> l.garyyang slot (unchanged write path)
+                 ^
+                 | GET /api/slot/info  (fetched on each preview refresh)
+magic-builder FaaS  (published once to magic.solutionsuite.cn/api/faas)
+                 ^
+                 | Feishu pulls the link preview
+signature URL = https://magic.solutionsuite.cn/r?fid=<record_id>
+```
+
+Setup renders a small CommonJS link-preview FaaS (`buildFaasCode`), `POST`s it to `magic.solutionsuite.cn/api/faas`, and persists the returned `record_id` under `providers.magic-builder.faasId` in `config.json`. Re-running setup `POST`s with the same `id` to update the function in place (idempotent). The FaaS returns the Feishu `url.preview.get` shape:
+
+```json
+{ "inline": { "i18n_title": { "zh_cn": "<current slot value>" } }, "expire_strategy": "60s" }
+```
+
+`expire_strategy` is the finest magic-builder cache granularity (60s). Combined with the writer-side debounce and Feishu's own client-side preview cache, the user-visible refresh is minute-scale, not real-time — adequate for an "agents currently working" indicator.
+
+**Token acquisition (onboarding).** Publishing to `/api/faas` requires a magic-builder token, which is tied to the user's Feishu identity (the service authenticates through Feishu SSO). The CLI cannot bootstrap it headlessly. Resolution order is `MAGIC_TOKEN` env → OS keyring (`agent-presence:magic-builder`) → `~/.magic-token` → `<cwd>/.magic-token`. In an interactive terminal with no token, setup prints the acquisition steps (open the 妙笔 Feishu bot, send `dev`, copy the reply) and prompts for the token, then stores it in the keyring via the generic secret store. The plaintext `~/.magic-token` file is read for skill-pack compatibility but is never written by this CLI. The token prompt is gated behind the l.garyyang credential check: magic-builder needs an existing slot to read from, so a user must `login --provider feishu-signature` before the token prompt appears.
+
+**Trust-boundary trade-off.** The published FaaS embeds the user's l.garyyang slot bearer so it can call `GET /api/slot/info` on each preview refresh. This sends a credential across the trust boundary to `magic.solutionsuite.cn`, which is why publishing requires explicit operator action rather than running unattended. It is accepted because the FaaS is private to the publisher's own magic-builder account and the slot bearer is low-sensitivity (read/write of one presence slot, no account access). Rotating that bearer requires re-running `setup --provider magic-builder` to re-publish. A future iteration could remove the embedded bearer by having l.garyyang expose an unauthenticated read-only slot endpoint, or by moving the value store to a Feishu bitable the FaaS reads with its own injected token.
+
 ### Linux Credential Storage
 
 On Linux, the priority order for credential resolution is:
@@ -489,6 +519,7 @@ remote value is wrong but local is correct      -> provider sync path bug or del
 - Codex hooks are pass-through and bounded by agent hook timeouts.
 - Setup modifies only known hook/plugin/watcher locations and preserves unrelated user entries.
 - Logs are local diagnostics. They must be redacted by construction and should remain useful even when shared in a bug report.
+- The `magic-builder` provider is the one deliberate exception to "credentials never leave the machine": its published FaaS embeds the l.garyyang slot bearer so it can read the slot on `magic.solutionsuite.cn`. This is gated behind explicit operator action and documented under [Magic-Builder Provider](#magic-builder-provider); the embedded value is the low-sensitivity slot bearer only, never the magic-builder token (which stays in the OS keyring).
 
 ## Package And Release Safety
 
@@ -511,4 +542,4 @@ CI installs with a frozen pnpm lockfile and `--ignore-scripts`. Release uses Cha
 
 ## Extension Points
 
-New agent sources should add a hook adapter that emits the shared lifecycle actions. New providers should implement the same slot-style contract first, so profile-specific or network-specific write logic stays behind provider boundaries.
+New agent sources should add a hook adapter that emits the shared lifecycle actions. New providers should implement the same slot-style contract first, so profile-specific or network-specific write logic stays behind provider boundaries. A provider may also be a pure **front-end** that reuses an existing slot store and only changes how the signature URL is published, as `magic-builder` does over `feishu-signature`.
