@@ -25,17 +25,25 @@ describe('isSessionBoundaryEvent', () => {
 });
 
 describe('normalizeState usage badge cache', () => {
-  it('preserves the cached usage badge across a load/normalize round trip', () => {
-    const raw: PresenceState = { ...createEmptyState(), usageBadge: '2.1M · $4.50', usageBadgeAt: 1700 };
+  it('preserves the per-window badge cache across a load/normalize round trip', () => {
+    const raw: PresenceState = {
+      ...createEmptyState(),
+      usageBadges: { '1': '2.1M · $4.50', '7': '13M · $30.00' },
+      usageBadgesAt: 1700
+    };
     const normalized = normalizeState(raw);
-    expect(normalized.usageBadge).toBe('2.1M · $4.50');
-    expect(normalized.usageBadgeAt).toBe(1700);
+    expect(normalized.usageBadges).toEqual({ '1': '2.1M · $4.50', '7': '13M · $30.00' });
+    expect(normalized.usageBadgesAt).toBe(1700);
   });
 
-  it('drops malformed cache fields', () => {
-    const raw = { ...createEmptyState(), usageBadge: 123, usageBadgeAt: 'soon' } as unknown as PresenceState;
+  it('drops malformed cache entries and fields', () => {
+    const raw = {
+      ...createEmptyState(),
+      usageBadges: { '1': '2.1M', bad: '5M', '7': 123 },
+      usageBadgesAt: 'soon'
+    } as unknown as PresenceState;
     const normalized = normalizeState(raw);
-    expect(normalized.usageBadge).toBeUndefined();
-    expect(normalized.usageBadgeAt).toBeUndefined();
+    expect(normalized.usageBadges).toEqual({ '1': '2.1M' });
+    expect(normalized.usageBadgesAt).toBeUndefined();
   });
 });

@@ -59,15 +59,18 @@ Surfaces:
 
 - `agent-presence usage [--days N] [--json]` prints a 1d/7d table (or a single
   window) and a machine-readable JSON form.
-- The signature reuses `renderPresence`: a new `{usage}` template variable, and a
-  badge cached in state (`state.usageBadge`) that `prepareSlotSync` embeds when
-  `usageEnabled`. The hook path refreshes the cache via
-  `refreshSignatureUsageBadge` **only on session-boundary events**
-  (`isSessionBoundaryEvent`: start/finish, excluding subagent boundaries); every
-  other event reuses the cached badge and does no scanning. Because each scan
-  reads the whole rolling window, a single boundary refresh is always complete —
-  no background timer or cron is needed. The feature is opt-in
-  (`usage.showInSignature` / `AGENT_PRESENCE_USAGE_IN_SIGNATURE`).
+- The signature reuses `renderPresence` via template variables, so consumers
+  compose their own label and pick windows: `{usage}` (the default window),
+  `{usage_1d}`, `{usage_7d}`, and generically `{usage_Nd}`. Badges are cached
+  per-window in state (`state.usageBadges`, keyed by day count) and substituted
+  by `prepareSlotSync`. Usage is active when a template references any `{usage*}`
+  token, or when `usage.showInSignature` is set (zero-config auto-append of the
+  default window, labelled `今日`/`近N天`). The hook path refreshes the cache via
+  `refreshSignatureUsageBadges` **only on session-boundary events**
+  (`isSessionBoundaryEvent`: start/finish, excluding subagent boundaries),
+  scanning each referenced window; other events reuse the cache and do no
+  scanning. Because each scan reads the whole rolling window, a single boundary
+  refresh is always complete — no background timer or cron is needed.
 
 ## Alternatives Considered
 

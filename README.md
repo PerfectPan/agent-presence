@@ -160,16 +160,31 @@ The default pricing is best-effort and will drift; override it per model
 }
 ```
 
-When `usage.showInSignature` is enabled (or `AGENT_PRESENCE_USAGE_IN_SIGNATURE=1`),
-the signature gains a `今日 <tokens> · <cost>` badge (or fills a `{usage}`
-placeholder if your render template includes one). The badge is refreshed by a
-full transcript rescan only on **session-boundary events** (a session starting or
-finishing); high-frequency tool events reuse the cached badge and never trigger a
-scan. Because each scan reads the entire rolling window, any single refresh
-yields the complete, correct total — so boundary-only refresh stays accurate
-without a background timer or cron. The trade-off: while a session is mid-flight
-the badge reflects the total as of its last boundary, not the live in-progress
-count.
+Usage in the signature is driven by render-template variables, so you compose
+your own label and choose which windows to show:
+
+| Variable | Meaning |
+| --- | --- |
+| `{usage}` | badge for the default window (`usage.signatureWindowDays`, default 1) |
+| `{usage_1d}` | rolling 1-day badge, e.g. `2.1M · $4.50` |
+| `{usage_7d}` | rolling 7-day badge — any `{usage_Nd}` works |
+
+```bash
+agent-presence config render --many "{total} 个 AI 牛马 | {details} | 今日 {usage_1d} · 近7天 {usage_7d}"
+```
+
+Referencing any `{usage*}` token enables scanning for the windows it names. For a
+zero-config option, set `usage.showInSignature: true` (or
+`AGENT_PRESENCE_USAGE_IN_SIGNATURE=1`) to auto-append the default window
+(labelled `今日` for 1 day, `近N天` otherwise) without editing templates.
+
+Badges are refreshed by a full transcript rescan only on **session-boundary
+events** (a session starting or finishing); high-frequency tool events reuse the
+cached badges and never trigger a scan. Because each scan reads the entire
+rolling window, any single refresh yields the complete, correct total — so
+boundary-only refresh stays accurate without a background timer or cron. The
+trade-off: while a session is mid-flight the badge reflects the total as of its
+last boundary, not the live in-progress count.
 
 ## Presence Semantics
 

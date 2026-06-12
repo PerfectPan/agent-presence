@@ -31,9 +31,11 @@ Usage:
   agent-presence config render --reset
 
 Template variables:
-  {total}    active agent count
-  {details}  grouped source counts, for example: codex 1 · claude 1
-  {usage}    today's token usage badge, for example: 2.1M · $4.50
-             (only filled when usage.showInSignature is enabled)
+  {total}     active agent count
+  {details}   grouped source counts, for example: codex 1 · claude 1
+  {usage}     token usage badge for the default window (usage.signatureWindowDays)
+  {usage_1d}  rolling 1-day usage badge, for example: 2.1M · $4.50
+  {usage_7d}  rolling 7-day usage badge; any {usage_Nd} works
+              (referencing a usage token enables scanning; compose your own label)
 `);
 }

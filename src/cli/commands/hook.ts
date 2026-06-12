@@ -1,4 +1,4 @@
-import { configSlotId, debounceMs, getStatePath, loadConfig, providerBaseUrl, renderTemplates, ttlMs, usageShowInSignature } from '../../config.js';
+import { configSlotId, debounceMs, getStatePath, loadConfig, providerBaseUrl, renderTemplates, ttlMs } from '../../config.js';
 import { LGaryYangProvider } from '../../providers/l-garyyang.js';
 import { readCredential } from '../../secret.js';
 import { applyAgentEvent, isSessionBoundaryEvent } from '../../state.js';
@@ -8,7 +8,7 @@ import { resolveHookContext, writeHookOutput } from '../hook-context.js';
 import { writeHookDiagnostic } from '../hook-diagnostics.js';
 import { readStdinJson, writeLog } from '../io.js';
 import { syncRenderedSlotWithDeferredFlush } from '../rendered-slot-sync.js';
-import { refreshSignatureUsageBadge } from '../usage-badge.js';
+import { refreshSignatureUsageBadges, usageRenderPlan } from '../usage-badge.js';
 
 export async function hook(args: string[]): Promise<void> {
   try {
@@ -35,11 +35,11 @@ export async function hook(args: string[]): Promise<void> {
     const statePath = getStatePath();
     const now = Date.now();
 
-    // Refresh the cached usage badge only at session boundaries; other events
-    // reuse the cached value, so high-frequency tool events do no scanning.
-    const usageEnabled = usageShowInSignature(config);
-    if (usageEnabled && isSessionBoundaryEvent(event)) {
-      await refreshSignatureUsageBadge(config, statePath, now);
+    // Refresh the cached usage badges only at session boundaries; other events
+    // reuse the cached values, so high-frequency tool events do no scanning.
+    const usagePlan = usageRenderPlan(config);
+    if (usagePlan.enabled && isSessionBoundaryEvent(event)) {
+      await refreshSignatureUsageBadges(config, statePath, now);
     }
 
     await syncRenderedSlotWithDeferredFlush(
@@ -50,7 +50,7 @@ export async function hook(args: string[]): Promise<void> {
         debounceMs: debounceMs(config),
         ttlMs: ttlMs(config),
         renderTemplates: renderTemplates(config),
-        usageEnabled
+        usage: { enabled: usagePlan.enabled, defaultWindow: usagePlan.defaultWindow }
       },
       async (value) => {
         // Keep Keychain/provider IO after the local state mutation has been persisted.

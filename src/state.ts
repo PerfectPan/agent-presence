@@ -22,9 +22,9 @@ export interface PresenceState {
   lastSlotUpdateAt?: number;
   lastValue?: string;
   pendingSlotFlushAt?: number;
-  /** Cached usage badge for the signature, refreshed at most once per TTL. */
-  usageBadge?: string;
-  usageBadgeAt?: number;
+  /** Cached usage badges for the signature, keyed by rolling-window day count. */
+  usageBadges?: Record<string, string>;
+  usageBadgesAt?: number;
 }
 
 export interface AgentEventInput {
@@ -80,9 +80,22 @@ export function normalizeState(raw: PresenceState): PresenceState {
     lastSlotUpdateAt: state.lastSlotUpdateAt ?? 0,
     lastValue: state.lastValue ?? '',
     pendingSlotFlushAt: typeof state.pendingSlotFlushAt === 'number' ? state.pendingSlotFlushAt : undefined,
-    usageBadge: typeof state.usageBadge === 'string' ? state.usageBadge : undefined,
-    usageBadgeAt: typeof state.usageBadgeAt === 'number' ? state.usageBadgeAt : undefined
+    usageBadges: normalizeUsageBadges(state.usageBadges),
+    usageBadgesAt: typeof state.usageBadgesAt === 'number' ? state.usageBadgesAt : undefined
   };
+}
+
+function normalizeUsageBadges(raw: unknown): Record<string, string> | undefined {
+  if (typeof raw !== 'object' || raw === null) {
+    return undefined;
+  }
+  const badges: Record<string, string> = {};
+  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (/^\d+$/.test(key) && typeof value === 'string') {
+      badges[key] = value;
+    }
+  }
+  return Object.keys(badges).length > 0 ? badges : undefined;
 }
 
 export function applyAgentEvent(state: PresenceState, input: AgentEventInput): PresenceState {

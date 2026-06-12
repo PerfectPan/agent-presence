@@ -32,9 +32,12 @@ export interface SlotSyncDecisionOptions {
   debounceMs: number;
   ttlMs: number;
   renderTemplates?: RenderTemplates;
-  /** Embed the cached usage badge (state.usageBadge) in the rendered value. */
-  usageEnabled?: boolean;
+  /** Usage badges to expose as `{usage}` / `{usage_Nd}` template variables. */
+  usage?: { enabled: boolean; defaultWindow: number };
 }
+
+/** Matches `{usage}` and `{usage_<N>d}` template tokens. */
+const USAGE_TOKEN = /\{usage(?:_(\d+)d)?\}/g;
 
 export type SlotSyncDecision =
   | { action: 'skip'; result: SyncSlotResult }
@@ -55,28 +58,52 @@ export class SlotRateLimitError extends Error {
   }
 }
 
+/**
+ * Render the signature value. `usageVars` maps template variable names (without
+ * braces, e.g. `usage`, `usage_1d`, `usage_7d`) to their badge text; consumers
+ * compose their own label by placing those tokens in a render template. When a
+ * template references no `{usage*}` token but `autoAppend` is provided, it is
+ * appended — the zero-config path for "just turn it on".
+ */
 export function renderPresence(
   activeSessions: AgentSession[],
   templates: RenderTemplates = {},
-  usage = ''
+  usageVars: Record<string, string> = {},
+  autoAppend = ''
 ): string {
   const resolvedTemplates = resolveRenderTemplates(templates);
   const details = renderDetails(activeSessions);
   const total = activeSessions.length;
 
   const template = total === 0 ? resolvedTemplates.zero : total === 1 ? resolvedTemplates.one : resolvedTemplates.many;
-  return applyUsage(formatTemplate(template, { total, details, usage }), usage, template).slice(0, 200);
+  const hasUsageToken = USAGE_TOKEN.test(template);
+  USAGE_TOKEN.lastIndex = 0;
+
+  let rendered = formatTemplate(template, { total, details, usageVars });
+  if (!hasUsageToken && autoAppend.length > 0) {
+    rendered = `${rendered}${autoAppend}`;
+  }
+  return rendered.slice(0, 200);
+}
+
+/** Human label for a rolling window: 1→"今日", 7→"近7天", N→"近N天". */
+export function usageWindowLabel(days: number): string {
+  return days === 1 ? '今日' : `近${days}天`;
 }
 
 /**
- * When a usage badge is supplied but the template never referenced `{usage}`,
- * append it so enabling usage-in-signature works without editing templates.
+ * Rolling-window day counts referenced by these templates: any `{usage_Nd}`
+ * token, plus `defaultDays` whenever a bare `{usage}` token appears.
  */
-function applyUsage(rendered: string, usage: string, template: string): string {
-  if (usage.length === 0 || template.includes('{usage}')) {
-    return rendered;
+export function referencedUsageWindows(templates: RenderTemplates, defaultDays: number): number[] {
+  const resolved = resolveRenderTemplates(templates);
+  const windows = new Set<number>();
+  for (const template of [resolved.zero, resolved.one, resolved.many]) {
+    for (const match of template.matchAll(USAGE_TOKEN)) {
+      windows.add(match[1] ? Number.parseInt(match[1], 10) : defaultDays);
+    }
   }
-  return `${rendered} | 今日 ${usage}`;
+  return [...windows];
 }
 
 function renderDetails(activeSessions: AgentSession[]): string {
@@ -90,11 +117,17 @@ function renderDetails(activeSessions: AgentSession[]): string {
     .join(' · ');
 }
 
-function formatTemplate(template: string, variables: { total: number; details: string; usage: string }): string {
-  return template
-    .replaceAll('{total}', String(variables.total))
-    .replaceAll('{details}', variables.details)
-    .replaceAll('{usage}', variables.usage);
+function formatTemplate(
+  template: string,
+  variables: { total: number; details: string; usageVars: Record<string, string> }
+): string {
+  const base = template.replaceAll('{total}', String(variables.total)).replaceAll('{details}', variables.details);
+  // Substitute every `{usage}` / `{usage_Nd}` token from the provided vars; any
+  // referenced-but-unavailable window collapses to empty rather than leaking the token.
+  return base.replace(USAGE_TOKEN, (_match, days?: string) => {
+    const key = days ? `usage_${days}d` : 'usage';
+    return variables.usageVars[key] ?? '';
+  });
 }
 
 function resolveRenderTemplates(templates: RenderTemplates): Required<RenderTemplates> {
@@ -127,8 +160,13 @@ export async function syncSlot(state: PresenceState, options: SyncSlotOptions): 
 
 export function prepareSlotSync(state: PresenceState, options: SlotSyncDecisionOptions): SlotSyncDecision {
   expireStaleSessions(state, options.now, options.ttlMs);
-  const usage = options.usageEnabled ? state.usageBadge ?? '' : '';
-  const value = renderPresence(getActiveSessions(state, options.now, options.ttlMs), options.renderTemplates, usage);
+  const { usageVars, autoAppend } = resolveUsageForRender(state, options.usage);
+  const value = renderPresence(
+    getActiveSessions(state, options.now, options.ttlMs),
+    options.renderTemplates,
+    usageVars,
+    autoAppend
+  );
   const elapsedMs = options.now - (state.lastSlotUpdateAt ?? 0);
 
   if (!options.force && state.lastValue === value) {
@@ -147,6 +185,30 @@ export function prepareSlotSync(state: PresenceState, options: SlotSyncDecisionO
     previousLastSlotUpdateAt,
     claimedLastSlotUpdateAt: options.now
   };
+}
+
+/**
+ * Build the `{usage*}` substitution map (and the zero-config auto-append) from
+ * the badges cached in state. Each cached window `N` becomes `usage_Nd`, and the
+ * default window is also exposed as bare `usage`.
+ */
+export function resolveUsageForRender(
+  state: PresenceState,
+  usage: SlotSyncDecisionOptions['usage']
+): { usageVars: Record<string, string>; autoAppend: string } {
+  if (!usage?.enabled) {
+    return { usageVars: {}, autoAppend: '' };
+  }
+  const badges = state.usageBadges ?? {};
+  const usageVars: Record<string, string> = {};
+  for (const [days, badge] of Object.entries(badges)) {
+    usageVars[`usage_${days}d`] = badge;
+  }
+  const defaultBadge = badges[String(usage.defaultWindow)] ?? '';
+  usageVars.usage = defaultBadge;
+
+  const autoAppend = defaultBadge ? ` | ${usageWindowLabel(usage.defaultWindow)} ${defaultBadge}` : '';
+  return { usageVars, autoAppend };
 }
 
 export function markSlotSyncSuccess(state: PresenceState, decision: SlotSyncDecision): void {
