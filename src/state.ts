@@ -22,6 +22,9 @@ export interface PresenceState {
   lastSlotUpdateAt?: number;
   lastValue?: string;
   pendingSlotFlushAt?: number;
+  /** Cached usage badges for the signature, keyed by rolling-window day count. */
+  usageBadges?: Record<string, string>;
+  usageBadgesAt?: number;
 }
 
 export interface AgentEventInput {
@@ -76,8 +79,23 @@ export function normalizeState(raw: PresenceState): PresenceState {
     sessions,
     lastSlotUpdateAt: state.lastSlotUpdateAt ?? 0,
     lastValue: state.lastValue ?? '',
-    pendingSlotFlushAt: typeof state.pendingSlotFlushAt === 'number' ? state.pendingSlotFlushAt : undefined
+    pendingSlotFlushAt: typeof state.pendingSlotFlushAt === 'number' ? state.pendingSlotFlushAt : undefined,
+    usageBadges: normalizeUsageBadges(state.usageBadges),
+    usageBadgesAt: typeof state.usageBadgesAt === 'number' ? state.usageBadgesAt : undefined
   };
+}
+
+function normalizeUsageBadges(raw: unknown): Record<string, string> | undefined {
+  if (typeof raw !== 'object' || raw === null) {
+    return undefined;
+  }
+  const badges: Record<string, string> = {};
+  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (/^\d+$/.test(key) && typeof value === 'string') {
+      badges[key] = value;
+    }
+  }
+  return Object.keys(badges).length > 0 ? badges : undefined;
 }
 
 export function applyAgentEvent(state: PresenceState, input: AgentEventInput): PresenceState {
@@ -206,6 +224,19 @@ export async function withStateLock<T>(
   } finally {
     await rm(lockPath, { recursive: true, force: true });
   }
+}
+
+/**
+ * Whether an event marks a session boundary (start or finish) worth refreshing
+ * the usage badge on. Subagent boundaries are excluded so a session spawning
+ * many subagents does not trigger a rescan per subagent.
+ */
+export function isSessionBoundaryEvent(event: string): boolean {
+  if (event === 'SubagentStart' || event === 'SubagentStop') {
+    return false;
+  }
+  const normalized = normalizeEvent(event);
+  return normalized === 'start' || normalized === 'finish';
 }
 
 function normalizeEvent(event: string): NormalizedEvent {

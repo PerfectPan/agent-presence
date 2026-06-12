@@ -17,6 +17,7 @@ interface RenderedSlotOptions {
   debounceMs: number;
   ttlMs: number;
   renderTemplates?: RenderTemplates;
+  usage?: { enabled: boolean; defaultWindow: number };
 }
 
 interface ExplicitSlotOptions {

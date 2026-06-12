@@ -10,6 +10,7 @@ Usage:
   agent-presence config provider feishu-signature [--base-url <url>] [--preview-base-url <url>] [--image-key <key>] [--target-url <url>] [--reset]
   agent-presence config render [--zero <template>] [--one <template>] [--many <template>] [--reset]
   agent-presence status [--provider feishu-signature] [--remote]
+  agent-presence usage [--days <n>] [--json]
   agent-presence update [--provider feishu-signature] [--force] [--value <text>] [--silent]
   agent-presence reset [--provider feishu-signature] [--force] [--silent]
   agent-presence hook --source codex --event <SessionStart|Heartbeat|UserPromptSubmit|PreToolUse|Stop>
@@ -30,7 +31,11 @@ Usage:
   agent-presence config render --reset
 
 Template variables:
-  {total}    active agent count
-  {details}  grouped source counts, for example: codex 1 · claude 1
+  {total}     active agent count
+  {details}   grouped source counts, for example: codex 1 · claude 1
+  {usage}     token usage badge for the default window (usage.signatureWindowDays)
+  {usage_1d}  rolling 1-day usage badge, for example: 2.1M · $4.50
+  {usage_7d}  rolling 7-day usage badge; any {usage_Nd} works
+              (referencing a usage token enables scanning; compose your own label)
 `);
 }

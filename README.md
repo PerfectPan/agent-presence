@@ -99,6 +99,9 @@ agent-presence uninstall --all
 agent-presence url --provider feishu-signature
 agent-presence status --provider feishu-signature
 agent-presence status --provider feishu-signature --remote
+agent-presence usage
+agent-presence usage --days 7
+agent-presence usage --days 1 --json
 agent-presence update --provider feishu-signature --force
 agent-presence reset --provider feishu-signature --force
 agent-presence config show
@@ -118,6 +121,70 @@ agent-presence hook --source codex --event Stop
 ```
 
 Hook commands never block the coding agent. Codex hooks print `{}`; Claude, Gemini, and opencode hooks run silent.
+
+## Token Usage
+
+`agent-presence usage` reports token consumption over a rolling window, in the
+spirit of [`ccusage`](https://github.com/ryoppippi/ccusage): it does not hook
+the agents, it scans their local transcripts after the fact.
+
+```bash
+agent-presence usage            # last 1d and last 7d side by side
+agent-presence usage --days 7   # a single rolling window
+agent-presence usage --json     # structured output for scripts
+```
+
+Sources and how cost is derived:
+
+| Source | Transcript | Cost |
+| --- | --- | --- |
+| `claude` | `~/.claude/projects/**/*.jsonl` (honours `CLAUDE_CONFIG_DIR`) | priced from the table; de-duplicated by `message.id` + `requestId` keeping the final (largest) occurrence; `<synthetic>` turns excluded — verified to match `ccusage` |
+| `codex` | `~/.codex/sessions/` and `~/.codex/archived_sessions/` | priced from the table; diffs the cumulative `total_token_usage` per session (summing per-event `last_token_usage` double-counts ~1.6x) |
+| `pi` | `~/.pi/agent/sessions/**/*.jsonl` | uses the cost Pi already records in the transcript |
+| `gemini` | — | not tracked: Gemini does not persist per-message token usage locally |
+
+A "rolling window" of N days means `[now - N*24h, now)`. Cost shows `n/a` when a
+model has no entry in the pricing table; token counts are always exact.
+
+The default pricing is best-effort and will drift; override it per model
+(USD per million tokens) without a code change:
+
+```jsonc
+// ~/.agent-presence/config.json
+{
+  "usage": {
+    "showInSignature": false,        // append "今日 …" to the signature title
+    "signatureWindowDays": 1,        // window used by the signature badge
+    "pricing": { "opus": { "input": 15, "output": 75 } }
+  }
+}
+```
+
+Usage in the signature is driven by render-template variables, so you compose
+your own label and choose which windows to show:
+
+| Variable | Meaning |
+| --- | --- |
+| `{usage}` | badge for the default window (`usage.signatureWindowDays`, default 1) |
+| `{usage_1d}` | rolling 1-day badge, e.g. `2.1M · $4.50` |
+| `{usage_7d}` | rolling 7-day badge — any `{usage_Nd}` works |
+
+```bash
+agent-presence config render --many "{total} 个 AI 牛马 | {details} | 今日 {usage_1d} · 近7天 {usage_7d}"
+```
+
+Referencing any `{usage*}` token enables scanning for the windows it names. For a
+zero-config option, set `usage.showInSignature: true` (or
+`AGENT_PRESENCE_USAGE_IN_SIGNATURE=1`) to auto-append the default window
+(labelled `今日` for 1 day, `近N天` otherwise) without editing templates.
+
+Badges are refreshed by a full transcript rescan only on **session-boundary
+events** (a session starting or finishing); high-frequency tool events reuse the
+cached badges and never trigger a scan. Because each scan reads the entire
+rolling window, any single refresh yields the complete, correct total — so
+boundary-only refresh stays accurate without a background timer or cron. The
+trade-off: while a session is mid-flight the badge reflects the total as of its
+last boundary, not the live in-progress count.
 
 ## Presence Semantics
 

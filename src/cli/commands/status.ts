@@ -11,7 +11,8 @@ import {
 } from '../../config.js';
 import { LGaryYangProvider } from '../../providers/l-garyyang.js';
 import { MagicBuilderProvider } from '../../providers/magic-builder.js';
-import { renderPresence } from '../../render.js';
+import { renderPresence, resolveUsageForRender } from '../../render.js';
+import { usageRenderPlan } from '../usage-badge.js';
 import { readCredential } from '../../secret.js';
 import { getActiveSessions, loadState, saveState, withStateLock } from '../../state.js';
 import { hasFlag, optionValue } from '../args.js';
@@ -28,9 +29,14 @@ export async function printStatus(args: string[]): Promise<void> {
     const state = await loadState(statePath);
     const active = getActiveSessions(state, now, ttlMs(config));
     await saveState(state, statePath);
+    const plan = usageRenderPlan(config);
+    const { usageVars, autoAppend } = resolveUsageForRender(
+      state,
+      plan.enabled ? { enabled: true, defaultWindow: plan.defaultWindow } : undefined
+    );
     payload = {
       activeCount: active.length,
-      value: renderPresence(active, renderTemplates(config)),
+      value: renderPresence(active, renderTemplates(config), usageVars, autoAppend),
       active,
       provider: activeProvider,
       lastValue: state.lastValue ?? '',
