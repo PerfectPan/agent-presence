@@ -1,5 +1,35 @@
 # Changelog
 
+## 0.6.0
+
+### Minor Changes
+
+- 37e2590: Make `magic-builder` the default provider. Feishu's link-preview pipeline does
+  not reliably render the direct `l.garyyang.work` page, while the
+  `magic.solutionsuite.cn` FaaS front-end is accepted — so a bare
+  `agent-presence setup` / `url` / `status` now targets magic-builder. Slot value
+  updates still flow to the l.garyyang backend (the push path is provider-agnostic),
+  and `feishu-signature` remains fully supported as the underlying slot backend and
+  a direct-preview alternative via `--provider feishu-signature`.
+
+  Existing installs are unaffected: `login` persists an explicit `provider` in
+  config, so the new default only applies to fresh setups. New users will be
+  prompted for a Magic-Builder token during setup (the direct `feishu-signature`
+  preview needs no token).
+
+### Patch Changes
+
+- a401c1f: Token usage windows are now calendar-day aligned instead of rolling 24h. `今日`
+  counts from local midnight (and resets at 00:00) rather than sliding as a
+  `[now-24h, now)` window — which previously made the figure _decrease_ mid-day as
+  old activity aged out. A window of N days spans N local calendar days inclusive
+  of today.
+
+  Also: a cached signature badge whose window has fully rolled over since it was
+  computed (one midnight for `今日`, N days for `近N天`) now renders as `—` instead
+  of a stale number, until the next session-boundary refresh recomputes it. The
+  template label is preserved.
+
 ## 0.5.0
 
 ### Minor Changes
