@@ -1,5 +1,6 @@
 import type { AgentSession, PresenceState } from './state.js';
 import { expireStaleSessions, getActiveSessions } from './state.js';
+import { calendarDaysBetween } from './time.js';
 
 export interface RenderTemplates {
   zero?: string;
@@ -38,6 +39,24 @@ export interface SlotSyncDecisionOptions {
 
 /** Matches `{usage}` and `{usage_<N>d}` template tokens. */
 const USAGE_TOKEN = /\{usage(?:_(\d+)d)?\}/g;
+
+/** Shown in place of a usage badge that is too old to trust (see below). */
+export const STALE_USAGE_PLACEHOLDER = '—';
+
+/**
+ * Whether a window's cached badge, computed at `computedAt`, is too stale to
+ * display at `now`. Windows are calendar-day aligned, so a badge becomes stale
+ * once enough midnights have passed that its whole span has rolled over: the
+ * 1-day `今日` badge is stale after a single midnight (it now reports the wrong
+ * day), while the 7-day badge survives until seven days have elapsed. An unknown
+ * compute time (legacy cache) is treated as fresh.
+ */
+function isUsageStale(days: number, computedAt: number | undefined, now: number): boolean {
+  if (computedAt === undefined) {
+    return false;
+  }
+  return calendarDaysBetween(computedAt, now) >= days;
+}
 
 export type SlotSyncDecision =
   | { action: 'skip'; result: SyncSlotResult }
@@ -86,7 +105,7 @@ export function renderPresence(
   return rendered.slice(0, 200);
 }
 
-/** Human label for a rolling window: 1→"今日", 7→"近7天", N→"近N天". */
+/** Human label for a usage window: 1→"今日", 7→"近7天", N→"近N天". */
 export function usageWindowLabel(days: number): string {
   return days === 1 ? '今日' : `近${days}天`;
 }
@@ -160,7 +179,7 @@ export async function syncSlot(state: PresenceState, options: SyncSlotOptions): 
 
 export function prepareSlotSync(state: PresenceState, options: SlotSyncDecisionOptions): SlotSyncDecision {
   expireStaleSessions(state, options.now, options.ttlMs);
-  const { usageVars, autoAppend } = resolveUsageForRender(state, options.usage);
+  const { usageVars, autoAppend } = resolveUsageForRender(state, options.usage, options.now);
   const value = renderPresence(
     getActiveSessions(state, options.now, options.ttlMs),
     options.renderTemplates,
@@ -194,20 +213,28 @@ export function prepareSlotSync(state: PresenceState, options: SlotSyncDecisionO
  */
 export function resolveUsageForRender(
   state: PresenceState,
-  usage: SlotSyncDecisionOptions['usage']
+  usage: SlotSyncDecisionOptions['usage'],
+  now: number
 ): { usageVars: Record<string, string>; autoAppend: string } {
   if (!usage?.enabled) {
     return { usageVars: {}, autoAppend: '' };
   }
   const badges = state.usageBadges ?? {};
+  const computedAt = state.usageBadgesAt;
   const usageVars: Record<string, string> = {};
   for (const [days, badge] of Object.entries(badges)) {
-    usageVars[`usage_${days}d`] = badge;
+    usageVars[`usage_${days}d`] = isUsageStale(Number(days), computedAt, now) ? STALE_USAGE_PLACEHOLDER : badge;
   }
-  const defaultBadge = badges[String(usage.defaultWindow)] ?? '';
-  usageVars.usage = defaultBadge;
 
-  const autoAppend = defaultBadge ? ` | ${usageWindowLabel(usage.defaultWindow)} ${defaultBadge}` : '';
+  const defaultDays = usage.defaultWindow;
+  const defaultStale = isUsageStale(defaultDays, computedAt, now);
+  const rawDefault = badges[String(defaultDays)];
+  usageVars.usage = rawDefault === undefined ? '' : defaultStale ? STALE_USAGE_PLACEHOLDER : rawDefault;
+
+  // The zero-config auto-append owns its whole label, so a stale default window
+  // is dropped rather than appended as a bare placeholder.
+  const autoAppend =
+    rawDefault !== undefined && !defaultStale ? ` | ${usageWindowLabel(defaultDays)} ${rawDefault}` : '';
   return { usageVars, autoAppend };
 }
 

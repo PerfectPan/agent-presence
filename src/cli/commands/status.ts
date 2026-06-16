@@ -32,7 +32,8 @@ export async function printStatus(args: string[]): Promise<void> {
     const plan = usageRenderPlan(config);
     const { usageVars, autoAppend } = resolveUsageForRender(
       state,
-      plan.enabled ? { enabled: true, defaultWindow: plan.defaultWindow } : undefined
+      plan.enabled ? { enabled: true, defaultWindow: plan.defaultWindow } : undefined,
+      now
     );
     payload = {
       activeCount: active.length,

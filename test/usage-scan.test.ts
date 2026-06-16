@@ -232,7 +232,21 @@ describe('collectWindowUsage', () => {
     expect(claude?.inputTokens).toBe(1_000_000);
     expect(claude?.costUsd).toBeCloseTo(15, 5); // 1M input @ opus $15/MTok
     expect(window.total.costUsd).toBeCloseTo(15, 5);
-    expect(window.sinceMs).toBe(NOW - DAY);
+    const startOfToday = new Date(NOW);
+    startOfToday.setHours(0, 0, 0, 0);
+    expect(window.sinceMs).toBe(startOfToday.getTime()); // calendar-day: snaps to local midnight
+    expect(window.untilMs).toBe(NOW);
+  });
+
+  it('a 7-day window starts at local midnight six days before today', async () => {
+    const window = await collectWindowUsage({
+      days: 7,
+      now: NOW,
+      roots: { claude: dir, codex: dir, pi: dir }
+    });
+    const startOfToday = new Date(NOW);
+    startOfToday.setHours(0, 0, 0, 0);
+    expect(window.sinceMs).toBe(startOfToday.getTime() - 6 * DAY);
     expect(window.untilMs).toBe(NOW);
   });
 });

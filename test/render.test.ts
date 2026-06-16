@@ -117,6 +117,90 @@ describe('prepareSlotSync usage badges', () => {
     }
   });
 
+  // Local-time constructors so staleness (which snaps to local midnight) is
+  // timezone-robust: both the cache time and `now` are built the same way.
+  const at = (y: number, m: number, d: number, h = 12) => new Date(y, m, d, h, 0, 0).getTime();
+
+  function stateWithCache(badges: Record<string, string>, computedAt: number): PresenceState {
+    return {
+      sessions: { s1: session('s1', 'claude') },
+      lastSlotUpdateAt: 0,
+      lastValue: '',
+      usageBadges: badges,
+      usageBadgesAt: computedAt
+    };
+  }
+
+  it('shows the cached badge while it is still the same calendar day', () => {
+    const decision = prepareSlotSync(stateWithCache({ '1': '2.1M · $4.50' }, at(2024, 0, 1, 9)), {
+      ...opts,
+      now: at(2024, 0, 1, 23), // same day, 14h later
+      renderTemplates: { one: '{details} | 今日 {usage_1d}' },
+      usage: { enabled: true, defaultWindow: 1 }
+    });
+    if (decision.action === 'update') {
+      expect(decision.value).toBe('claude 1 | 今日 2.1M · $4.50');
+    }
+  });
+
+  it('replaces the 今日 badge with a placeholder once a midnight has passed', () => {
+    const decision = prepareSlotSync(stateWithCache({ '1': '2.1M · $4.50' }, at(2024, 0, 1, 23)), {
+      ...opts,
+      now: at(2024, 0, 2, 9), // next calendar day
+      renderTemplates: { one: '{details} | 今日 {usage_1d}' },
+      usage: { enabled: true, defaultWindow: 1 }
+    });
+    if (decision.action === 'update') {
+      expect(decision.value).toBe('claude 1 | 今日 —');
+    }
+  });
+
+  it('staleness is per-window: 今日 expires after one midnight while 近7天 survives', () => {
+    const decision = prepareSlotSync(stateWithCache({ '1': '2.1M', '7': '13M' }, at(2024, 0, 1, 23)), {
+      ...opts,
+      now: at(2024, 0, 2, 9), // one midnight crossed: stale for 1d, fresh for 7d
+      renderTemplates: { one: '{details} | 今日 {usage_1d} · 近7天 {usage_7d}' },
+      usage: { enabled: true, defaultWindow: 1 }
+    });
+    if (decision.action === 'update') {
+      expect(decision.value).toBe('claude 1 | 今日 — · 近7天 13M');
+    }
+  });
+
+  it('expires the 7-day badge once seven days have elapsed', () => {
+    const decision = prepareSlotSync(stateWithCache({ '7': '13M' }, at(2024, 0, 1, 12)), {
+      ...opts,
+      now: at(2024, 0, 8, 12), // seven midnights crossed
+      renderTemplates: { one: '{details} | 近7天 {usage_7d}' },
+      usage: { enabled: true, defaultWindow: 7 }
+    });
+    if (decision.action === 'update') {
+      expect(decision.value).toBe('claude 1 | 近7天 —');
+    }
+  });
+
+  it('drops the auto-append entirely when the default window is stale', () => {
+    const decision = prepareSlotSync(stateWithCache({ '1': '2.1M · $4.50' }, at(2024, 0, 1, 23)), {
+      ...opts,
+      now: at(2024, 0, 2, 9),
+      usage: { enabled: true, defaultWindow: 1 }
+    });
+    if (decision.action === 'update') {
+      expect(decision.value).toBe('1 个 AI 牛马正在搬砖 | claude 1');
+    }
+  });
+
+  it('treats a cache with no recorded timestamp as fresh (back-compat)', () => {
+    const decision = prepareSlotSync(stateWith({ '1': '2.1M · $4.50' }), {
+      ...opts,
+      now: at(2024, 5, 1),
+      usage: { enabled: true, defaultWindow: 1 }
+    });
+    if (decision.action === 'update') {
+      expect(decision.value).toBe('1 个 AI 牛马正在搬砖 | claude 1 | 今日 2.1M · $4.50');
+    }
+  });
+
   it('ignores cached badges when usage is disabled', () => {
     const decision = prepareSlotSync(stateWith({ '1': '2.1M · $4.50' }), {
       ...opts,

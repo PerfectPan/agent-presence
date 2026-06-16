@@ -36,7 +36,7 @@ export function usageRenderPlan(config: AppConfig): UsageRenderPlan {
 /**
  * Rescan transcripts and refresh the cached usage badges in state for every
  * window the signature references. Called only on session-boundary events (and
- * explicit updates): each scan reads the whole rolling window, so a single
+ * explicit updates): each scan reads the whole calendar-day window, so a single
  * refresh is complete — no per-event scanning, no cron. The scans run outside
  * the state lock and any failure leaves the previous cache intact.
  */

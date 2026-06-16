@@ -22,7 +22,7 @@ export interface PresenceState {
   lastSlotUpdateAt?: number;
   lastValue?: string;
   pendingSlotFlushAt?: number;
-  /** Cached usage badges for the signature, keyed by rolling-window day count. */
+  /** Cached usage badges for the signature, keyed by window day count. */
   usageBadges?: Record<string, string>;
   usageBadgesAt?: number;
 }

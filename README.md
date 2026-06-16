@@ -148,13 +148,13 @@ Hook commands never block the coding agent. Codex hooks print `{}`; Claude, Gemi
 
 ## Token Usage
 
-`agent-presence usage` reports token consumption over a rolling window, in the
-spirit of [`ccusage`](https://github.com/ryoppippi/ccusage): it does not hook
+`agent-presence usage` reports token consumption over calendar-day windows, in
+the spirit of [`ccusage`](https://github.com/ryoppippi/ccusage): it does not hook
 the agents, it scans their local transcripts after the fact.
 
 ```bash
-agent-presence usage            # last 1d and last 7d side by side
-agent-presence usage --days 7   # a single rolling window
+agent-presence usage            # today and the last 7 days side by side
+agent-presence usage --days 7   # a single calendar-day window
 agent-presence usage --json     # structured output for scripts
 ```
 
@@ -167,8 +167,11 @@ Sources and how cost is derived:
 | `pi` | `~/.pi/agent/sessions/**/*.jsonl` | uses the cost Pi already records in the transcript |
 | `gemini` | — | not tracked: Gemini does not persist per-message token usage locally |
 
-A "rolling window" of N days means `[now - N*24h, now)`. Cost shows `n/a` when a
-model has no entry in the pricing table; token counts are always exact.
+A window of N days spans N local calendar days inclusive of today —
+`[startOfLocalDay(now) - (N-1)*24h, now)`. So `今日` (1 day) counts from local
+midnight and resets at 00:00 rather than sliding as a rolling 24h window would
+(which makes the figure drop mid-day as old activity ages out). Cost shows `n/a`
+when a model has no entry in the pricing table; token counts are always exact.
 
 The default pricing is best-effort and will drift; override it per model
 (USD per million tokens) without a code change:
@@ -209,6 +212,14 @@ rolling window, any single refresh yields the complete, correct total — so
 boundary-only refresh stays accurate without a background timer or cron. The
 trade-off: while a session is mid-flight the badge reflects the total as of its
 last boundary, not the live in-progress count.
+
+Because nothing runs while the machine is idle or off, a cached badge can outlive
+its window (e.g. yesterday's `今日` total still showing the next morning). To
+avoid displaying a number that has quietly gone wrong, a badge whose whole window
+has rolled over since it was computed — one midnight for `今日`, seven days for
+`近7天` — renders as `—` until the next session-boundary refresh recomputes it.
+The label you wrote in the template stays; only the value collapses to the
+placeholder.
 
 ## Presence Semantics
 
