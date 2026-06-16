@@ -11,7 +11,7 @@ export const DEFAULT_MAGIC_BUILDER_BASE_URL = 'https://magic.solutionsuite.cn';
 export const DEFAULT_TTL_MS = 3 * 60 * 1000;
 export const DEFAULT_DEBOUNCE_MS = 60 * 1000;
 export const DEFAULT_LOGIN_POLL_MS = 3 * 1000;
-export const DEFAULT_PROVIDER_ID = 'feishu-signature';
+export const DEFAULT_PROVIDER_ID = 'magic-builder';
 
 export type ProviderId = 'feishu-signature' | 'magic-builder';
 

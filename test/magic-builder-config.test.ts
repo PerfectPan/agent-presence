@@ -20,11 +20,11 @@ describe('providerId', () => {
   });
 
   it('reads provider from config when no explicit override is given', () => {
-    expect(providerId({ provider: 'magic-builder' })).toBe('magic-builder');
+    expect(providerId({ provider: 'feishu-signature' })).toBe('feishu-signature');
   });
 
-  it('falls back to feishu-signature when nothing is set', () => {
-    expect(providerId({})).toBe('feishu-signature');
+  it('defaults to magic-builder when nothing is set', () => {
+    expect(providerId({})).toBe('magic-builder');
   });
 
   it('rejects unknown providers', () => {
