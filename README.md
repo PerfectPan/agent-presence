@@ -8,11 +8,12 @@ Sync local coding-agent presence to Feishu signature link previews.
 Codex / Claude Code / Gemini CLI / opencode / Pi Coding Agent hooks
 -> local presence state
 -> debounced renderer
--> l.garyyang slot provider
--> Feishu signature link preview
+-> l.garyyang slot storage (always)
+-> magic-builder FaaS preview on magic.solutionsuite.cn  (default)  -> Feishu signature link preview
+   (alternative: direct l.garyyang.work preview via --provider feishu-signature)
 ```
 
-`@rivus/agent-presence` is intentionally named around presence, not Feishu. The first supported output is Feishu signature previews through `l.garyyang.work`; the hook/state/render/provider shape can grow later.
+`@rivus/agent-presence` is intentionally named around presence, not Feishu. The default output path is the magic-builder FaaS preview on `magic.solutionsuite.cn`, because Feishu may not render the direct `l.garyyang.work` preview page (it can tighten the iframe whitelist for personal-signature previews). That preview is still built on the `l.garyyang` slot: presence values are always written to the l.garyyang slot, and the FaaS reads them server-side on each Feishu link-preview fetch. The direct `l.garyyang.work` preview remains available via `--provider feishu-signature`. The hook/state/render/provider shape can grow later.
 
 ## Install
 
@@ -24,19 +25,21 @@ From the package registry:
 
 ```bash
 pnpm add -g @rivus/agent-presence
-agent-presence setup --provider feishu-signature
+agent-presence setup
 ```
+
+The default provider is `magic-builder`, so bare commands target it. The first `setup` runs the l.garyyang QR login (which stores the slot credential) and then prompts for a Magic-Builder token used to publish the preview FaaS. To use the direct `l.garyyang.work` preview instead — which needs no Magic-Builder token — pass `--provider feishu-signature`.
 
 Without a global install:
 
 ```bash
-npx --yes --registry=https://registry.npmjs.org @rivus/agent-presence@latest setup --provider feishu-signature
+npx --yes --registry=https://registry.npmjs.org @rivus/agent-presence@latest setup
 ```
 
 For agent environments that launch hooks with a restricted `PATH`, install hooks with absolute `node` and CLI paths:
 
 ```bash
-npx --yes --registry=https://registry.npmjs.org @rivus/agent-presence@latest setup --provider feishu-signature --hook-command absolute
+npx --yes --registry=https://registry.npmjs.org @rivus/agent-presence@latest setup --hook-command absolute
 ```
 
 Codex may require you to approve updated hooks in Codex settings before they run. `setup` installs the
@@ -49,7 +52,7 @@ corepack enable
 pnpm install --frozen-lockfile --ignore-scripts
 pnpm run build
 pnpm link --global
-agent-presence setup --provider feishu-signature
+agent-presence setup
 ```
 
 The package also exposes `agent-signature` as a compatibility alias, so old hooks keep working while new installs use `agent-presence`.
@@ -58,27 +61,36 @@ For the implementation shape and trust boundaries, see [docs/architecture.md](do
 
 ## User Flow
 
-1. Run `agent-presence setup --provider feishu-signature`.
-2. Scan the QR code if login is needed.
-3. Let setup install Codex, Claude Code, Gemini CLI, opencode, and platform-specific watchers where supported.
-4. Run `agent-presence url --provider feishu-signature`.
-5. Paste that URL into Feishu profile signature as a custom link preview.
+1. Run `agent-presence setup` (default provider `magic-builder`).
+2. Scan the l.garyyang QR code if login is needed; this stores the slot credential.
+3. When prompted, paste a Magic-Builder token so setup can publish the preview FaaS (see the [`magic-builder` provider](#magic-builder-provider-magic-builder-faas-bridge-default) section for how to obtain it).
+4. Let setup install Codex, Claude Code, Gemini CLI, opencode, and platform-specific watchers where supported.
+5. Run `agent-presence url`.
+6. Paste that URL into Feishu profile signature as a custom link preview.
+
+To use the direct `l.garyyang.work` preview instead (no Magic-Builder token needed), add `--provider feishu-signature` to `setup` and `url`.
 
 For the published package without installing globally:
 
 ```bash
-npx --yes --registry=https://registry.npmjs.org @rivus/agent-presence@latest setup --provider feishu-signature
-npx --yes --registry=https://registry.npmjs.org @rivus/agent-presence@latest url --provider feishu-signature
+npx --yes --registry=https://registry.npmjs.org @rivus/agent-presence@latest setup
+npx --yes --registry=https://registry.npmjs.org @rivus/agent-presence@latest url
 ```
 
 `setup` installs local hooks and platform-specific watchers where supported. It keeps credential material in Keychain on macOS, libsecret on Linux, or explicit environment variables, and never embeds credentials in the Feishu signature URL.
-`setup` starts QR login only when no credential is available. Rerunning setup with an existing credential will not require another QR scan. Use `agent-presence setup --skip-login --provider feishu-signature` to refresh hooks without login checks, or `agent-presence setup --login --provider feishu-signature` to force a fresh login.
+`setup` starts QR login only when no credential is available. Rerunning setup with an existing credential will not require another QR scan. Use `agent-presence setup --skip-login` to refresh hooks without login checks, or `agent-presence setup --login` to force a fresh login.
 When setup is run from `npx`, installed hooks use the package's fixed published version instead of a floating `latest` or a global `agent-presence` binary.
 Local config, state, logs, and future managed runtimes live under `~/.agent-presence/`. If setup finds an older `~/.codex/agent-signature/` directory with known files that are still missing from the new home, it asks before copying them. Known legacy files are removed from the old home after they exist in `~/.agent-presence`; unknown files are left untouched.
 
 `login`, `setup`, and interactive `config` flows use Clack prompts. Hook, status, update, reset, and URL commands keep script-safe output.
 
-The URL contains only an encoded slot helper, not credentials:
+The default `magic-builder` URL points at the preview FaaS and contains no credentials:
+
+```text
+https://magic.solutionsuite.cn/r?fid=<faasId>
+```
+
+The direct `feishu-signature` URL (via `--provider feishu-signature`) contains only an encoded slot helper, not credentials:
 
 ```text
 https://l.garyyang.work/?t2=<base62({{slot id="slot_xxx"}})>
@@ -86,27 +98,39 @@ https://l.garyyang.work/?t2=<base62({{slot id="slot_xxx"}})>
 
 ## Commands
 
+Bare commands target the default `magic-builder` provider:
+
 ```bash
-agent-presence login --provider feishu-signature
-agent-presence setup --provider feishu-signature
-agent-presence setup --provider feishu-signature --login
-agent-presence setup --provider feishu-signature --skip-login
-agent-presence setup --provider feishu-signature --no-hooks
-agent-presence setup --provider feishu-signature --hook-command absolute
+agent-presence setup
+agent-presence setup --login
+agent-presence setup --skip-login
+agent-presence setup --no-hooks
+agent-presence setup --hook-command absolute
 agent-presence uninstall
 agent-presence uninstall --credentials
 agent-presence uninstall --all
-agent-presence url --provider feishu-signature
-agent-presence status --provider feishu-signature
-agent-presence status --provider feishu-signature --remote
+agent-presence url
+agent-presence status
+agent-presence status --remote
 agent-presence usage
 agent-presence usage --days 7
 agent-presence usage --days 1 --json
-agent-presence update --provider feishu-signature --force
-agent-presence reset --provider feishu-signature --force
+agent-presence update --force
+agent-presence reset --force
 agent-presence config show
-agent-presence config provider feishu-signature --base-url "https://l.garyyang.work" --preview-base-url "https://l.garyyang.work/" --image-key "img_xxx" --target-url "https://example.com"
 agent-presence config render --zero "AI 牛马下班了" --one "{total} 个 AI 牛马正在搬砖 | {details}" --many "{total} 个 AI 牛马并行搬砖 | {details}"
+```
+
+The first `setup` runs the l.garyyang QR login (stores the slot credential) and prompts for a Magic-Builder token to publish the preview FaaS.
+
+To use the direct `l.garyyang.work` preview instead (no Magic-Builder token needed), pass `--provider feishu-signature`:
+
+```bash
+agent-presence login --provider feishu-signature
+agent-presence setup --provider feishu-signature
+agent-presence url --provider feishu-signature
+agent-presence status --provider feishu-signature --remote
+agent-presence config provider feishu-signature --base-url "https://l.garyyang.work" --preview-base-url "https://l.garyyang.work/" --image-key "img_xxx" --target-url "https://example.com"
 ```
 
 Hook commands are installed automatically by `setup`, but can be called directly:
@@ -305,47 +329,19 @@ pnpm run uninstall:shutdown-watcher
 
 ## Provider
 
-The first provider id is `feishu-signature`. Its current slot backend is `l.garyyang.work`:
+The default provider id is `magic-builder`. It is a preview front-end built on the `feishu-signature` slot backend, documented first below; `feishu-signature` follows as the underlying slot storage and the direct-preview alternative.
 
-```http
-GET  /api/slot/wechat/qrcode
-GET  /api/slot/wechat/login-status?sceneId=...
-POST /api/slot/update
-GET  /api/slot/info
-```
+### `magic-builder` provider (Magic-Builder FaaS bridge, default)
 
-Configure provider-specific link preview fields:
+`magic-builder` is the default provider. It is a preview front-end, not a separate storage backend: it publishes a small FaaS to `magic.solutionsuite.cn`, and on every Feishu link-preview fetch that FaaS runs server-side, reads the current value from the l.garyyang slot, and returns it as the preview title. It is the default because Feishu may not render the direct `l.garyyang.work` page (it can tighten the iframe whitelist for personal-signature previews), and the `magic.solutionsuite.cn` front-end is the more reliable target.
+
+`magic-builder` depends on `feishu-signature`: setting it up still requires (1) the l.garyyang QR login, which stores the slot credential, and (2) a separate Magic-Builder token to publish the FaaS. There is no way around needing the l.garyyang login. Presence value updates always go to the l.garyyang slot — the hook/update path is provider-agnostic — and `magic-builder` only changes which preview URL Feishu embeds.
 
 ```bash
-agent-presence config provider feishu-signature \
-  --base-url "https://l.garyyang.work" \
-  --preview-base-url "https://l.garyyang.work/" \
-  --image-key "img_xxx" \
-  --target-url "https://example.com"
-```
-
-Credentials are stored in Keychain on macOS and libsecret on Linux by default. Env overrides:
-
-```bash
-export AGENT_PRESENCE_TOKEN=...
-export AGENT_PRESENCE_SLOT_ID=slot_xxx
-export AGENT_PRESENCE_FEISHU_SIGNATURE_BASE_URL="https://l.garyyang.work"
-export AGENT_PRESENCE_FEISHU_SIGNATURE_PREVIEW_BASE_URL="https://l.garyyang.work/"
-export AGENT_PRESENCE_FEISHU_SIGNATURE_PREVIEW_IMAGE_KEY="img_xxx"
-export AGENT_PRESENCE_FEISHU_SIGNATURE_PREVIEW_TARGET_URL="https://example.com"
-```
-
-Token and slot credentials are not written to git and are not embedded in the signature URL.
-
-### `magic-builder` provider (Magic-Builder FaaS bridge)
-
-`magic-builder` is an alternate provider for when the `l.garyyang.work` link-preview page is not being rendered by Feishu (e.g. Feishu has tightened the iframe whitelist for personal-signature link previews). It uses the same l.garyyang slot backend for value storage but fronts it with a Magic-Builder FaaS so the resulting signature URL lives under `magic.solutionsuite.cn`, which Feishu's link-preview pipeline accepts.
-
-```bash
-# Requires an existing l.garyyang login so the published FaaS can read your
-# slot value; run `agent-presence login --provider feishu-signature` first if
-# you have not already. Then:
-agent-presence setup --provider magic-builder --hook-command absolute
+# The first setup runs the l.garyyang QR login (storing the slot credential)
+# and prompts for a Magic-Builder token. To reuse an existing login run
+# `agent-presence login --provider feishu-signature` first, then:
+agent-presence setup --hook-command absolute
 ```
 
 When run in an interactive terminal with no token configured, setup prints the
@@ -392,6 +388,48 @@ Inspect the live preview the FaaS would return:
 agent-presence status --provider magic-builder --remote
 # → .remote.faas.title, .remote.faas.expireStrategy
 ```
+
+### `feishu-signature` provider (slot backend + direct-preview alternative)
+
+`feishu-signature` is the underlying slot backend that stores presence values; the default `magic-builder` provider is built on top of it. Selecting `feishu-signature` directly (via `--provider feishu-signature`) skips the Magic-Builder FaaS and serves the preview straight from `l.garyyang.work`, which needs no Magic-Builder token. Use it when Feishu does render the `l.garyyang.work` page. Either way, presence value updates always flow to this slot backend.
+
+Its current slot backend is `l.garyyang.work`:
+
+```http
+GET  /api/slot/wechat/qrcode
+GET  /api/slot/wechat/login-status?sceneId=...
+POST /api/slot/update
+GET  /api/slot/info
+```
+
+The direct preview URL contains only an encoded slot helper, not credentials:
+
+```text
+https://l.garyyang.work/?t2=<base62({{slot id="slot_xxx"}})>
+```
+
+Configure provider-specific link preview fields:
+
+```bash
+agent-presence config provider feishu-signature \
+  --base-url "https://l.garyyang.work" \
+  --preview-base-url "https://l.garyyang.work/" \
+  --image-key "img_xxx" \
+  --target-url "https://example.com"
+```
+
+Credentials are stored in Keychain on macOS and libsecret on Linux by default. Env overrides:
+
+```bash
+export AGENT_PRESENCE_TOKEN=...
+export AGENT_PRESENCE_SLOT_ID=slot_xxx
+export AGENT_PRESENCE_FEISHU_SIGNATURE_BASE_URL="https://l.garyyang.work"
+export AGENT_PRESENCE_FEISHU_SIGNATURE_PREVIEW_BASE_URL="https://l.garyyang.work/"
+export AGENT_PRESENCE_FEISHU_SIGNATURE_PREVIEW_IMAGE_KEY="img_xxx"
+export AGENT_PRESENCE_FEISHU_SIGNATURE_PREVIEW_TARGET_URL="https://example.com"
+```
+
+Token and slot credentials are not written to git and are not embedded in the signature URL.
 
 ## Logs
 
