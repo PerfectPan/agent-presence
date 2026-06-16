@@ -34,7 +34,7 @@ interface Cumulative {
  * for the session. Summing the per-event `last_token_usage` over-counts (~1.6x
  * here) because Codex emits overlapping/repeated counts per turn. Instead we
  * diff the monotonic cumulative totals: each positive increment is that turn's
- * real usage, attributed to the event's timestamp (so rolling windows still
+ * real usage, attributed to the event's timestamp (so day windows still
  * work), and the increments sum to the session's final cumulative — no double
  * counting. A drop in the cumulative (context compaction/reset) is treated as a
  * fresh increment. Every event is processed to maintain the running baseline,

@@ -44,7 +44,7 @@ function readDays(value: string | undefined): number | undefined {
 function renderTable(windowDays: number[], windows: WindowUsage[]): string {
   const sources: UsageSource[] = ['claude', 'codex', 'pi'];
   const lines: string[] = [];
-  lines.push('agent-presence usage — token consumption (rolling window)');
+  lines.push('agent-presence usage — token consumption (calendar-day window)');
   lines.push('');
 
   // Header: one "tokens / cost" pair per window.

@@ -1,3 +1,4 @@
+import { DAY_MS, startOfLocalDayMs } from '../time.js';
 import { resolveRecordCost, type PricingOverrides } from './pricing.js';
 import { scanClaude } from './scan-claude.js';
 import { scanCodex } from './scan-codex.js';
@@ -9,7 +10,11 @@ export type { SourceUsage, UsageRecord, UsageSource, UsageTotals, WindowUsage } 
 export { DEFAULT_PRICING, resolvePricing, resolveRecordCost } from './pricing.js';
 
 export interface CollectOptions {
-  /** Rolling-window length in days; the window is `[now - days*24h, now)`. */
+  /**
+   * Number of local calendar days the window spans, inclusive of today. `1` is
+   * today since local midnight; `7` is today plus the previous six days. The
+   * window is `[startOfLocalDay(now) - (days-1)*24h, now)`.
+   */
   days: number;
   /** Window upper bound (epoch ms); defaults supplied by the caller. */
   now: number;
@@ -19,16 +24,17 @@ export interface CollectOptions {
 }
 
 const SOURCE_ORDER: UsageSource[] = ['claude', 'codex', 'pi'];
-const DAY_MS = 24 * 60 * 60 * 1000;
 
 /**
- * Collect token usage across all supported sources for a rolling window ending
- * at `now`. Gemini is intentionally absent: it does not persist per-message
- * token usage locally, so it cannot be accounted for.
+ * Collect token usage across all supported sources for a calendar-day window
+ * ending at `now`. The lower bound snaps to local midnight so "today" resets at
+ * 00:00 and never shrinks mid-day, rather than sliding as a rolling 24h window
+ * would. Gemini is intentionally absent: it does not persist per-message token
+ * usage locally, so it cannot be accounted for.
  */
 export async function collectWindowUsage(options: CollectOptions): Promise<WindowUsage> {
   const untilMs = options.now;
-  const sinceMs = options.now - options.days * DAY_MS;
+  const sinceMs = startOfLocalDayMs(options.now) - (options.days - 1) * DAY_MS;
   const scanOptions = { sinceMs, untilMs };
 
   const [claude, codex, pi] = await Promise.all([

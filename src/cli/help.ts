@@ -34,8 +34,8 @@ Template variables:
   {total}     active agent count
   {details}   grouped source counts, for example: codex 1 · claude 1
   {usage}     token usage badge for the default window (usage.signatureWindowDays)
-  {usage_1d}  rolling 1-day usage badge, for example: 2.1M · $4.50
-  {usage_7d}  rolling 7-day usage badge; any {usage_Nd} works
+  {usage_1d}  today's usage badge (since local midnight), for example: 2.1M · $4.50
+  {usage_7d}  last-7-calendar-days usage badge; any {usage_Nd} works
               (referencing a usage token enables scanning; compose your own label)
 `);
 }

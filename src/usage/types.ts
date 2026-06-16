@@ -38,7 +38,7 @@ export interface SourceUsage extends UsageTotals {
 }
 
 export interface WindowUsage {
-  /** Inclusive lower bound (epoch ms) of the rolling window. */
+  /** Inclusive lower bound (epoch ms) of the calendar-day window. */
   sinceMs: number;
   /** Exclusive upper bound (epoch ms); typically "now". */
   untilMs: number;
