@@ -142,11 +142,7 @@ Versioned setup can still preserve reproducibility by materializing the exact pa
 
 `src/config.ts` owns durable local configuration. Provider-specific options stay under the provider id, so the generic presence model does not need Feishu-specific names.
 
-The current provider id is:
-
-```text
-feishu-signature
-```
+The default provider id is `magic-builder` (`src/config.ts`'s `DEFAULT_PROVIDER_ID`). It is a preview front-end built on the `feishu-signature` slot backend: presence value updates are always written to the `feishu-signature` slot, and `magic-builder` only changes which preview URL Feishu embeds. Selecting `feishu-signature` directly (via `--provider feishu-signature`) serves the preview straight from `l.garyyang.work` instead of the Magic-Builder FaaS.
 
 The provider can be configured with a base URL, preview base URL, image key, and target URL. Token and slot id are credentials, so they are resolved through `src/secret.ts` instead of being embedded in the URL.
 
@@ -294,7 +290,7 @@ The URL references the slot helper only. It must not contain tokens, local state
 
 ### Magic-Builder Provider
 
-`src/providers/magic-builder.ts` is a second provider id, `magic-builder`. It does not replace `feishu-signature`; it is an alternate **front-end for the signature URL** that keeps the same l.garyyang slot as the value store.
+`src/providers/magic-builder.ts` is the default provider id, `magic-builder`. It is a **front-end for the signature URL** built on the `feishu-signature` slot backend: it keeps the same l.garyyang slot as the value store and only changes which preview URL Feishu embeds. (See [Configuration](#configuration) above.)
 
 **Why it exists.** The `feishu-signature` URL is an `l.garyyang.work` HTML page that renders inside Feishu's personal-signature link preview via an iframe. When Feishu tightens what that preview surface will render (e.g. an iframe-host whitelist change), the `l.garyyang.work` URL can stop displaying even though the slot value is still correct. `magic-builder` re-fronts the same value through `magic.solutionsuite.cn`, whose link-preview pipeline Feishu accepts, without changing how presence is computed or written.
 

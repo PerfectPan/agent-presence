@@ -116,6 +116,72 @@ agent-presence hook --source codex --event Stop
 
 hook 不会阻塞编码智能体。Codex hook 输出 `{}`；Claude、Gemini、opencode 和 Pi hook 静默运行。
 
+## Token 用量
+
+`agent-presence usage` 按**自然日窗口**统计 token 消耗，思路对标
+[`ccusage`](https://github.com/ryoppippi/ccusage)：它不 hook 智能体，而是事后扫描
+本地会话记录。
+
+```bash
+agent-presence usage            # 今日 与 近 7 天 并排展示
+agent-presence usage --days 7   # 单个自然日窗口
+agent-presence usage --json     # 结构化输出，便于脚本处理
+```
+
+各 source 的记录位置与成本算法：
+
+| Source | 会话记录 | 成本 |
+| --- | --- | --- |
+| `claude` | `~/.claude/projects/**/*.jsonl`（遵循 `CLAUDE_CONFIG_DIR`） | 按价格表定价；按 `message.id` + `requestId` 去重并保留最后（最大）一次；排除 `<synthetic>` turn —— 已对照 `ccusage` 验证 |
+| `codex` | `~/.codex/sessions/` 与 `~/.codex/archived_sessions/` | 按价格表定价；对每会话的累计 `total_token_usage` 做差分（直接累加每事件的 `last_token_usage` 会多算约 1.6 倍） |
+| `pi` | `~/.pi/agent/sessions/**/*.jsonl` | 直接使用 Pi 在会话记录里已记下的成本 |
+| `gemini` | — | 不统计：Gemini 不在本地持久化每条消息的 token 用量 |
+
+N 天窗口覆盖包含今天在内的 N 个本地自然日 ——
+`[startOfLocalDay(now) - (N-1)*24h, now)`。也就是说 `今日`（1 天）从本地 0 点起算、
+在 00:00 归零，而不是像滚动 24h 窗口那样随旧活动老化而中途往下掉。当某个模型不在
+价格表中时，成本显示为 `n/a`；token 数量始终精确。
+
+默认价格是尽力而为的估算，会随时间漂移；可以按模型（每百万 token 多少美元）覆盖，
+无需改代码：
+
+```jsonc
+// ~/.agent-presence/config.json
+{
+  "usage": {
+    "showInSignature": false,        // 在签名标题后追加 "今日 …"
+    "signatureWindowDays": 1,        // 签名 badge 使用的窗口
+    "pricing": { "opus": { "input": 15, "output": 75 } }
+  }
+}
+```
+
+签名里的用量由渲染模板变量驱动，所以由你自己拼标签、自己选要展示的窗口：
+
+| 变量 | 含义 |
+| --- | --- |
+| `{usage}` | 默认窗口（`usage.signatureWindowDays`，默认 1）的 badge |
+| `{usage_1d}` | 1 天自然日 badge，例如 `2.1M · $4.50` |
+| `{usage_7d}` | 7 天自然日 badge —— 任意 `{usage_Nd}` 都可用 |
+
+```bash
+agent-presence config render --many "{total} 个 AI 牛马 | {details} | 今日 {usage_1d} · 近7天 {usage_7d}"
+```
+
+模板里引用任意 `{usage*}` token 都会触发对它所命名的窗口的扫描。零配置方式：把
+`usage.showInSignature` 设为 `true`（或 `AGENT_PRESENCE_USAGE_IN_SIGNATURE=1`），
+即可在不动模板的情况下自动追加默认窗口（1 天标注为 `今日`，否则为 `近N天`）。
+
+badge 只在**会话边界事件**（会话开始或结束）时做全量重扫刷新；高频工具事件复用
+缓存的 badge，不触发扫描。因为每次扫描读取的是整个窗口，单次刷新总能得到完整、
+正确的总量 —— 所以只在边界刷新即可保持准确，无需后台定时器或 cron。代价是：会话进行
+中时，badge 反映的是上一次边界时的总量，而非实时进行中的计数。
+
+因为机器空闲或关机时不运行任何进程，缓存 badge 可能比其窗口活得久（例如昨天的
+`今日` 总量第二天早上仍在显示）。为避免悄悄展示一个已经不对的数字，当某个 badge 的
+整个窗口自上次计算以来已经翻过 —— `今日` 过一个午夜、`近7天` 过七天 —— 时，它会渲染成
+`—`，直到下一次会话边界刷新重新计算。你在模板里写的标签不变，只有数值塌缩为占位符。
+
 ## Presence 语义
 
 这里统计的是“正在工作的智能体”，不是“打开了多少个终端窗口”。

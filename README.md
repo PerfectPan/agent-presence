@@ -193,8 +193,8 @@ your own label and choose which windows to show:
 | Variable | Meaning |
 | --- | --- |
 | `{usage}` | badge for the default window (`usage.signatureWindowDays`, default 1) |
-| `{usage_1d}` | rolling 1-day badge, e.g. `2.1M · $4.50` |
-| `{usage_7d}` | rolling 7-day badge — any `{usage_Nd}` works |
+| `{usage_1d}` | 1-day calendar badge, e.g. `2.1M · $4.50` |
+| `{usage_7d}` | 7-day calendar badge — any `{usage_Nd}` works |
 
 ```bash
 agent-presence config render --many "{total} 个 AI 牛马 | {details} | 今日 {usage_1d} · 近7天 {usage_7d}"
@@ -208,7 +208,7 @@ zero-config option, set `usage.showInSignature: true` (or
 Badges are refreshed by a full transcript rescan only on **session-boundary
 events** (a session starting or finishing); high-frequency tool events reuse the
 cached badges and never trigger a scan. Because each scan reads the entire
-rolling window, any single refresh yields the complete, correct total — so
+window, any single refresh yields the complete, correct total — so
 boundary-only refresh stays accurate without a background timer or cron. The
 trade-off: while a session is mid-flight the badge reflects the total as of its
 last boundary, not the live in-progress count.
