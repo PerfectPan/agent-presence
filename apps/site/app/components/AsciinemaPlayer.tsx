@@ -28,7 +28,9 @@ export function AsciinemaPlayer({
   speed?: number;
 }) {
   const mountRef = useRef<HTMLDivElement>(null);
-  const playerRef = useRef<{ pause?: () => void } | null>(null);
+  const playerRef = useRef<{ pause?: () => void; dispose?: () => void } | null>(
+    null,
+  );
 
   useEffect(() => {
     if (!mountRef.current) return;
@@ -42,8 +44,6 @@ export function AsciinemaPlayer({
     // keeping the first paint light.
     import("asciinema-player")
       .then(({ create }) => {
-        // CSS is imported globally via the stylesheet; asciinema-player ships a
-        // bundled theme that renders fine on dark surfaces.
         if (disposed || !mountRef.current) return;
         const player = create(src, mountRef.current, {
           autoplay: reduced ? false : true,
@@ -57,6 +57,7 @@ export function AsciinemaPlayer({
         });
         playerRef.current = player as unknown as {
           pause?: () => void;
+          dispose?: () => void;
         };
         if (reduced) playerRef.current?.pause?.();
       })
@@ -73,6 +74,10 @@ export function AsciinemaPlayer({
     return () => {
       disposed = true;
       document.removeEventListener("visibilitychange", onVisibility);
+      // Release the player's playback resources so they don't survive after
+      // React removes the container on navigation.
+      playerRef.current?.dispose?.();
+      playerRef.current = null;
     };
   }, [src, speed]);
 

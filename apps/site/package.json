@@ -5,7 +5,7 @@
   "type": "module",
   "description": "Documentation site and landing page for @rivus/agent-presence (Remix + shadcn/ui).",
   "engines": {
-    "node": ">=22.12.0"
+    "node": ">=20"
   },
   "scripts": {
     "dev": "react-router dev",

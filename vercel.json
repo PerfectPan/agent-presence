@@ -7,9 +7,15 @@
   "regions": ["sfo1"],
   "headers": [
     {
-      "source": "/assets/(.*)",
+      "source": "/assets/([^/]*-[a-zA-Z0-9_]+\\.(js|css|woff2?|png|jpg|svg|webp))",
       "headers": [
         { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }
+      ]
+    },
+    {
+      "source": "/assets/(.*)",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=3600, must-revalidate" }
       ]
     },
     {

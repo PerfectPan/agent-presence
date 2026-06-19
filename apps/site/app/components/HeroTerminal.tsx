@@ -60,92 +60,128 @@ function lineClass(line: string): string {
   return "text-[var(--color-term-text-dim)]";
 }
 
+/**
+ * SSR-safe reduced-motion check. Guards against `window`/`matchMedia` being
+ * undefined during prerender; defaults to false (animate) on the server, then
+ * the effect re-evaluates on the client.
+ */
+function getReducedMotion(): boolean {
+  if (typeof window === "undefined" || !window.matchMedia) return false;
+  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+
 export function HeroTerminal() {
+  // Animation state is kept in a single ref and advanced by one setTimeout
+  // chain. This avoids stale closures over React state (the previous version
+  // read stepIdx/lineIdx from a closure that never updated, so the hero stalled
+  // on the first line). React state mirrors only what the UI needs to render.
   const [stepIdx, setStepIdx] = useState(0);
   const [lineIdx, setLineIdx] = useState(0);
   const [chars, setChars] = useState(0);
   const [badge, setBadge] = useState<string>(FLOW[0].badge ?? "");
   const [flash, setFlash] = useState(false);
   const sectionRef = useRef<HTMLDivElement>(null);
-  const startedRef = useRef(false);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const reduced =
-    typeof window !== "undefined" &&
-    window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const reduced = getReducedMotion();
 
   // Reduced motion: render the final state statically, no animation loop.
   useEffect(() => {
     if (!reduced) return;
     setStepIdx(FLOW.length - 1);
     setLineIdx(FLOW[FLOW.length - 1].lines.length);
-    setChars(0);
     setBadge(FLOW[FLOW.length - 1].badge ?? "");
   }, [reduced]);
 
-  // Typewriter loop — only when visible & not reduced.
+  // Typewriter loop — only when visible & not reduced. Uses a local mutable
+  // cursor so the scheduler always reads fresh values.
   useEffect(() => {
     if (reduced) return;
     const el = sectionRef.current;
     if (!el) return;
 
+    let disposed = false;
+    const cursor = { step: 0, line: 0, chars: 0 };
+
+    function schedule(delay: number) {
+      if (disposed) return;
+      timerRef.current = setTimeout(advance, delay);
+    }
+
+    function setBadgeAndFlash(value: string) {
+      setBadge(value);
+      setFlash(true);
+      window.setTimeout(() => setFlash(false), 500);
+    }
+
+    function advance() {
+      if (disposed) return;
+      const step = FLOW[cursor.step];
+      if (!step) return;
+      const currentLine = step.lines[cursor.line];
+
+      if (currentLine === undefined) {
+        // finished all lines of this step → stamp badge, advance step
+        if (step.badge) setBadgeAndFlash(step.badge);
+        if (cursor.step + 1 >= FLOW.length) {
+          // loop after a pause
+          schedule(4200);
+          cursor.step = 0;
+          cursor.line = 0;
+          cursor.chars = 0;
+          setStepIdx(0);
+          setLineIdx(0);
+          setChars(0);
+          setBadge(FLOW[0].badge ?? "");
+          return;
+        }
+        cursor.step += 1;
+        cursor.line = 0;
+        cursor.chars = 0;
+        setStepIdx(cursor.step);
+        setLineIdx(0);
+        setChars(0);
+        schedule(220);
+        return;
+      }
+
+      // still typing the current line
+      if (cursor.chars >= currentLine.length) {
+        // line complete → move to next line
+        cursor.line += 1;
+        cursor.chars = 0;
+        setLineIdx(cursor.line);
+        setChars(0);
+        schedule(220);
+        return;
+      }
+      cursor.chars += 1;
+      setChars(cursor.chars);
+      schedule(26);
+    }
+
     const io = new IntersectionObserver(
       (entries) => {
         for (const e of entries) {
-          if (e.isIntersecting && !startedRef.current) {
-            startedRef.current = true;
-            tick();
+          if (e.isIntersecting) {
+            // start (or resume) the chain once when it first enters the viewport
+            if (timerRef.current === null) schedule(300);
           }
         }
       },
       { threshold: 0.25 },
     );
     io.observe(el);
-    return () => io.disconnect();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [reduced]);
 
-  function tick() {
-    setChars((c) => {
-      const step = FLOW[stepIdx];
-      if (!step) return c;
-      const currentLine = step.lines[lineIdx];
-      if (!currentLine) {
-        // advance line
-        if (lineIdx + 1 >= step.lines.length) {
-          // step done -> update badge, advance step
-          if (step.badge) {
-            setBadge(step.badge);
-            setFlash(true);
-            window.setTimeout(() => setFlash(false), 500);
-          }
-          if (stepIdx + 1 >= FLOW.length) {
-            // loop
-            window.setTimeout(() => {
-              setStepIdx(0);
-              setLineIdx(0);
-              setChars(0);
-              setBadge(FLOW[0].badge ?? "");
-              tick();
-            }, 4200);
-            return 0;
-          }
-          setStepIdx((s) => s + 1);
-          setLineIdx(0);
-          window.setTimeout(tick, 220);
-          return 0;
-        }
-        setLineIdx((l) => l + 1);
-        window.setTimeout(tick, 220);
-        return 0;
+    return () => {
+      disposed = true;
+      io.disconnect();
+      if (timerRef.current !== null) {
+        clearTimeout(timerRef.current);
+        timerRef.current = null;
       }
-      if (c + 1 >= currentLine.length) {
-        window.setTimeout(tick, 180);
-        return currentLine.length;
-      }
-      window.setTimeout(tick, 26);
-      return c + 1;
-    });
-  }
+    };
+  }, [reduced]);
 
   // Build the visible lines from current state.
   const done = FLOW.slice(0, stepIdx).flatMap((s) => s.lines);
