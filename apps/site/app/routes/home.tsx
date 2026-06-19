@@ -26,13 +26,17 @@ export default function Home() {
             modeling active work from agent hooks rather than process scans.
           </p>
           <pre>
-            <code>{`Codex / Claude Code / Gemini CLI / opencode / Pi Coding Agent hooks
--> local presence state
--> debounced renderer
--> l.garyyang slot storage (always)
--> magic-builder FaaS preview on magic.solutionsuite.cn  (default)
-   (alternative: direct l.garyyang.work preview via --provider feishu-signature)`}</code>
+            <code>{`Codex / Claude Code / Gemini CLI / opencode / Pi Coding Agent
+  -> a live count of agents actually working
+  -> rendered into your Feishu signature link preview`}</code>
           </pre>
+          <p className="text-sm text-[var(--muted-foreground)]">
+            For the full runtime pipeline and trust boundaries, see{" "}
+            <Link to="/project/architecture" className="underline">
+              Architecture
+            </Link>
+            .
+          </p>
           <h2 className="text-xl font-semibold">Get started in 30 seconds</h2>
           <pre>
             <code>{`pnpm add -g @rivus/agent-presence
@@ -40,10 +44,9 @@ agent-presence setup
 agent-presence url`}</code>
           </pre>
           <p>
-            The first <code>setup</code> runs the l.garyyang QR login and
-            prompts for a Magic-Builder token to publish the preview FaaS. Then
-            paste the URL into your Feishu profile signature as a custom link
-            preview.
+            The first <code>setup</code> walks you through login and publishes
+            your signature preview. Then paste the URL into your Feishu profile
+            signature as a custom link preview.
           </p>
           <p>
             ➡️ Continue to the{" "}

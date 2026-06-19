@@ -25,13 +25,14 @@ export default function ZhHome() {
             链接预览值,基于智能体 hook 而非进程扫描来建模"正在干活"。
           </p>
           <pre>
-            <code>{`Codex / Claude Code / Gemini CLI / opencode / Pi Coding Agent hooks
--> 本地 presence 状态
--> 防抖渲染
--> l.garyyang slot 存储（始终）
--> magic.solutionsuite.cn 上的 magic-builder FaaS 预览（默认）
-   （备选：通过 --provider feishu-signature 使用 l.garyyang.work 直连预览）`}</code>
+            <code>{`Codex / Claude Code / Gemini CLI / opencode / Pi Coding Agent
+  -> 正在干活的智能体的实时计数
+  -> 渲染到你的飞书签名链接预览里`}</code>
           </pre>
+          <p className="text-sm text-[var(--muted-foreground)]">
+            完整运行时管道与信任边界见{" "}
+            <Link to="/zh/project/architecture" className="underline">架构</Link>。
+          </p>
           <h2 className="text-xl font-semibold">30 秒上手</h2>
           <pre>
             <code>{`pnpm add -g @rivus/agent-presence
@@ -39,9 +40,8 @@ agent-presence setup
 agent-presence url`}</code>
           </pre>
           <p>
-            首次 <code>setup</code> 会跑 l.garyyang 扫码登录,并提示你粘贴
-            Magic-Builder token 以发布预览 FaaS。然后把输出的 URL 粘贴到飞书
-            个人资料签名的自定义链接预览里。
+            首次 <code>setup</code> 会引导你完成登录并发布签名预览。然后把输出的
+            URL 粘贴到飞书个人资料签名的自定义链接预览里。
           </p>
           <p>
             ➡️ 继续看 <Link to="/zh/guides/quickstart" className="underline">快速上手</Link>,

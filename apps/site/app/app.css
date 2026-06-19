@@ -84,18 +84,32 @@
   }
   html {
     scroll-behavior: smooth;
+    /* Prevent the whole page from scrolling horizontally; only inner code
+       blocks scroll on their own axis. */
+    overflow-x: hidden;
   }
   body {
     background-color: var(--background);
     color: var(--foreground);
     font-family: var(--font-sans);
     -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+    /* Allow long CJK/URL strings to wrap instead of overflowing. */
+    overflow-wrap: anywhere;
+    word-break: break-word;
   }
   code,
   pre,
   kbd,
   samp {
     font-family: var(--font-mono);
+  }
+  /* Inline code and images never force the page wider. */
+  img,
+  svg,
+  video {
+    max-width: 100%;
+    height: auto;
   }
 }
 

@@ -110,23 +110,21 @@ export function LandingHero({ locale }: { locale: Locale }) {
         <HeroTerminal />
       </section>
 
-      {/* Pipeline */}
+      {/* Pipeline — user-facing, no internal storage details. */}
       <section className="ap-grid-bg my-8 rounded-[var(--radius)] border border-dashed border-[var(--border)] p-5">
         <div className="flex flex-wrap items-center gap-1.5 font-mono text-[0.82rem]">
-          <PipeNode>{t("agent hooks", "智能体 hooks")}</PipeNode>
+          <PipeNode>{t("agent starts work", "智能体开始工作")}</PipeNode>
           <PipeArrow />
-          <PipeNode>{t("local state", "本地状态")}</PipeNode>
+          <PipeNode>{t("hook fires", "hook 触发")}</PipeNode>
           <PipeArrow />
-          <PipeNode>{t("debounced render", "防抖渲染")}</PipeNode>
+          <PipeNode accent="blue">{t("live badge updates", "实时 badge 更新")}</PipeNode>
           <PipeArrow />
-          <PipeNode accent="blue">{t("l.garyyang slot", "l.garyyang slot")}</PipeNode>
-          <PipeArrow />
-          <PipeNode accent="green">{t("Feishu preview", "飞书预览")}</PipeNode>
+          <PipeNode accent="green">{t("Feishu signature preview", "飞书签名预览")}</PipeNode>
         </div>
         <p className="mt-3 text-sm text-[var(--muted-foreground)]">
           {t(
-            "Slot values are always written to the l.garyyang slot; the default magic-builder provider just fronts it with a FaaS that Feishu reliably renders.",
-            "slot 值始终写入 l.garyyang;默认的 magic-builder provider 只是用一个飞书能稳定渲染的 FaaS 做前端。",
+            "Hook-driven — it counts agents that are actually working, never scans processes. No cron, no background timer.",
+            "基于 hook 驱动 —— 只统计正在干活的智能体,绝不扫描进程。没有 cron,没有后台定时器。",
           )}
         </p>
       </section>

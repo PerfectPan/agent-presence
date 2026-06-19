@@ -1,4 +1,8 @@
 import { useEffect, useRef } from "react";
+// asciinema-player's CSS is required for the terminal to render (it provides
+// the .asciinema-player layout/terminal styling). Imported at module load so
+// Vite bundles it; otherwise the player mounts but renders invisibly.
+import "asciinema-player/dist/bundle/asciinema-player.css";
 
 /**
  * AsciinemaPlayer — renders a sanitized `.cast` file with asciinema-player.
@@ -56,8 +60,9 @@ export function AsciinemaPlayer({
         };
         if (reduced) playerRef.current?.pause?.();
       })
-      .catch(() => {
-        /* network/import failure: the noscript fallback note is shown */
+      .catch((err) => {
+        // network/import failure: log so a blank player isn't silent.
+        console.error("[AsciinemaPlayer] failed to load cast", src, err);
       });
 
     const onVisibility = () => {
