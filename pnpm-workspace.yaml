@@ -1,5 +1,6 @@
 packages:
   - .
+  - apps/site
 
 # Supply-chain safety policy. Keep these explicit so dependency-risk changes are
 # reviewable in PRs instead of being hidden in a local package-manager default.

@@ -8,6 +8,10 @@ package-lock.json
 *.log
 .omx/
 
+# Docs site build artifacts (apps/site)
+apps/site/build/
+apps/site/.react-router/
+
 # Local agent workspaces
 .claude/
 .worktree/

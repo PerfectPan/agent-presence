@@ -1,0 +1,168 @@
+@import "tailwindcss";
+
+/*
+ * Agent Presence site theme — dark-first terminal/hacker aesthetic.
+ *
+ * Colors are derived from the presence-state-machine.svg palette
+ * (green #168A45, blue #2D5BFF, amber #B56A00, slate #59636E) adapted for dark
+ * backgrounds with accessible contrast. All values are CSS custom properties
+ * (Tailwind v4 @theme tokens) — components reference the utility classes, never
+ * raw hex inline.
+ *
+ * Accessibility: prefers-reduced-motion is respected globally (see the
+ * @media block) to disable/soften animations.
+ */
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  /* Neon accents */
+  --color-neon-green: #2fcb6b;
+  --color-neon-green-soft: #168a45;
+  --color-neon-blue: #4d7bff;
+  --color-neon-blue-soft: #2d5bff;
+  --color-neon-amber: #e0a23a;
+  --color-neon-amber-soft: #b56a00;
+  --color-slate-muted: #59636e;
+
+  /* Terminal surface palette */
+  --color-term-bg: #0a0e16;
+  --color-term-bg2: #11161f;
+  --color-term-panel: #0d1320;
+  --color-term-border: #1f2937;
+  --color-term-text: #d6deeb;
+  --color-term-text-dim: #8b95a7;
+  --color-term-prompt: #2fcb6b;
+  --color-term-cursor: #4d7bff;
+
+  /* Fonts */
+  --font-mono: "JetBrains Mono", "SFMono-Regular", "SF Mono", Menlo, Consolas,
+    ui-monospace, monospace;
+  --font-sans: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+
+  /* Radius */
+  --radius: 0.75rem;
+}
+
+:root {
+  color-scheme: dark;
+  /* shadcn-style semantic tokens (dark defaults). */
+  --background: #0a0e16;
+  --foreground: #d6deeb;
+  --card: #11161f;
+  --card-foreground: #d6deeb;
+  --muted: #11161f;
+  --muted-foreground: #8b95a7;
+  --border: #1f2937;
+  --input: #1f2937;
+  --primary: #4d7bff;
+  --primary-foreground: #ffffff;
+  --accent: #2fcb6b;
+  --ring: #2d5bff;
+}
+
+/* Light theme is on-brand but the product is dark-first. */
+.light {
+  color-scheme: light;
+  --background: #f7f9fc;
+  --foreground: #111827;
+  --card: #ffffff;
+  --card-foreground: #111827;
+  --muted: #f3f6fb;
+  --muted-foreground: #4b5563;
+  --border: #dfe5ee;
+  --input: #dfe5ee;
+  --primary: #2d5bff;
+  --primary-foreground: #ffffff;
+  --accent: #168a45;
+  --ring: #2d5bff;
+}
+
+@layer base {
+  * {
+    border-color: var(--border);
+  }
+  html {
+    scroll-behavior: smooth;
+  }
+  body {
+    background-color: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+  code,
+  pre,
+  kbd,
+  samp {
+    font-family: var(--font-mono);
+  }
+}
+
+/* Reduced motion: disable smooth scroll, blink, and ping animations so the
+   site degrades gracefully. Component-level transitions are also softened. */
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
+/* Blink cursor for the hero terminal */
+@keyframes ap-blink {
+  50% {
+    opacity: 0;
+  }
+}
+.ap-cursor {
+  display: inline-block;
+  width: 0.55rem;
+  background: var(--color-term-cursor);
+  animation: ap-blink 1s steps(1) infinite;
+}
+
+/* Pulsing presence dot */
+@keyframes ap-ping {
+  75%,
+  100% {
+    transform: scale(2.4);
+    opacity: 0;
+  }
+}
+.ap-ping {
+  animation: ap-ping 1.6s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+
+/* Badge value flash on update */
+@keyframes ap-flash {
+  0% {
+    opacity: 0.25;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+.ap-flash {
+  animation: ap-flash 0.5s ease;
+}
+
+/* Faint grid backdrop for hero sections */
+.ap-grid-bg {
+  background-image: linear-gradient(
+      to right,
+      color-mix(in srgb, var(--color-neon-blue-soft) 8%, transparent) 1px,
+      transparent 1px
+    ),
+    linear-gradient(
+      to bottom,
+      color-mix(in srgb, var(--color-neon-blue-soft) 8%, transparent) 1px,
+      transparent 1px
+    );
+  background-size: 2.5rem 2.5rem;
+}

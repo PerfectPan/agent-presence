@@ -38,7 +38,11 @@
     "release": "changeset publish",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "version": "changeset version"
+    "version": "changeset version",
+    "docs:dev": "pnpm --filter @rivus/agent-presence-site run dev",
+    "docs:build": "pnpm --filter @rivus/agent-presence-site run build",
+    "docs:preview": "pnpm --filter @rivus/agent-presence-site run preview",
+    "docs:typecheck": "pnpm --filter @rivus/agent-presence-site run typecheck"
   },
   "publishConfig": {
     "registry": "https://registry.npmjs.org",
