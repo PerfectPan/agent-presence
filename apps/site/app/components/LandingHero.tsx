@@ -65,54 +65,69 @@ export function LandingHero({ locale }: { locale: Locale }) {
   }
 
   return (
-    <div className="mx-auto w-full max-w-[var(--maxw,78rem)] px-4 sm:px-6">
+    <div className="mx-auto w-full max-w-[var(--maxw,78rem)] px-4 pb-16 sm:px-6">
       {/* Hero */}
-      <section className="ap-grid-bg grid grid-cols-1 items-center gap-10 py-8 lg:grid-cols-[1.05fr_1fr]">
+      <section className="grid grid-cols-1 items-center gap-10 py-12 lg:grid-cols-[1.1fr_1fr] lg:py-20">
         <div>
-          <p className="mb-3 font-mono text-xs text-[var(--color-neon-green)]">
+          <span className="mb-5 inline-flex items-center gap-2 rounded-full border border-[color-mix(in_srgb,var(--color-neon-green-soft)_60%,transparent)] bg-[color-mix(in_srgb,var(--color-neon-green-soft)_10%,transparent)] px-3 py-1 font-mono text-[0.7rem] text-[var(--color-neon-green)]">
+            <span className="h-1.5 w-1.5 rounded-full bg-[var(--color-neon-green)]" />
             @rivus/agent-presence · v0.6.0
-          </p>
-          <h1 className="text-4xl font-bold leading-[1.1] tracking-tight sm:text-5xl">
+          </span>
+          <h1 className="font-[var(--font-display)] text-[2.6rem] font-bold leading-[1.04] tracking-tight sm:text-6xl">
             {t("Your ", "你的 ")}
-            <span className="bg-gradient-to-r from-[var(--color-neon-green)] to-[var(--color-neon-blue)] bg-clip-text text-transparent">
+            <span className="bg-gradient-to-r from-[var(--color-neon-green)] via-[#8fe9d8] to-[var(--color-neon-blue)] bg-clip-text text-transparent">
               {t("coding agents", "编码智能体")}
             </span>
-            {t(
-              ", live in your Feishu signature.",
-              ",实时出现在你的飞书签名里。",
-            )}
+            <br />
+            <span className="text-[var(--foreground)]">
+              {t("live in your Feishu signature.", "实时出现在飞书签名。")}
+            </span>
           </h1>
-          <p className="mt-4 max-w-[38ch] text-[var(--muted-foreground)]">
+          <p className="mt-6 max-w-[44ch] text-[1.05rem] leading-relaxed text-[var(--muted-foreground)]">
             {t(
               "Sync local coding-agent presence to Feishu signature link previews. Hook-driven — it counts agents that are actually working, never scans processes.",
               "把本机编码智能体的 presence 同步到飞书签名链接预览。基于 hook 驱动 —— 只统计正在干活的智能体,绝不扫描进程。",
             )}
           </p>
-          <div className="mt-6 flex flex-wrap items-center gap-3">
+          <div className="mt-8 flex flex-wrap items-center gap-3">
             <button
               type="button"
               onClick={copy}
-              className="inline-flex items-center gap-2.5 rounded-[0.5rem] border border-[var(--color-neon-green-soft)] bg-[color-mix(in_srgb,var(--color-neon-green-soft)_16%,transparent)] px-3.5 py-2 font-mono text-sm text-[var(--color-term-text)] shadow-[0_0_24px_rgba(47,203,107,0.18)] transition-transform hover:-translate-y-px"
+              className="group inline-flex items-center gap-2.5 rounded-[0.6rem] border border-[var(--color-neon-green-soft)] bg-[color-mix(in_srgb,var(--color-neon-green-soft)_16%,transparent)] px-4 py-2.5 font-mono text-sm text-[var(--color-term-text)] shadow-[0_0_28px_rgba(47,203,107,0.22)] transition-all hover:-translate-y-0.5 hover:shadow-[0_0_36px_rgba(47,203,107,0.35)]"
             >
               <code>{INSTALL_CMD}</code>
-              <span className="text-xs uppercase tracking-wide text-[var(--color-term-text-dim)]">
+              <span className="text-xs uppercase tracking-wide text-[var(--color-term-text-dim)] transition-colors group-hover:text-[var(--color-neon-green)]">
                 {copied ? "copied!" : "copy"}
               </span>
             </button>
             <Link
               to={quickstart}
-              className="rounded-[0.5rem] border border-[var(--border)] px-4 py-2 text-sm hover:border-[var(--color-neon-blue)]"
+              className="rounded-[0.6rem] border border-[var(--border)] bg-[var(--color-term-bg2)] px-4 py-2.5 text-sm text-[var(--foreground)] transition-all hover:-translate-y-0.5 hover:border-[var(--color-neon-blue)]"
             >
               {t("Quickstart →", "快速上手 →")}
             </Link>
           </div>
         </div>
-        <HeroTerminal />
+        {/* Terminal card: raised, with a layered glow border so it reads as a
+            hero element rather than a flat dark slab. */}
+        <div className="relative">
+          <div
+            className="pointer-events-none absolute -inset-3 rounded-[1.4rem] opacity-60 blur-2xl"
+            style={{
+              background:
+                "radial-gradient(60% 60% at 70% 30%, color-mix(in srgb, var(--color-neon-blue-soft) 40%, transparent), transparent 70%)",
+            }}
+            aria-hidden="true"
+          />
+          <div className="relative">
+            <HeroTerminal />
+          </div>
+        </div>
       </section>
 
       {/* Pipeline — user-facing, no internal storage details. */}
-      <section className="ap-grid-bg my-8 rounded-[var(--radius)] border border-dashed border-[var(--border)] p-5">
-        <div className="flex flex-wrap items-center gap-1.5 font-mono text-[0.82rem]">
+      <section className="ap-grid-bg my-10 rounded-[var(--radius)] border border-[color-mix(in_srgb,var(--color-neon-blue-soft)_30%,var(--border))] bg-[color-mix(in_srgb,var(--color-term-bg2)_70%,transparent)] p-6 backdrop-blur-sm">
+        <div className="flex flex-wrap items-center gap-2 font-mono text-[0.82rem]">
           <PipeNode>{t("agent starts work", "智能体开始工作")}</PipeNode>
           <PipeArrow />
           <PipeNode>{t("hook fires", "hook 触发")}</PipeNode>
@@ -121,7 +136,7 @@ export function LandingHero({ locale }: { locale: Locale }) {
           <PipeArrow />
           <PipeNode accent="green">{t("Feishu signature preview", "飞书签名预览")}</PipeNode>
         </div>
-        <p className="mt-3 text-sm text-[var(--muted-foreground)]">
+        <p className="mt-4 text-sm text-[var(--muted-foreground)]">
           {t(
             "Hook-driven — it counts agents that are actually working, never scans processes. No cron, no background timer.",
             "基于 hook 驱动 —— 只统计正在干活的智能体,绝不扫描进程。没有 cron,没有后台定时器。",
@@ -130,21 +145,31 @@ export function LandingHero({ locale }: { locale: Locale }) {
       </section>
 
       {/* Features */}
-      <section className="my-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {FEATURES.map((f) => (
-          <article
-            key={f.title.en}
-            className="rounded-[var(--radius)] border border-[var(--border)] bg-[var(--color-term-bg2)] p-5 transition-colors hover:border-[var(--color-neon-blue)]"
-          >
-            <div className="mb-2 text-2xl" aria-hidden="true">
-              {f.icon}
-            </div>
-            <h3 className="mb-1 text-base font-semibold">{t(f.title.en, f.title.zh)}</h3>
-            <p className="text-sm leading-[1.5] text-[var(--muted-foreground)]">
-              {t(f.body.en, f.body.zh)}
-            </p>
-          </article>
-        ))}
+      <section className="my-10">
+        <h2 className="mb-5 text-xs font-semibold uppercase tracking-[0.15em] text-[var(--muted-foreground)]">
+          {t("Features", "核心特性")}
+        </h2>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {FEATURES.map((f) => (
+            <article
+              key={f.title.en}
+              className="group rounded-[var(--radius)] border border-[var(--border)] bg-[color-mix(in_srgb,var(--color-term-bg2)_85%,transparent)] p-5 backdrop-blur-sm transition-all hover:-translate-y-1 hover:border-[var(--color-neon-blue)] hover:shadow-[0_8px_30px_rgba(77,123,255,0.12)]"
+            >
+              <div
+                className="mb-3 flex h-10 w-10 items-center justify-center rounded-[0.6rem] border border-[color-mix(in_srgb,var(--color-neon-blue-soft)_40%,transparent)] bg-[color-mix(in_srgb,var(--color-neon-blue-soft)_12%,transparent)] text-xl transition-transform group-hover:scale-110"
+                aria-hidden="true"
+              >
+                {f.icon}
+              </div>
+              <h3 className="mb-1.5 text-[1.02rem] font-semibold text-[var(--foreground)]">
+                {t(f.title.en, f.title.zh)}
+              </h3>
+              <p className="text-sm leading-[1.55] text-[var(--muted-foreground)]">
+                {t(f.body.en, f.body.zh)}
+              </p>
+            </article>
+          ))}
+        </div>
       </section>
     </div>
   );

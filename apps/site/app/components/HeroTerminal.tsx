@@ -81,6 +81,7 @@ export function HeroTerminal() {
   const [badge, setBadge] = useState<string>(FLOW[0].badge ?? "");
   const [flash, setFlash] = useState(false);
   const sectionRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const reduced = getReducedMotion();
@@ -183,6 +184,13 @@ export function HeroTerminal() {
     };
   }, [reduced]);
 
+  // Keep the latest typed line in view: scroll the terminal to the bottom
+  // whenever the visible content changes (like a real tailing terminal).
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [stepIdx, lineIdx, chars]);
+
   // Build the visible lines from current state.
   const done = FLOW.slice(0, stepIdx).flatMap((s) => s.lines);
   const current = FLOW[stepIdx]?.lines ?? [];
@@ -195,28 +203,41 @@ export function HeroTerminal() {
     <section
       ref={sectionRef}
       aria-label="Agent Presence usage replay"
-      className="relative overflow-hidden rounded-[var(--radius)] border border-[var(--color-term-border)] bg-[var(--color-term-bg)] font-mono shadow-[0_0_28px_rgba(77,123,255,0.22)]"
+      className="flex flex-col gap-3 font-mono"
     >
-      <div className="flex items-center gap-2 border-b border-[var(--color-term-border)] bg-[var(--color-term-panel)] px-3.5 py-2.5">
-        <span className="h-2.5 w-2.5 rounded-full bg-[#ff5f57]" />
-        <span className="h-2.5 w-2.5 rounded-full bg-[#febc2e]" />
-        <span className="h-2.5 w-2.5 rounded-full bg-[#28c840]" />
-        <span className="ml-auto text-xs text-[var(--color-term-text-dim)]">
-          agent-presence — zsh
-        </span>
+      {/* Terminal body: fixed-height, top-aligned so lines grow downward without
+          jumping. The badge lives in normal flow below, so it never overlaps. */}
+      <div className="relative overflow-hidden rounded-[var(--radius)] border border-[color-mix(in_srgb,var(--color-neon-blue-soft)_45%,var(--color-term-border))] bg-[var(--color-term-bg)] shadow-[0_0_28px_rgba(77,123,255,0.18)]">
+        <div className="flex items-center gap-2 border-b border-[var(--color-term-border)] bg-[var(--color-term-panel)] px-3.5 py-2.5">
+          <span className="h-2.5 w-2.5 rounded-full bg-[#ff5f57]" />
+          <span className="h-2.5 w-2.5 rounded-full bg-[#febc2e]" />
+          <span className="h-2.5 w-2.5 rounded-full bg-[#28c840]" />
+          <span className="ml-auto text-xs text-[var(--color-term-text-dim)]">
+            agent-presence — zsh
+          </span>
+        </div>
+        <div
+          ref={scrollRef}
+          className="ap-scanlines relative h-[14.5rem] overflow-x-auto overflow-y-auto"
+        >
+          {/* Top-aligned, fixed-height, auto-scrolls to follow new lines (see
+              the scrollTop effect above). The box size never changes, so adding
+              lines never jumps the rest of the page. */}
+          <pre className="m-0 px-4 py-3.5 text-[0.82rem] leading-[1.6] text-[var(--color-term-text)]">
+            <code>
+              {visible.map((line, i) => (
+                <div key={i} className={lineClass(line)}>
+                  {line}
+                </div>
+              ))}
+              {!reduced && !typingComplete ? <span className="ap-cursor" /> : null}
+            </code>
+          </pre>
+        </div>
       </div>
-      <pre className="m-0 min-h-[13rem] overflow-x-auto whitespace-pre-wrap break-words px-4 pb-14 pt-4 text-[0.82rem] leading-[1.55] text-[var(--color-term-text)]">
-        <code>
-          {visible.map((line, i) => (
-            <div key={i} className={lineClass(line)}>
-              {line}
-            </div>
-          ))}
-          {!reduced && !typingComplete ? <span className="ap-cursor" /> : null}
-        </code>
-      </pre>
 
-      <div className="absolute inset-x-4 bottom-4 flex items-center gap-3 rounded-[0.5rem] border border-[color-mix(in_srgb,var(--color-neon-blue)_40%,transparent)] bg-[linear-gradient(135deg,color-mix(in_srgb,var(--color-neon-blue-soft)_22%,transparent),color-mix(in_srgb,var(--color-neon-green-soft)_18%,transparent))] px-3.5 py-2.5 backdrop-blur-sm">
+      {/* Live signature badge — in normal document flow, no overlap, no jump. */}
+      <div className="flex items-center gap-3 rounded-[0.5rem] border border-[color-mix(in_srgb,var(--color-neon-blue)_35%,transparent)] bg-[linear-gradient(135deg,color-mix(in_srgb,var(--color-neon-blue-soft)_18%,transparent),color-mix(in_srgb,var(--color-neon-green-soft)_14%,transparent))] px-3.5 py-2.5 backdrop-blur-sm">
         <span className="whitespace-nowrap text-[0.68rem] uppercase tracking-wide text-[var(--color-term-text-dim)]">
           Feishu signature · live
         </span>
@@ -225,7 +246,7 @@ export function HeroTerminal() {
         >
           {badge}
         </span>
-        <span className="relative h-2 w-2">
+        <span className="relative h-2 w-2 shrink-0">
           <span className="absolute inset-0 rounded-full bg-[var(--color-neon-green)]" />
           <span className="ap-ping absolute inset-0 rounded-full bg-[var(--color-neon-green)]" />
         </span>

@@ -16,29 +16,34 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 @theme {
-  /* Neon accents */
-  --color-neon-green: #2fcb6b;
-  --color-neon-green-soft: #168a45;
-  --color-neon-blue: #4d7bff;
-  --color-neon-blue-soft: #2d5bff;
+  /* "CRT terminal" palette — mint-cyan accent on a deep blue-black, not the
+     generic near-black + acid-green or pastel SaaS defaults. Derived from the
+     product's own world: terminals, prompts, code. */
+  --color-neon-green: #5ef2c8; /* mint cyan — primary accent */
+  --color-neon-green-soft: #2bb388;
+  --color-neon-blue: #a78bfa; /* lavender — secondary accent */
+  --color-neon-blue-soft: #7c5cf0;
   --color-neon-amber: #e0a23a;
   --color-neon-amber-soft: #b56a00;
   --color-slate-muted: #59636e;
 
   /* Terminal surface palette */
-  --color-term-bg: #0a0e16;
-  --color-term-bg2: #11161f;
-  --color-term-panel: #0d1320;
-  --color-term-border: #1f2937;
-  --color-term-text: #d6deeb;
-  --color-term-text-dim: #8b95a7;
-  --color-term-prompt: #2fcb6b;
-  --color-term-cursor: #4d7bff;
+  --color-term-bg: #0c1017;
+  --color-term-bg2: #131822;
+  --color-term-panel: #0f141d;
+  --color-term-border: #232a36;
+  --color-term-text: #e6edf3;
+  --color-term-text-dim: #8b949e;
+  --color-term-prompt: #5ef2c8;
+  --color-term-cursor: #a78bfa;
 
-  /* Fonts */
+  /* Fonts — deliberate pairing, not the Inter-everywhere default.
+     Space Grotesk: geometric/technical display face (character, used with
+     restraint on headings). Inter: legible body. JetBrains Mono: terminal. */
   --font-mono: "JetBrains Mono", "SFMono-Regular", "SF Mono", Menlo, Consolas,
     ui-monospace, monospace;
   --font-sans: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-display: "Space Grotesk", "Inter", system-ui, sans-serif;
 
   /* Radius */
   --radius: 0.75rem;
@@ -47,18 +52,18 @@
 :root {
   color-scheme: dark;
   /* shadcn-style semantic tokens (dark defaults). */
-  --background: #0a0e16;
-  --foreground: #d6deeb;
-  --card: #11161f;
-  --card-foreground: #d6deeb;
-  --muted: #11161f;
-  --muted-foreground: #8b95a7;
-  --border: #1f2937;
-  --input: #1f2937;
-  --primary: #4d7bff;
-  --primary-foreground: #ffffff;
-  --accent: #2fcb6b;
-  --ring: #2d5bff;
+  --background: #0c1017;
+  --foreground: #e6edf3;
+  --card: #131822;
+  --card-foreground: #e6edf3;
+  --muted: #131822;
+  --muted-foreground: #8b949e;
+  --border: #232a36;
+  --input: #232a36;
+  --primary: #a78bfa;
+  --primary-foreground: #0c1017;
+  --accent: #5ef2c8;
+  --ring: #7c5cf0;
 }
 
 /* Light theme is on-brand but the product is dark-first. */
@@ -94,9 +99,23 @@
     font-family: var(--font-sans);
     -webkit-font-smoothing: antialiased;
     overflow-x: hidden;
-    /* Allow long CJK/URL strings to wrap instead of overflowing. */
     overflow-wrap: anywhere;
     word-break: break-word;
+    /* Aurora glow in the brand palette (mint + lavender), kept subtle so dark
+       contrast stays legible. Layered radial gradients replace a flat slab. */
+    background-image:
+      radial-gradient(
+        60rem 42rem at 10% -10%,
+        color-mix(in srgb, var(--color-neon-blue-soft) 16%, transparent),
+        transparent 60%
+      ),
+      radial-gradient(
+        52rem 40rem at 95% 2%,
+        color-mix(in srgb, var(--color-neon-green-soft) 13%, transparent),
+        transparent 60%
+      );
+    background-attachment: fixed;
+    background-repeat: no-repeat;
   }
   code,
   pre,
@@ -179,4 +198,61 @@
       transparent 1px
     );
   background-size: 2.5rem 2.5rem;
+}
+
+/* CRT terminal texture — the hero's signature element. Scanlines + a subtle
+   screen-curvature vignette give the terminal physical presence instead of a
+   flat dark box. Kept low-opacity for legibility; disabled under reduced-motion
+   (users sensitive to patterns/motion). */
+.ap-scanlines::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1;
+  background-image: repeating-linear-gradient(
+    to bottom,
+    transparent 0,
+    transparent 2px,
+    rgba(255, 255, 255, 0.025) 2px,
+    rgba(255, 255, 255, 0.025) 3px
+  );
+  opacity: 0.7;
+}
+/* Screen-curvature vignette: faint darkening at the edges + a soft top glow,
+   mimicking a CRT tube. */
+.ap-scanlines::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 3;
+  border-radius: inherit;
+  box-shadow:
+    inset 0 0 4rem rgba(0, 0, 0, 0.5),
+    inset 0 1.5rem 3rem -1.5rem rgba(94, 242, 200, 0.12);
+}
+/* Keep typed content above the scanline overlay. */
+.ap-scanlines > pre {
+  position: relative;
+  z-index: 2;
+}
+/* Thin, terminal-styled scrollbar so the auto-scroll doesn't look clunky. */
+.ap-scanlines {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--color-term-text-dim) 50%, transparent)
+    transparent;
+}
+.ap-scanlines::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.ap-scanlines::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--color-term-text-dim) 50%, transparent);
+  border-radius: 3px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ap-scanlines::before {
+    display: none;
+  }
 }
