@@ -69,13 +69,13 @@ export function LandingHero({ locale }: { locale: Locale }) {
       {/* Hero */}
       <section className="grid grid-cols-1 items-center gap-10 py-12 lg:grid-cols-[1.1fr_1fr] lg:py-20">
         <div>
-          <span className="mb-5 inline-flex items-center gap-2 rounded-full border border-[color-mix(in_srgb,var(--color-neon-green-soft)_60%,transparent)] bg-[color-mix(in_srgb,var(--color-neon-green-soft)_10%,transparent)] px-3 py-1 font-mono text-[0.7rem] text-[var(--color-neon-green)]">
+          <span className="mb-5 inline-flex items-center gap-2 rounded-full border border-[var(--border)] bg-[var(--muted)] px-3 py-1 font-mono text-[0.7rem] text-[var(--muted-foreground)]">
             <span className="h-1.5 w-1.5 rounded-full bg-[var(--color-neon-green)]" />
             @rivus/agent-presence · v0.6.0
           </span>
-          <h1 className="font-[var(--font-display)] text-[2.6rem] font-bold leading-[1.04] tracking-tight sm:text-6xl">
+          <h1 className="font-[var(--font-display)] text-[2.6rem] font-bold leading-[1.04] tracking-tight text-[var(--foreground)] sm:text-6xl">
             {t("Your ", "你的 ")}
-            <span className="bg-gradient-to-r from-[var(--color-neon-green)] via-[#8fe9d8] to-[var(--color-neon-blue)] bg-clip-text text-transparent">
+            <span className="bg-gradient-to-r from-[#2563eb] to-[#7c3aed] bg-clip-text text-transparent">
               {t("coding agents", "编码智能体")}
             </span>
             <br />
@@ -93,40 +93,32 @@ export function LandingHero({ locale }: { locale: Locale }) {
             <button
               type="button"
               onClick={copy}
-              className="group inline-flex items-center gap-2.5 rounded-[0.6rem] border border-[var(--color-neon-green-soft)] bg-[color-mix(in_srgb,var(--color-neon-green-soft)_16%,transparent)] px-4 py-2.5 font-mono text-sm text-[var(--color-term-text)] shadow-[0_0_28px_rgba(47,203,107,0.22)] transition-all hover:-translate-y-0.5 hover:shadow-[0_0_36px_rgba(47,203,107,0.35)]"
+              className="group inline-flex items-center gap-2.5 rounded-[0.6rem] bg-[var(--primary)] px-4 py-2.5 font-mono text-sm text-[var(--primary-foreground)] shadow-[0_8px_24px_-8px_color-mix(in_srgb,var(--primary)_60%,transparent)] transition-all hover:-translate-y-0.5 hover:shadow-[0_12px_30px_-8px_color-mix(in_srgb,var(--primary)_70%,transparent)]"
             >
               <code>{INSTALL_CMD}</code>
-              <span className="text-xs uppercase tracking-wide text-[var(--color-term-text-dim)] transition-colors group-hover:text-[var(--color-neon-green)]">
+              <span className="text-xs uppercase tracking-wide opacity-80 transition-opacity group-hover:opacity-100">
                 {copied ? "copied!" : "copy"}
               </span>
             </button>
             <Link
               to={quickstart}
-              className="rounded-[0.6rem] border border-[var(--border)] bg-[var(--color-term-bg2)] px-4 py-2.5 text-sm text-[var(--foreground)] transition-all hover:-translate-y-0.5 hover:border-[var(--color-neon-blue)]"
+              className="rounded-[0.6rem] border border-[var(--border)] bg-[var(--card)] px-4 py-2.5 text-sm text-[var(--foreground)] transition-all hover:-translate-y-0.5 hover:border-[var(--primary)]"
             >
               {t("Quickstart →", "快速上手 →")}
             </Link>
           </div>
         </div>
-        {/* Terminal card: raised, with a layered glow border so it reads as a
-            hero element rather than a flat dark slab. */}
+        {/* Terminal card: the product's own "screen". Clean border + soft
+            elevation instead of a glow halo (which read as muddy on light). */}
         <div className="relative">
-          <div
-            className="pointer-events-none absolute -inset-3 rounded-[1.4rem] opacity-60 blur-2xl"
-            style={{
-              background:
-                "radial-gradient(60% 60% at 70% 30%, color-mix(in srgb, var(--color-neon-blue-soft) 40%, transparent), transparent 70%)",
-            }}
-            aria-hidden="true"
-          />
-          <div className="relative">
+          <div className="relative rounded-[var(--radius)] border border-[var(--border)] bg-[var(--card)] shadow-[0_12px_40px_-12px_rgba(15,23,42,0.18)]">
             <HeroTerminal />
           </div>
         </div>
       </section>
 
       {/* Pipeline — user-facing, no internal storage details. */}
-      <section className="ap-grid-bg my-10 rounded-[var(--radius)] border border-[color-mix(in_srgb,var(--color-neon-blue-soft)_30%,var(--border))] bg-[color-mix(in_srgb,var(--color-term-bg2)_70%,transparent)] p-6 backdrop-blur-sm">
+      <section className="my-10 rounded-[var(--radius)] border border-[var(--border)] bg-[var(--card)] p-6">
         <div className="flex flex-wrap items-center gap-2 font-mono text-[0.82rem]">
           <PipeNode>{t("agent starts work", "智能体开始工作")}</PipeNode>
           <PipeArrow />
@@ -153,10 +145,10 @@ export function LandingHero({ locale }: { locale: Locale }) {
           {FEATURES.map((f) => (
             <article
               key={f.title.en}
-              className="group rounded-[var(--radius)] border border-[var(--border)] bg-[color-mix(in_srgb,var(--color-term-bg2)_85%,transparent)] p-5 backdrop-blur-sm transition-all hover:-translate-y-1 hover:border-[var(--color-neon-blue)] hover:shadow-[0_8px_30px_rgba(77,123,255,0.12)]"
+              className="group rounded-[0.75rem] border border-[var(--border)] bg-[var(--card)] p-5 transition-all hover:-translate-y-1 hover:border-[color-mix(in_srgb,var(--primary)_50%,var(--border))] hover:shadow-[0_12px_32px_-12px_rgba(37,99,235,0.25)]"
             >
               <div
-                className="mb-3 flex h-10 w-10 items-center justify-center rounded-[0.6rem] border border-[color-mix(in_srgb,var(--color-neon-blue-soft)_40%,transparent)] bg-[color-mix(in_srgb,var(--color-neon-blue-soft)_12%,transparent)] text-xl transition-transform group-hover:scale-110"
+                className="mb-3 flex h-10 w-10 items-center justify-center rounded-[0.6rem] bg-[color-mix(in_srgb,var(--primary)_10%,transparent)] text-xl transition-transform group-hover:scale-110"
                 aria-hidden="true"
               >
                 {f.icon}

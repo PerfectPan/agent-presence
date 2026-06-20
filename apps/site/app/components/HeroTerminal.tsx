@@ -206,8 +206,9 @@ export function HeroTerminal() {
       className="flex flex-col gap-3 font-mono"
     >
       {/* Terminal body: fixed-height, top-aligned so lines grow downward without
-          jumping. The badge lives in normal flow below, so it never overlaps. */}
-      <div className="relative overflow-hidden rounded-[var(--radius)] border border-[color-mix(in_srgb,var(--color-neon-blue-soft)_45%,var(--color-term-border))] bg-[var(--color-term-bg)] shadow-[0_0_28px_rgba(77,123,255,0.18)]">
+          jumping. The badge lives in normal flow below, so it never overlaps.
+          Outer border/shadow come from the LandingHero card wrapper. */}
+      <div className="relative overflow-hidden rounded-t-[var(--radius)]">
         <div className="flex items-center gap-2 border-b border-[var(--color-term-border)] bg-[var(--color-term-panel)] px-3.5 py-2.5">
           <span className="h-2.5 w-2.5 rounded-full bg-[#ff5f57]" />
           <span className="h-2.5 w-2.5 rounded-full bg-[#febc2e]" />
@@ -218,7 +219,7 @@ export function HeroTerminal() {
         </div>
         <div
           ref={scrollRef}
-          className="ap-scanlines relative h-[14.5rem] overflow-x-auto overflow-y-auto"
+          className="ap-scanlines relative h-[14.5rem] overflow-x-auto overflow-y-auto bg-[var(--color-term-bg)]"
         >
           {/* Top-aligned, fixed-height, auto-scrolls to follow new lines (see
               the scrollTop effect above). The box size never changes, so adding
