@@ -2,6 +2,7 @@ import { SlotRateLimitError } from '../render.js';
 import type { SlotCredential } from '../secret.js';
 import { createLogWriter } from '../log.js';
 import { redactSlotId, valueLength } from '../log-sanitize.js';
+import type { SlotBackend, SlotPreviewUrlOptions } from './slot-backend.js';
 
 export interface QrCodeResponse {
   sceneId: string;
@@ -40,7 +41,7 @@ interface ProviderRequestLogBase {
   value?: string;
 }
 
-export class LGaryYangProvider {
+export class LGaryYangSlotBackend implements SlotBackend {
   constructor(
     private readonly baseUrl: string,
     private readonly credential?: SlotCredential
@@ -89,7 +90,7 @@ export class LGaryYangProvider {
     }, { logSuccess: true, slotId: credential.slotId });
   }
 
-  buildSignatureUrl(options: { slotId: string; imageKey?: string; targetUrl?: string; previewBaseUrl: string }): string {
+  buildDirectPreviewUrl(options: SlotPreviewUrlOptions): string {
     const url = new URL(options.previewBaseUrl);
     url.searchParams.set('t2', base62Encode(`{{slot id="${options.slotId}"}}`));
     if (options.imageKey) {

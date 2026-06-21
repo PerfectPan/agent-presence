@@ -3,8 +3,8 @@ import type { AppConfig } from '../src/config.js';
 import { createProvider, registeredProviderIds } from '../src/providers/registry.js';
 import {
   assertSupportsLogin,
+  assertSupportsPublish,
   assertSupportsSignatureUrl,
-  assertSupportsSlotUpdate,
   type PresenceProvider
 } from '../src/providers/types.js';
 
@@ -24,7 +24,7 @@ describe('provider registry', () => {
       expect(provider.id).toBe('feishu-signature');
       expect(provider.createQrCode).toBeTypeOf('function');
       expect(provider.getLoginStatus).toBeTypeOf('function');
-      expect(provider.updateSlot).toBeTypeOf('function');
+      expect(provider.publishValue).toBeTypeOf('function');
       expect(provider.getInfo).toBeTypeOf('function');
       expect(provider.buildSignatureUrl).toBeTypeOf('function');
       expect(provider.getRemotePreview).toBeUndefined();
@@ -48,7 +48,7 @@ describe('provider registry', () => {
       const config: AppConfig = { providers: { 'magic-builder': { faasId: 'rec_1' } } };
       const provider = createProvider('magic-builder', { config });
       expect(provider.id).toBe('magic-builder');
-      expect(provider.updateSlot).toBeTypeOf('function');
+      expect(provider.publishValue).toBeTypeOf('function');
       expect(provider.getInfo).toBeTypeOf('function');
       expect(provider.getRemotePreview).toBeTypeOf('function');
     });
@@ -73,8 +73,8 @@ describe('provider registry', () => {
       expect(() => assertSupportsLogin(bare)).toThrow('provider "feishu-signature" does not support login');
     });
 
-    it('reports a missing slot-update capability', () => {
-      expect(() => assertSupportsSlotUpdate(bare)).toThrow('provider "feishu-signature" does not support slot updates');
+    it('reports a missing publish capability', () => {
+      expect(() => assertSupportsPublish(bare)).toThrow('provider "feishu-signature" does not support publishing values');
     });
 
     it('reports a missing signature-url capability', () => {
@@ -84,7 +84,7 @@ describe('provider registry', () => {
     it('passes through a provider that has the capability', () => {
       const provider = createProvider('feishu-signature', { config: { slot_id: 'slot_abc' } });
       expect(() => assertSupportsLogin(provider)).not.toThrow();
-      expect(() => assertSupportsSlotUpdate(provider)).not.toThrow();
+      expect(() => assertSupportsPublish(provider)).not.toThrow();
       expect(() => assertSupportsSignatureUrl(provider)).not.toThrow();
     });
   });

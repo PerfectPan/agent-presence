@@ -2,13 +2,13 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { base62Encode, LGaryYangProvider } from '../src/providers/l-garyyang.js';
+import { base62Encode, LGaryYangSlotBackend } from '../src/providers/l-garyyang.js';
 
 describe('l.garyyang signature URL', () => {
   it('encodes the slot helper in t2 instead of exposing slotId as an ignored query param', () => {
-    const provider = new LGaryYangProvider('https://l.garyyang.work');
+    const provider = new LGaryYangSlotBackend('https://l.garyyang.work');
     const url = new URL(
-      provider.buildSignatureUrl({
+      provider.buildDirectPreviewUrl({
         previewBaseUrl: 'https://l.garyyang.work/',
         slotId: 'slot_test',
         targetUrl: 'https://example.com',
@@ -41,7 +41,7 @@ describe('l.garyyang login status', () => {
       })))
     );
 
-    const provider = new LGaryYangProvider('https://l.garyyang.work');
+    const provider = new LGaryYangSlotBackend('https://l.garyyang.work');
 
     await expect(provider.getLoginStatus('cslot_test')).resolves.toEqual({
       status: 'confirmed',
@@ -53,7 +53,7 @@ describe('l.garyyang login status', () => {
   it('keeps expired login status visible to the cli', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ status: 'expired' }))));
 
-    const provider = new LGaryYangProvider('https://l.garyyang.work');
+    const provider = new LGaryYangSlotBackend('https://l.garyyang.work');
 
     await expect(provider.getLoginStatus('cslot_test')).resolves.toEqual({ status: 'expired' });
   });
@@ -74,7 +74,7 @@ describe('l.garyyang request logging', () => {
   it('logs provider requests without leaking tokens or full slot values', async () => {
     const logPath = await useTempLogFile();
     vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ ok: true }), { status: 200 })));
-    const provider = new LGaryYangProvider('https://l.garyyang.work', {
+    const provider = new LGaryYangSlotBackend('https://l.garyyang.work', {
       token: 'secret_token',
       slotId: 'slot_123456789abcdef'
     });
@@ -108,7 +108,7 @@ describe('l.garyyang request logging', () => {
         headers: { 'retry-after': '60' }
       }))
     );
-    const provider = new LGaryYangProvider('https://l.garyyang.work', {
+    const provider = new LGaryYangSlotBackend('https://l.garyyang.work', {
       token: 'secret_token',
       slotId: 'slot_rate_limited'
     });
@@ -126,7 +126,7 @@ describe('l.garyyang request logging', () => {
   it('does not log successful login polling by default', async () => {
     const logPath = await useTempLogFile();
     vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ status: 'pending' }))));
-    const provider = new LGaryYangProvider('https://l.garyyang.work');
+    const provider = new LGaryYangSlotBackend('https://l.garyyang.work');
 
     await expect(provider.getLoginStatus('cslot_test')).resolves.toEqual({ status: 'pending' });
 

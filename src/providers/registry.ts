@@ -5,13 +5,12 @@ import {
   previewBaseUrl,
   previewImageKey,
   previewTargetUrl,
-  providerBaseUrl,
   type AppConfig,
   type ProviderId
 } from '../config.js';
 import type { SlotCredential } from '../secret.js';
-import { LGaryYangProvider } from './l-garyyang.js';
 import { MagicBuilderProvider } from './magic-builder.js';
+import { createSlotBackend, type SlotBackend } from './slot-backend.js';
 import type { PresenceProvider } from './types.js';
 
 export interface CreateProviderOptions {
@@ -28,8 +27,8 @@ const factories: Record<ProviderId, ProviderFactory> = {
 
 /**
  * Resolve a provider id to a capability-oriented {@link PresenceProvider}.
- * This is the single place that knows which concrete classes back each id, so
- * CLI commands depend on capabilities rather than on `LGaryYangProvider`.
+ * This is the single place that knows which concrete pieces back each id, so
+ * CLI commands depend on capabilities rather than on a storage backend.
  */
 export function createProvider(id: ProviderId, options: CreateProviderOptions): PresenceProvider {
   const factory = factories[id];
@@ -43,20 +42,27 @@ export function registeredProviderIds(): ProviderId[] {
   return Object.keys(factories) as ProviderId[];
 }
 
-function createFeishuSignatureProvider({ config, credential }: CreateProviderOptions): PresenceProvider {
-  const slot = new LGaryYangProvider(providerBaseUrl(config), credential);
+/** Capabilities every slot-backed provider shares, mapped onto the backend. */
+function slotCapabilities(slot: SlotBackend): Pick<PresenceProvider, 'createQrCode' | 'getLoginStatus' | 'publishValue' | 'getInfo'> {
   return {
-    id: 'feishu-signature',
     createQrCode: () => slot.createQrCode(),
     getLoginStatus: (sceneId) => slot.getLoginStatus(sceneId),
-    updateSlot: (value) => slot.updateSlot(value),
-    getInfo: () => slot.getInfo(),
+    publishValue: (value) => slot.updateSlot(value),
+    getInfo: () => slot.getInfo()
+  };
+}
+
+function createFeishuSignatureProvider({ config, credential }: CreateProviderOptions): PresenceProvider {
+  const slot = createSlotBackend(config, credential);
+  return {
+    id: 'feishu-signature',
+    ...slotCapabilities(slot),
     buildSignatureUrl: () => {
       const slotId = credential?.slotId ?? configSlotId(config);
       if (!slotId) {
         throw new Error('missing slot_id; run `agent-presence login` first');
       }
-      return slot.buildSignatureUrl({
+      return slot.buildDirectPreviewUrl({
         slotId,
         imageKey: previewImageKey(config),
         targetUrl: previewTargetUrl(config),
@@ -67,17 +73,14 @@ function createFeishuSignatureProvider({ config, credential }: CreateProviderOpt
 }
 
 function createMagicBuilderProvider({ config, credential }: CreateProviderOptions): PresenceProvider {
-  // magic-builder has no storage of its own: presence values are still written
-  // to and read from the same l.garyyang slot. It only changes which URL Feishu
-  // embeds, fronting the slot with a FaaS that Feishu reliably renders.
-  const slot = new LGaryYangProvider(providerBaseUrl(config), credential);
+  // magic-builder has no storage of its own: it reads and writes the same slot
+  // backend, and only changes which URL Feishu embeds — fronting the slot with
+  // a FaaS that Feishu reliably renders.
+  const slot = createSlotBackend(config, credential);
   const frontEnd = new MagicBuilderProvider(magicBuilderBaseUrl(config));
   return {
     id: 'magic-builder',
-    createQrCode: () => slot.createQrCode(),
-    getLoginStatus: (sceneId) => slot.getLoginStatus(sceneId),
-    updateSlot: (value) => slot.updateSlot(value),
-    getInfo: () => slot.getInfo(),
+    ...slotCapabilities(slot),
     buildSignatureUrl: () => {
       const faasId = magicBuilderFaasId(config);
       if (!faasId) {

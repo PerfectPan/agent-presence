@@ -20,9 +20,9 @@ export interface PresenceProvider {
   /** QR login (slot-style providers). */
   createQrCode?(): Promise<QrCodeResponse>;
   getLoginStatus?(sceneId: string): Promise<LoginStatus>;
-  /** Write the rendered presence value to the slot store. */
-  updateSlot?(value: string): Promise<void>;
-  /** Raw slot info, used by `status --remote`. */
+  /** Publish the rendered presence value to wherever this provider stores it. */
+  publishValue?(value: string): Promise<void>;
+  /** Raw backend info, used by `status --remote`. */
   getInfo?(): Promise<unknown>;
   /** The link-preview URL the Feishu signature should embed. */
   buildSignatureUrl?(): string;
@@ -36,7 +36,7 @@ export interface PresenceProvider {
 export type LoginCapableProvider = PresenceProvider &
   Required<Pick<PresenceProvider, 'createQrCode' | 'getLoginStatus'>>;
 
-export type SlotUpdateCapableProvider = PresenceProvider & Required<Pick<PresenceProvider, 'updateSlot'>>;
+export type PublishCapableProvider = PresenceProvider & Required<Pick<PresenceProvider, 'publishValue'>>;
 
 export type SignatureUrlCapableProvider = PresenceProvider & Required<Pick<PresenceProvider, 'buildSignatureUrl'>>;
 
@@ -46,9 +46,9 @@ export function assertSupportsLogin(provider: PresenceProvider): asserts provide
   }
 }
 
-export function assertSupportsSlotUpdate(provider: PresenceProvider): asserts provider is SlotUpdateCapableProvider {
-  if (!provider.updateSlot) {
-    throw new Error(`provider "${provider.id}" does not support slot updates`);
+export function assertSupportsPublish(provider: PresenceProvider): asserts provider is PublishCapableProvider {
+  if (!provider.publishValue) {
+    throw new Error(`provider "${provider.id}" does not support publishing values`);
   }
 }
 

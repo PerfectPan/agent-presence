@@ -275,17 +275,21 @@ Network I/O is kept outside the state mutation lock. That keeps hook contention 
 
 ### Provider Registry
 
-`src/providers/types.ts` defines a capability-oriented `PresenceProvider` interface, and `src/providers/registry.ts` exposes `createProvider(id, { config, credential })`. CLI commands resolve a provider through the registry and call `assertSupports*` for the capability they need (login, slot update, signature url) instead of importing `LGaryYangProvider` directly. This is the seam new providers plug into.
+`src/providers/types.ts` defines a capability-oriented `PresenceProvider` interface, and `src/providers/registry.ts` exposes `createProvider(id, { config, credential })`. CLI commands resolve a provider through the registry and call `assertSupports*` for the capability they need (login, publish, signature url) instead of importing a storage backend directly. This is the seam new providers plug into.
 
 Capabilities are optional because not every provider supports every operation:
 
-- `createQrCode` / `getLoginStatus` — QR login.
-- `updateSlot(value)` — write the rendered value to the slot store.
-- `getInfo()` — raw slot read for `status --remote`.
+- `createQrCode` / `getLoginStatus` — login.
+- `publishValue(value)` — push the rendered value to wherever the provider stores it.
+- `getInfo()` — raw backend read for `status --remote`.
 - `buildSignatureUrl()` — the link-preview URL the signature embeds.
 - `getRemotePreview()` — a front-end provider's own server-rendered preview (magic-builder's FaaS output).
 
-Both registered providers share the same slot backend, so `magic-builder` composes an `LGaryYangProvider` for login/update/info and only overrides `buildSignatureUrl` and `getRemotePreview`. The write path is identical regardless of the selected provider.
+#### Slot backend vs. provider
+
+The two shipped providers are not independent backends: they read and write the **same** slot. That shared storage is modelled explicitly as a `SlotBackend` (`src/providers/slot-backend.ts`), implemented by `LGaryYangSlotBackend`. Both `feishu-signature` and `magic-builder` *compose* the same `SlotBackend` for login/publish/info and differ only in the signature URL (and, for magic-builder, the `getRemotePreview` FaaS read). Neither provider depends on the other.
+
+The capability layer is deliberately generic (`publishValue`, not `updateSlot`) so a future provider with its own, slot-unrelated storage can implement `PresenceProvider` directly and never touch `SlotBackend`. Its own credential model and login flow would be added alongside at that point; the registry seam itself does not change.
 
 ### Provider
 

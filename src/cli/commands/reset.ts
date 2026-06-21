@@ -1,6 +1,6 @@
 import { configSlotId, debounceMs, getStatePath, loadConfig, providerId, renderTemplates, ttlMs } from '../../config.js';
 import { createProvider } from '../../providers/registry.js';
-import { assertSupportsSlotUpdate } from '../../providers/types.js';
+import { assertSupportsPublish } from '../../providers/types.js';
 import { readCredential } from '../../secret.js';
 import { finishAllSessions } from '../../state.js';
 import { hasFlag, optionValue } from '../args.js';
@@ -11,7 +11,7 @@ export async function reset(args: string[]): Promise<void> {
   const activeProvider = providerId(config, optionValue(args, '--provider'));
   const credential = await readCredential(configSlotId(config));
   const provider = createProvider(activeProvider, { config, credential });
-  assertSupportsSlotUpdate(provider);
+  assertSupportsPublish(provider);
   const statePath = getStatePath();
   const now = Date.now();
   const force = hasFlag(args, '--force');
@@ -26,7 +26,7 @@ export async function reset(args: string[]): Promise<void> {
       ttlMs: ttlMs(config),
       renderTemplates: renderTemplates(config)
     },
-    (value) => provider.updateSlot(value),
+    (value) => provider.publishValue(value),
     (state) => {
       finishAllSessions(state, now);
     }

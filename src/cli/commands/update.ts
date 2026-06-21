@@ -1,6 +1,6 @@
 import { configSlotId, debounceMs, getStatePath, loadConfig, providerId, renderTemplates, ttlMs } from '../../config.js';
 import { createProvider } from '../../providers/registry.js';
-import { assertSupportsSlotUpdate } from '../../providers/types.js';
+import { assertSupportsPublish } from '../../providers/types.js';
 import { readCredential } from '../../secret.js';
 import { hasFlag, optionValue } from '../args.js';
 import { syncRenderedSlotWithDeferredFlush } from '../rendered-slot-sync.js';
@@ -12,7 +12,7 @@ export async function update(args: string[]): Promise<void> {
   const activeProvider = providerId(config, optionValue(args, '--provider'));
   const credential = await readCredential(configSlotId(config));
   const provider = createProvider(activeProvider, { config, credential });
-  assertSupportsSlotUpdate(provider);
+  assertSupportsPublish(provider);
   const statePath = getStatePath();
   const force = hasFlag(args, '--force');
   const silent = hasFlag(args, '--silent');
@@ -28,7 +28,7 @@ export async function update(args: string[]): Promise<void> {
         debounceMs: debounceMs(config),
         value: explicitValue.slice(0, 200)
       },
-      (value) => provider.updateSlot(value)
+      (value) => provider.publishValue(value)
     );
     if (!silent) {
       console.log(JSON.stringify(result, null, 2));
@@ -53,7 +53,7 @@ export async function update(args: string[]): Promise<void> {
       renderTemplates: renderTemplates(config),
       usage: { enabled: usagePlan.enabled, defaultWindow: usagePlan.defaultWindow }
     },
-    (value) => provider.updateSlot(value)
+    (value) => provider.publishValue(value)
   );
   if (!silent) {
     console.log(JSON.stringify(result, null, 2));
