@@ -1,5 +1,6 @@
-import { configSlotId, debounceMs, getStatePath, loadConfig, providerBaseUrl, renderTemplates, ttlMs } from '../../config.js';
-import { LGaryYangProvider } from '../../providers/l-garyyang.js';
+import { configSlotId, debounceMs, getStatePath, loadConfig, providerId, renderTemplates, ttlMs } from '../../config.js';
+import { createProvider } from '../../providers/registry.js';
+import { assertSupportsSlotUpdate } from '../../providers/types.js';
 import { readCredential } from '../../secret.js';
 import { applyAgentEvent, isSessionBoundaryEvent } from '../../state.js';
 import { hasFlag, optionValue } from '../args.js';
@@ -55,7 +56,8 @@ export async function hook(args: string[]): Promise<void> {
       async (value) => {
         // Keep Keychain/provider IO after the local state mutation has been persisted.
         const credential = await readCredential(configSlotId(config));
-        const provider = new LGaryYangProvider(providerBaseUrl(config), credential);
+        const provider = createProvider(providerId(config), { config, credential });
+        assertSupportsSlotUpdate(provider);
         await provider.updateSlot(value);
       },
       (state) => {

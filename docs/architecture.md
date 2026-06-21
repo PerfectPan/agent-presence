@@ -273,6 +273,20 @@ Normal updates obey the debounce interval. `update --force` and `reset --force` 
 
 Network I/O is kept outside the state mutation lock. That keeps hook contention small and prevents a slow provider request from blocking unrelated lifecycle writes.
 
+### Provider Registry
+
+`src/providers/types.ts` defines a capability-oriented `PresenceProvider` interface, and `src/providers/registry.ts` exposes `createProvider(id, { config, credential })`. CLI commands resolve a provider through the registry and call `assertSupports*` for the capability they need (login, slot update, signature url) instead of importing `LGaryYangProvider` directly. This is the seam new providers plug into.
+
+Capabilities are optional because not every provider supports every operation:
+
+- `createQrCode` / `getLoginStatus` — QR login.
+- `updateSlot(value)` — write the rendered value to the slot store.
+- `getInfo()` — raw slot read for `status --remote`.
+- `buildSignatureUrl()` — the link-preview URL the signature embeds.
+- `getRemotePreview()` — a front-end provider's own server-rendered preview (magic-builder's FaaS output).
+
+Both registered providers share the same slot backend, so `magic-builder` composes an `LGaryYangProvider` for login/update/info and only overrides `buildSignatureUrl` and `getRemotePreview`. The write path is identical regardless of the selected provider.
+
 ### Provider
 
 `src/providers/l-garyyang.ts` implements the first slot backend:
