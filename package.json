@@ -1,6 +1,6 @@
 {
   "name": "@rivus/agent-presence",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "description": "Sync local coding-agent presence to Feishu signature link previews.",
   "type": "module",
   "author": "PerfectPan <perfectpan325@gmail.com>",
