@@ -1,0 +1,182 @@
+/* ===========================================================================
+   agent-presence — design tokens + Starlight theming
+   Light, airy canvas with a blue→sky accent (no purple, no neon green).
+   The terminal stays dark on purpose for hero contrast.
+   =========================================================================== */
+
+:root {
+  --ap-bg:        #f7f8fb;
+  --ap-bg-2:      #eef1f7;
+  --ap-panel:     #ffffff;
+  --ap-panel-2:   #f3f5fa;
+  --ap-border:    #e3e6ee;
+  --ap-border-soft: #ecedf4;
+
+  --ap-text:      #15171f;
+  --ap-text-dim:  #51566a;
+  --ap-text-faint:#878da0;
+
+  --ap-blue:   #2563eb;
+  --ap-blue-deep: #1d4ed8;
+  --ap-sky:    #38bdf8;
+  --ap-emerald:#10b981;
+  --ap-amber:  #b4530a;
+
+  --ap-grad: linear-gradient(115deg, #2563eb 0%, #3b82f6 48%, #38bdf8 100%);
+  --ap-grad-soft: linear-gradient(115deg, rgba(37,99,235,.09), rgba(56,189,248,.10));
+
+  --ap-font-display: "Space Grotesk", system-ui, sans-serif;
+  --ap-font-body: "Inter", system-ui, sans-serif;
+  --ap-font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+
+  --ap-radius: 16px;
+  --ap-radius-sm: 10px;
+  --ap-shadow: 0 22px 54px -26px rgba(20,40,90,.30);
+  --ap-glow: 0 0 0 1px rgba(37,99,235,.16), 0 22px 50px -20px rgba(37,99,235,.20);
+  --ap-maxw: 1180px;
+}
+
+/* =========================================================================
+   Starlight — shared
+   ========================================================================= */
+:root {
+  --sl-font: "Inter", system-ui, sans-serif;
+  --sl-font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  --sl-nav-pad-y: 1rem;
+
+  /* Tighter type scale — Starlight's defaults run large */
+  --sl-text-h1: 1.95rem;
+  --sl-text-h2: 1.42rem;
+  --sl-text-h3: 1.16rem;
+  --sl-text-h4: 1.0rem;
+  --sl-text-h5: 0.9rem;
+  --sl-text-body: 0.94rem;
+  --sl-text-body-sm: 0.84rem;
+  --sl-text-code: 0.84rem;
+  --sl-text-code-sm: 0.8rem;
+  --sl-line-height: 1.7;
+}
+
+/* Light theme (default) */
+:root {
+  --sl-color-accent-low: #e6efff;
+  --sl-color-accent: #2563eb;
+  --sl-color-accent-high: #15347e;
+  --sl-color-text-accent: #2056d6;
+  --sl-color-bg: #fbfcfe;
+  --sl-color-bg-sidebar: #f6f8fc;
+  --sl-color-bg-nav: rgba(251,252,254,.82);
+  --sl-color-bg-inline-code: #eef1f7;
+  --sl-color-hairline: #eaecf3;
+  --sl-color-hairline-light: #e3e6ee;
+  --sl-color-hairline-shade: #eef1f7;
+}
+
+/* Dark theme — deep ink to match the hero terminal */
+:root[data-theme="dark"] {
+  --sl-color-accent-low: #11254d;
+  --sl-color-accent: #3b82f6;
+  --sl-color-accent-high: #cfe0ff;
+  --sl-color-text-accent: #7db3ff;
+  --sl-color-white: #f3f5fb;
+  --sl-color-gray-1: #e7e9f2;
+  --sl-color-gray-2: #c2c6d6;
+  --sl-color-gray-3: #969bb0;
+  --sl-color-gray-4: #6a6f84;
+  --sl-color-gray-5: #2b3047;
+  --sl-color-gray-6: #1a1e2e;
+  --sl-color-bg: #0e1018;
+  --sl-color-bg-sidebar: #0b0d14;
+  --sl-color-bg-nav: rgba(14,16,24,.78);
+  --sl-color-bg-inline-code: #1a1e2e;
+  --sl-color-hairline: #1c2030;
+  --sl-color-hairline-light: #232838;
+  --sl-color-hairline-shade: #161a27;
+}
+
+/* ---- Starlight polish (applies to both themes) ---- */
+.site-title { font-family: var(--ap-font-display); font-weight: 600; letter-spacing: -.015em; font-size: 1.15rem; gap: 0.5rem; }
+
+/* Headings get the display face for character */
+.sl-markdown-content :is(h1, h2, h3),
+.content-panel h1,
+h1#_top {
+  font-family: var(--ap-font-display);
+  letter-spacing: -.02em;
+}
+
+/* Sidebar: lighter, rounded, refined — no heavy solid fill */
+.sidebar-content a {
+  border-radius: 8px;
+  padding-block: 0.34em;
+  transition: background-color .15s, color .15s;
+}
+.sidebar-content a:hover {
+  background-color: var(--sl-color-accent-low);
+  color: var(--sl-color-text-accent);
+}
+.sidebar-content a[aria-current="page"],
+.sidebar-content a[aria-current="page"]:hover {
+  background-color: var(--sl-color-accent-low);
+  color: var(--sl-color-text-accent);
+  font-weight: 600;
+}
+/* group labels a touch quieter */
+.sidebar-content summary .group-label span,
+.sidebar-content .top-level > li > details > summary { letter-spacing: .005em; }
+
+/* Right-hand "On this page" current marker uses the accent */
+starlight-toc a[aria-current="true"] { color: var(--sl-color-text-accent); }
+
+/* Header: shorten the social/theme divider rule */
+.social-icons::after { height: 1.1rem !important; align-self: center; }
+
+/* Expressive Code copy button — smaller and quieter */
+.expressive-code .copy button { transform: scale(0.72); transform-origin: top right; }
+
+/* Custom theme toggle (replaces the native <select>) */
+.ap-theme {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 2rem; height: 2rem; border-radius: 8px; cursor: pointer;
+  color: var(--sl-color-text); background: transparent; border: 1px solid transparent;
+  transition: background-color .15s, border-color .15s, color .15s;
+}
+.ap-theme:hover { background: var(--sl-color-accent-low); color: var(--sl-color-text-accent); border-color: var(--sl-color-hairline); }
+.ap-theme svg { width: 1.05rem; height: 1.05rem; }
+.ap-theme .ico--sun { display: none; }
+:root[data-theme="dark"] .ap-theme .ico--sun { display: block; }
+:root[data-theme="dark"] .ap-theme .ico--moon { display: none; }
+
+/* Custom language switch (replaces the native <select>) */
+.ap-lang { display: inline-flex; align-items: center; gap: 2px; padding: 2px; border: 1px solid var(--sl-color-hairline); border-radius: 999px; }
+.ap-lang a {
+  font: 600 12px/1 var(--ap-font-mono); text-decoration: none; color: var(--sl-color-gray-3);
+  padding: 5px 10px; border-radius: 999px; transition: background-color .15s, color .15s;
+}
+.ap-lang a:hover { color: var(--sl-color-text); }
+.ap-lang a.active { color: #fff; background: var(--sl-color-accent); }
+
+/* =========================================================================
+   Base reset for custom (non-Starlight) pages
+   ========================================================================= */
+*, *::before, *::after { box-sizing: border-box; }
+
+html.ap-landing { color-scheme: light; }
+html.ap-landing body {
+  margin: 0;
+  background: var(--ap-bg);
+  color: var(--ap-text);
+  font-family: var(--ap-font-body);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  line-height: 1.6;
+}
+html.ap-landing ::selection { background: rgba(37,99,235,.16); }
+
+.ap-wrap { max-width: var(--ap-maxw); margin-inline: auto; padding-inline: 24px; }
+
+a { color: inherit; }
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; scroll-behavior: auto !important; }
+}

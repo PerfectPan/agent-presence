@@ -1,0 +1,48 @@
+---
+import Landing from '../../layouts/Landing.astro';
+---
+
+<Landing
+  lang="zh-CN"
+  htmlTitle="agent-presence — 让你的 AI 牛马实时显示在飞书签名上"
+  htmlDesc="把本机编码智能体的 presence 和 token 消耗同步到飞书签名。五个智能体、一个实时徽章、按美元计价的 token 消耗——无需 cron。"
+  brandHref="/zh/"
+  docsHref="/zh/guide/install"
+  navDocs="文档"
+  eyebrow="presence + token 消耗 → 你的签名"
+  titleLead="看见你的 AI 牛马"
+  titleGrad="正在真干活。"
+  ledeHtml="<b>agent-presence</b> 把你本机的编码智能体——有几个在跑、烧了多少 token——直接同步到飞书签名。实时、带成本、完全省心。"
+  ctaPrimary="开始使用 →"
+  installCopy="复制"
+  installCopied="已复制"
+  steps={{
+    eyebrow: '流程',
+    items: [
+      { n: 'hooks', t: '智能体 hook', d: 'SessionStart · PreToolUse · Stop' },
+      { n: 'state', t: 'presence 状态', d: 'live · heartbeat · expired' },
+      { n: 'render', t: '防抖渲染', d: '{total} · {details} · {usage}' },
+      { n: 'feishu', t: '飞书签名', d: '链接预览徽章' },
+    ],
+  }}
+  featsTitle="为活在终端里的人打造"
+  featsSub="它盯着你已经在跑的智能体,把活动汇成一个诚实的徽章。"
+  features={[
+    { t: '五个智能体,一个徽章', d: 'Codex、Claude Code、Gemini CLI、opencode、Pi 全都汇入同一个实时计数,无需逐个配置。' },
+    { t: 'token 消耗,带成本', d: '跨所有智能体的自然日 token 总量,并估算到美元——ccusage 风格,从本地 transcript 扫描得来。' },
+    { t: '在干活,而非只是开着', d: '只统计真正在跑的智能体。心跳维持在线;空闲会话过期;休眠与唤醒归零。' },
+    { t: '无 cron,无常驻', d: '通过智能体本就会触发的 hook,在会话边界刷新。后台没有任何轮询。' },
+  ]}
+  provEyebrow="两种渲染方式"
+  provTitle="选飞书认的那种预览"
+  provSub="两者读同一个 slot。默认那种用 FaaS 在前面托一层,飞书能可靠渲染;直连那种则无需额外 token。"
+  pDefaultBadge="默认"
+  pDefaultDesc="magic.solutionsuite.cn 上的预览函数,每次被拉取时读取你的 slot——飞书链接预览认这条路径。"
+  pDirectBadge="直连"
+  pDirectDesc="l.garyyang slot 后端直接作为链接预览。无需 Magic-Builder token。"
+  endTitle="把你的牛马挂到签名上。"
+  endSub="macOS & Linux · 两条命令 · 零后台常驻。"
+  endDocs="阅读文档 →"
+  endStar="在 GitHub 点赞"
+  footNote="为终端而造。"
+/>

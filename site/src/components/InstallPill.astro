@@ -1,0 +1,83 @@
+---
+const managers = [
+  { id: 'pnpm', cmd: 'pnpm add -g @rivus/agent-presence' },
+  { id: 'npm', cmd: 'npm i -g @rivus/agent-presence' },
+  { id: 'bun', cmd: 'bun add -g @rivus/agent-presence' },
+];
+const { copy = 'copy', copied = 'copied' } = Astro.props;
+const npmUrl = 'https://npmx.dev/package/@rivus/agent-presence';
+---
+<install-pill class="ip" data-copy={copy} data-copied={copied}>
+  <div class="ip__tabs" role="tablist">
+    {managers.map((m, i) => (
+      <button class="ip__tab" type="button" data-cmd={m.cmd} aria-selected={i === 0 ? 'true' : 'false'}>
+        {m.id}
+      </button>
+    ))}
+  </div>
+  <div class="ip__row">
+    <span class="ip__pmt">$</span>
+    <code data-out>{managers[0].cmd}</code>
+    <button class="ip__copy" type="button" data-copybtn>{copy}</button>
+  </div>
+  <a class="ip__npm" href={npmUrl} target="_blank" rel="noopener">@rivus/agent-presence · npmx ↗</a>
+</install-pill>
+
+<style>
+  .ip { display: inline-flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+  .ip__tabs { display: inline-flex; gap: 2px; padding: 3px; border: 1px solid var(--ap-border); border-radius: 10px; background: var(--ap-panel); }
+  .ip__tab {
+    font: 600 12px/1 var(--ap-font-mono); color: var(--ap-text-faint);
+    padding: 5px 11px; border: 0; border-radius: 7px; background: transparent; cursor: pointer; transition: background-color .15s, color .15s;
+  }
+  .ip__tab:hover { color: var(--ap-text-dim); }
+  .ip__tab[aria-selected="true"] { color: #fff; background: var(--ap-blue); }
+  .ip__row {
+    display: inline-flex; align-items: center; gap: 9px;
+    font: 13.5px/1 var(--ap-font-mono); padding: 12px 12px 12px 14px;
+    border: 1px solid var(--ap-border); border-radius: 12px; background: var(--ap-panel);
+    box-shadow: 0 1px 2px rgba(26,24,38,.04); max-width: 100%; overflow-x: auto;
+  }
+  .ip__pmt { color: var(--ap-blue); flex: none; }
+  .ip__row code { color: var(--ap-text); white-space: nowrap; }
+  .ip__copy { flex: none; }
+  .ip__copy {
+    margin-left: 2px; font: 11px/1 var(--ap-font-mono); letter-spacing: .04em; text-transform: uppercase;
+    color: var(--ap-text-faint); background: transparent; border: 0; cursor: pointer; padding: 4px 6px; border-radius: 6px; transition: color .15s, background-color .15s;
+  }
+  .ip__copy:hover { color: var(--ap-blue); background: var(--ap-grad-soft); }
+  .ip__npm { font: 12px/1 var(--ap-font-mono); color: var(--ap-text-faint); text-decoration: none; }
+  .ip__npm:hover { color: var(--ap-blue); }
+</style>
+
+<script>
+  if (!customElements.get('install-pill')) {
+    customElements.define(
+      'install-pill',
+      class extends HTMLElement {
+        connectedCallback() {
+          const out = this.querySelector('[data-out]') as HTMLElement;
+          const tabs = [...this.querySelectorAll('.ip__tab')] as HTMLButtonElement[];
+          const copyBtn = this.querySelector('[data-copybtn]') as HTMLButtonElement;
+          const labelCopy = this.dataset.copy || 'copy';
+          const labelCopied = this.dataset.copied || 'copied';
+          let cmd = out.textContent || '';
+          tabs.forEach((t) =>
+            t.addEventListener('click', () => {
+              tabs.forEach((x) => x.setAttribute('aria-selected', String(x === t)));
+              cmd = t.dataset.cmd || '';
+              out.textContent = cmd;
+            }),
+          );
+          copyBtn.addEventListener('click', async () => {
+            try {
+              await navigator.clipboard.writeText(cmd);
+              copyBtn.textContent = labelCopied;
+              setTimeout(() => (copyBtn.textContent = labelCopy), 1400);
+            } catch {}
+          });
+        }
+      },
+    );
+  }
+</script>

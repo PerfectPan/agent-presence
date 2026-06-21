@@ -1,0 +1,264 @@
+---
+import '../styles/global.css';
+import LiveTerminal from '../components/LiveTerminal.astro';
+import BrandIcon from '../components/BrandIcon.astro';
+import InstallPill from '../components/InstallPill.astro';
+import LanguageSelect from '../components/LanguageSelect.astro';
+
+const repo = 'https://github.com/PerfectPan/agent-presence';
+const npm = 'https://npmx.dev/package/@rivus/agent-presence';
+const agents = ['Codex', 'Claude Code', 'Gemini CLI', 'opencode', 'Pi'];
+
+const {
+  lang,
+  htmlTitle,
+  htmlDesc,
+  brandHref,
+  docsHref,
+  navDocs,
+  eyebrow,
+  titleLead,
+  titleGrad,
+  ledeHtml,
+  ctaPrimary,
+  installCopy,
+  installCopied,
+  steps,
+  featsTitle,
+  featsSub,
+  features,
+  provEyebrow,
+  provTitle,
+  provSub,
+  pDefaultBadge,
+  pDefaultDesc,
+  pDirectBadge,
+  pDirectDesc,
+  endTitle,
+  endSub,
+  endDocs,
+  endStar,
+  footNote,
+} = Astro.props;
+---
+
+<!doctype html>
+<html lang={lang} class="ap-landing">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{htmlTitle}</title>
+    <meta name="description" content={htmlDesc} />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap"
+    />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    {import.meta.env.DEV && <script is:inline src="/dev-grab.js"></script>}
+  </head>
+  <body>
+    <div class="bg" aria-hidden="true"><span class="bg__a"></span><span class="bg__b"></span><span class="bg__grid"></span></div>
+
+    <header class="nav">
+      <div class="ap-wrap nav__in">
+        <a class="brand" href={brandHref}><BrandIcon size={24} />agent-presence</a>
+        <nav class="nav__links">
+          <a href={docsHref}>{navDocs}</a>
+          <a href={npm} target="_blank" rel="noopener">npmx ↗</a>
+          <a class="nav__gh" href={repo} target="_blank" rel="noopener">GitHub ↗</a>
+          <LanguageSelect />
+        </nav>
+      </div>
+    </header>
+
+    <main>
+      <section class="hero">
+        <div class="ap-wrap hero__in">
+          <div class="hero__copy">
+            <span class="eyebrow"><i></i>{eyebrow}</span>
+            <h1 class="title">{titleLead}<br /><span class="grad">{titleGrad}</span></h1>
+            <p class="lede" set:html={ledeHtml}></p>
+            <div class="cta"><a class="btn btn--primary" href={docsHref}>{ctaPrimary}</a></div>
+            <div class="install"><InstallPill copy={installCopy} copied={installCopied} /></div>
+            <div class="agents">{agents.map((a) => <span class="chip">{a}</span>)}</div>
+          </div>
+          <div class="hero__term"><LiveTerminal /></div>
+        </div>
+      </section>
+
+      <section class="pipe">
+        <div class="ap-wrap">
+          <p class="sec__eyebrow">{steps.eyebrow}</p>
+          <div class="pipe__row">
+            {steps.items.map((s, i) => (
+              <>
+                <div class="pipe__node">
+                  <span class="pipe__tag">{s.n}</span>
+                  <span class="pipe__t">{s.t}</span>
+                  <span class="pipe__d">{s.d}</span>
+                </div>
+                {i < steps.items.length - 1 && <span class="pipe__arrow">→</span>}
+              </>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section class="feats">
+        <div class="ap-wrap">
+          <h2 class="sec__title">{featsTitle}</h2>
+          <p class="sec__sub">{featsSub}</p>
+          <div class="feat__grid">
+            {features.map((f) => (
+              <article class="feat">
+                <span class="feat__mark" aria-hidden="true" />
+                <h3>{f.t}</h3>
+                <p>{f.d}</p>
+              </article>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section class="prov">
+        <div class="ap-wrap prov__in">
+          <div class="prov__head">
+            <p class="sec__eyebrow">{provEyebrow}</p>
+            <h2 class="sec__title">{provTitle}</h2>
+            <p class="sec__sub">{provSub}</p>
+          </div>
+          <div class="prov__cards">
+            <article class="pcard pcard--default">
+              <span class="pcard__badge">{pDefaultBadge}</span>
+              <h3>magic-builder</h3>
+              <p>{pDefaultDesc}</p>
+            </article>
+            <article class="pcard">
+              <span class="pcard__badge pcard__badge--alt">{pDirectBadge}</span>
+              <h3>feishu-signature</h3>
+              <p>{pDirectDesc}</p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="end">
+        <div class="ap-wrap end__in">
+          <h2>{endTitle}</h2>
+          <p>{endSub}</p>
+          <div class="cta cta--center">
+            <a class="btn btn--primary" href={docsHref}>{endDocs}</a>
+            <a class="btn btn--ghost" href={repo} target="_blank" rel="noopener">{endStar}</a>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="foot">
+      <div class="ap-wrap foot__in">
+        <span class="brand"><BrandIcon size={20} />agent-presence</span>
+        <div class="foot__links">
+          <a href={docsHref}>{navDocs}</a>
+          <a href={npm} target="_blank" rel="noopener">npmx</a>
+          <a href={repo} target="_blank" rel="noopener">GitHub</a>
+        </div>
+        <span class="foot__note">{footNote}</span>
+      </div>
+    </footer>
+
+    <style>
+      .bg { position: fixed; inset: 0; z-index: -1; overflow: hidden; background: var(--ap-bg); }
+      .bg__a, .bg__b { position: absolute; border-radius: 50%; filter: blur(96px); }
+      .bg__a { width: 620px; height: 620px; top: -260px; left: -140px; background: radial-gradient(circle, rgba(37,99,235,.20), transparent 64%); }
+      .bg__b { width: 700px; height: 700px; top: -200px; right: -200px; background: radial-gradient(circle, rgba(56,189,248,.16), transparent 64%); }
+      .bg__grid {
+        position: absolute; inset: 0;
+        background-image: linear-gradient(rgba(26,24,38,.045) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(26,24,38,.045) 1px, transparent 1px);
+        background-size: 58px 58px;
+        mask-image: radial-gradient(120% 80% at 50% 0%, #000 25%, transparent 72%);
+        -webkit-mask-image: radial-gradient(120% 80% at 50% 0%, #000 25%, transparent 72%);
+      }
+
+      .nav { position: sticky; top: 0; z-index: 20; backdrop-filter: blur(12px); background: rgba(251,251,254,.72); border-bottom: 1px solid var(--ap-border-soft); }
+      .nav__in { display: flex; align-items: center; justify-content: space-between; height: 64px; }
+      .brand { font-family: var(--ap-font-display); font-weight: 600; letter-spacing: -.01em; text-decoration: none; color: var(--ap-text); display: inline-flex; align-items: center; gap: 9px; }
+      .nav__links { display: flex; align-items: center; gap: 22px; font-size: 14px; }
+      .nav__links a { color: var(--ap-text-dim); text-decoration: none; transition: color .15s; }
+      .nav__links a:hover { color: var(--ap-text); }
+      .nav__gh { color: var(--ap-text) !important; font-weight: 500; }
+
+      .hero { padding-block: clamp(40px, 6vw, 76px) clamp(28px, 4vw, 52px); }
+      .hero__in { display: grid; grid-template-columns: 1.04fr 1fr; gap: clamp(28px, 5vw, 64px); align-items: center; }
+      .eyebrow { display: inline-flex; align-items: center; gap: 9px; font-size: 12.5px; letter-spacing: .02em; color: var(--ap-text-dim); padding: 6px 12px; border: 1px solid var(--ap-border); border-radius: 999px; background: var(--ap-grad-soft); }
+      .eyebrow i { width: 6px; height: 6px; border-radius: 50%; background: var(--ap-emerald); box-shadow: 0 0 0 3px rgba(16,185,129,.16); }
+      .title { font-family: var(--ap-font-display); font-weight: 700; letter-spacing: -.025em; line-height: 1.06; font-size: clamp(38px, 5.4vw, 62px); margin: 22px 0 0; color: var(--ap-text); }
+      .grad { background: var(--ap-grad); -webkit-background-clip: text; background-clip: text; color: transparent; }
+      .lede { margin: 22px 0 0; font-size: clamp(15.5px, 1.4vw, 18px); color: var(--ap-text-dim); max-width: 32em; }
+      .lede b { color: var(--ap-text); font-weight: 600; }
+      .cta { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; margin-top: 30px; }
+      .install { margin-top: 16px; }
+      .btn { font-family: var(--ap-font-display); font-weight: 600; font-size: 15px; text-decoration: none; padding: 13px 22px; border-radius: 12px; transition: transform .15s ease, box-shadow .2s ease, border-color .2s; display: inline-block; }
+      .btn--primary { color: #fff; background: var(--ap-grad); box-shadow: 0 14px 30px -12px rgba(37,99,235,.5); }
+      .btn--primary:hover { transform: translateY(-2px); box-shadow: 0 20px 38px -12px rgba(37,99,235,.55); }
+      .btn--ghost { color: var(--ap-text); border: 1px solid var(--ap-border); background: var(--ap-panel); }
+      .btn--ghost:hover { border-color: var(--ap-blue); }
+      .agents { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 30px; }
+      .chip { font-family: var(--ap-font-mono); font-size: 12px; color: var(--ap-text-dim); padding: 5px 11px; border: 1px solid var(--ap-border); border-radius: 999px; background: var(--ap-panel); }
+
+      .pipe { padding: 18px 0 8px; }
+      .sec__eyebrow { font-family: var(--ap-font-mono); font-size: 11.5px; letter-spacing: .2em; text-transform: uppercase; color: var(--ap-text-faint); margin: 0 0 18px; }
+      .pipe__row { display: flex; align-items: stretch; gap: 10px; flex-wrap: wrap; }
+      .pipe__node { flex: 1 1 0; min-width: 150px; border: 1px solid var(--ap-border-soft); border-radius: 14px; padding: 14px 15px; background: var(--ap-panel); box-shadow: 0 1px 2px rgba(26,24,38,.04); }
+      .pipe__tag { font-family: var(--ap-font-mono); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--ap-blue); }
+      .pipe__t { display: block; font-family: var(--ap-font-display); font-weight: 600; color: var(--ap-text); margin-top: 8px; }
+      .pipe__d { display: block; font-family: var(--ap-font-mono); font-size: 12px; color: var(--ap-text-faint); margin-top: 4px; }
+      .pipe__arrow { align-self: center; color: var(--ap-text-faint); font-size: 18px; }
+
+      .feats, .prov, .end { padding-block: clamp(44px, 6vw, 78px); }
+      .sec__title { font-family: var(--ap-font-display); font-weight: 700; letter-spacing: -.02em; font-size: clamp(22px, 2.9vw, 30px); color: var(--ap-text); margin: 0; }
+      .sec__sub { color: var(--ap-text-dim); margin: 12px 0 0; max-width: 40em; font-size: 15px; }
+
+      .feat__grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; margin-top: 32px; }
+      .feat { position: relative; border: 1px solid var(--ap-border-soft); border-radius: var(--ap-radius); padding: 22px 22px 20px; background: var(--ap-panel); box-shadow: 0 1px 2px rgba(26,24,38,.04), 0 18px 40px -28px rgba(20,40,90,.18); overflow: hidden; transition: border-color .2s, transform .2s, box-shadow .2s; }
+      .feat:hover { border-color: rgba(37,99,235,.35); transform: translateY(-3px); box-shadow: 0 1px 2px rgba(26,24,38,.04), 0 26px 50px -26px rgba(37,99,235,.26); }
+      .feat__mark { position: absolute; top: 0; left: 24px; width: 38px; height: 3px; border-radius: 0 0 3px 3px; background: var(--ap-grad); }
+      .feat h3 { font-family: var(--ap-font-display); font-weight: 600; font-size: 18px; color: var(--ap-text); margin: 6px 0 0; }
+      .feat p { color: var(--ap-text-dim); margin: 10px 0 0; font-size: 14px; }
+
+      .prov__in { display: grid; grid-template-columns: .9fr 1.1fr; gap: clamp(28px, 5vw, 56px); align-items: center; }
+      .prov__cards { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+      .pcard { border: 1px solid var(--ap-border-soft); border-radius: var(--ap-radius); padding: 22px; background: var(--ap-panel); box-shadow: 0 1px 2px rgba(26,24,38,.04); }
+      .pcard--default { border-color: rgba(37,99,235,.4); box-shadow: var(--ap-glow); }
+      .pcard__badge { font-family: var(--ap-font-mono); font-size: 10.5px; letter-spacing: .06em; text-transform: uppercase; color: #fff; background: var(--ap-blue); padding: 3px 9px; border-radius: 999px; }
+      .pcard__badge--alt { color: var(--ap-text-dim); background: transparent; border: 1px solid var(--ap-border); }
+      .pcard h3 { font-family: var(--ap-font-mono); font-weight: 700; font-size: 16px; color: var(--ap-text); margin: 14px 0 0; }
+      .pcard p { color: var(--ap-text-dim); margin: 9px 0 0; font-size: 13.5px; }
+
+      .end__in { text-align: center; border: 1px solid var(--ap-border-soft); border-radius: 24px; padding: clamp(40px, 6vw, 72px) 24px; background: radial-gradient(120% 140% at 50% 0%, rgba(37,99,235,.10), transparent 58%), var(--ap-panel); box-shadow: 0 1px 2px rgba(26,24,38,.04), 0 30px 60px -32px rgba(20,40,90,.22); }
+      .end h2 { font-family: var(--ap-font-display); font-weight: 700; letter-spacing: -.02em; font-size: clamp(26px, 3.6vw, 40px); color: var(--ap-text); margin: 0; }
+      .end p { color: var(--ap-text-dim); margin: 14px 0 0; }
+      .cta--center { justify-content: center; margin-top: 30px; }
+
+      .foot { border-top: 1px solid var(--ap-border-soft); padding: 32px 0; }
+      .foot__in { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+      .foot__links { display: flex; gap: 22px; font-size: 14px; }
+      .foot__links a { color: var(--ap-text-dim); text-decoration: none; }
+      .foot__links a:hover { color: var(--ap-text); }
+      .foot__note { color: var(--ap-text-faint); font-family: var(--ap-font-mono); font-size: 12.5px; }
+
+      @media (max-width: 900px) {
+        .hero__in { grid-template-columns: 1fr; }
+        .hero__term { order: 2; }
+        .prov__in { grid-template-columns: 1fr; }
+        .feat__grid { grid-template-columns: 1fr; }
+      }
+      @media (max-width: 560px) {
+        .prov__cards { grid-template-columns: 1fr; }
+        .nav__links { gap: 14px; }
+      }
+    </style>
+  </body>
+</html>

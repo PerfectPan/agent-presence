@@ -1,0 +1,61 @@
+---
+title: 安装
+description: 在 macOS 或 Linux 上安装 agent-presence。
+---
+
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
+`agent-presence` 运行于 **macOS 和 Linux**(不支持 Windows)。凭据保存在 macOS 的 Keychain、Linux 的 libsecret 中。
+
+## 全局安装
+
+<Tabs syncKey="pm">
+<TabItem label="pnpm">
+```bash
+pnpm add -g @rivus/agent-presence
+agent-presence setup
+```
+</TabItem>
+<TabItem label="npm">
+```bash
+npm i -g @rivus/agent-presence
+agent-presence setup
+```
+</TabItem>
+<TabItem label="bun">
+```bash
+bun add -g @rivus/agent-presence
+agent-presence setup
+```
+</TabItem>
+</Tabs>
+
+你只需要跑 `setup`。它会为所有支持的智能体安装 hook 并链接你的签名。
+
+## 不全局安装
+
+<Tabs syncKey="pm">
+<TabItem label="pnpm">
+```bash
+pnpm dlx @rivus/agent-presence@latest setup
+```
+</TabItem>
+<TabItem label="npm">
+```bash
+npx --yes --registry=https://registry.npmjs.org @rivus/agent-presence@latest setup
+```
+</TabItem>
+<TabItem label="bun">
+```bash
+bunx @rivus/agent-presence@latest setup
+```
+</TabItem>
+</Tabs>
+
+如果智能体环境启动 hook 时 `PATH` 很窄,用绝对路径安装:
+
+```bash
+agent-presence setup --hook-command absolute
+```
+
+默认 provider 是 `magic-builder`,所以首次 `setup` 会先跑扫码登录(保存 slot 凭据),再提示粘贴一个 Magic-Builder token。无需 token 的备选见 [Provider](/zh/guide/providers)。
