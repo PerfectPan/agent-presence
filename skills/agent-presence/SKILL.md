@@ -7,7 +7,7 @@ description: Use when installing, configuring, verifying, or debugging @rivus/ag
 
 ## Overview
 
-`@rivus/agent-presence` syncs local coding-agent lifecycle events to a Feishu signature link preview through `l.garyyang.work` slot updates. It does not scan processes; it trusts hooks, TTL, and power events.
+`@rivus/agent-presence` syncs local coding-agent lifecycle events to a Feishu signature link preview. Presence values are written to an `l.garyyang` slot; the default `magic-builder` provider fronts that slot with a FaaS preview on `magic.solutionsuite.cn` (Feishu may not render the direct `l.garyyang.work` page). It does not scan processes; it trusts hooks, TTL, and power events.
 
 ## Use When
 
@@ -15,19 +15,21 @@ description: Use when installing, configuring, verifying, or debugging @rivus/ag
 - Hooks are installed but the signature is stale.
 - The count differs from visible terminal windows.
 - Laptop sleep, lid close, or wake behavior needs verification.
-- Credentials, slot URL, or `l.garyyang.work` provider state needs checking.
+- Credentials, the published FaaS, or the underlying slot state needs checking.
 - Linux libsecret or watcher-skip behavior needs verification.
 
 ## Quick Commands
 
+Bare commands target the default `magic-builder` provider. The first `setup` runs the l.garyyang QR login (stores the slot credential) and prompts for a Magic-Builder token to publish the preview FaaS (open the 妙笔 bot, send `dev`, copy the token).
+
 ```bash
 pnpm add -g @rivus/agent-presence
-agent-presence setup --provider feishu-signature
-agent-presence url --provider feishu-signature
-agent-presence status --provider feishu-signature
-agent-presence status --provider feishu-signature --remote
-agent-presence update --provider feishu-signature --force
-agent-presence reset --provider feishu-signature --force
+agent-presence setup
+agent-presence url
+agent-presence status
+agent-presence status --remote        # inspects the published FaaS preview
+agent-presence update --force
+agent-presence reset --force
 ```
 
 Local checkout:
@@ -37,10 +39,10 @@ corepack enable
 pnpm install --frozen-lockfile --ignore-scripts
 pnpm run build
 pnpm link --global
-agent-presence setup --provider feishu-signature
+agent-presence setup
 ```
 
-Configure the Feishu signature provider:
+The direct `l.garyyang.work` preview (`--provider feishu-signature`, no Magic-Builder token) is a legacy alternative; Feishu may no longer render it. Its link-preview fields are configured separately:
 
 ```bash
 agent-presence config provider feishu-signature \
@@ -73,13 +75,14 @@ Pi only counts as active once the user submits a task (`before_agent_start`). Op
 1. Check local state:
 
    ```bash
-   agent-presence status --provider feishu-signature
+   agent-presence status
    ```
 
-2. Check remote slot:
+2. Check the published preview, and the raw slot value behind it:
 
    ```bash
-   agent-presence status --provider feishu-signature --remote
+   agent-presence status --remote                          # FaaS preview the default provider returns
+   agent-presence status --provider feishu-signature --remote  # raw l.garyyang slot value
    ```
 
 3. Inspect local log:
@@ -115,7 +118,8 @@ Pi only counts as active once the user submits a task (`before_agent_start`). Op
 - Visible Claude window not counted: it likely emitted `Stop` and is waiting for input, which is not "working".
 - Extra Codex counted: another Codex session is still sending heartbeats; inspect `project` fields in `agent-presence status`.
 - Sleep did not clear immediately: network or provider rate limit may have blocked the sleep-time reset; wake should reset again.
-- Generic CLI naming is `agent-presence`; Feishu-specific link preview settings belong under provider id `feishu-signature`.
+- Generic CLI naming is `agent-presence`; the default provider is `magic-builder`. Direct-preview link settings belong under provider id `feishu-signature`, which is also the slot backend both providers share.
+- Remote shows the fallback title (e.g. `AI 牛马暂未开工`) while the slot has a live value: the FaaS could not read the slot — re-run `setup` to re-publish with a fresh slot bearer.
 
 ## Copy Templates
 
@@ -139,8 +143,8 @@ agent-presence config render \
   ```bash
   export ZAI_API_KEY="$(tr -d '\r\n' < /path/to/zai-key.txt)"
   pi --provider zai --model glm-5.1 -p "Reply with exactly: pi-ok"
-  agent-presence status --provider feishu-signature
-  agent-presence status --provider feishu-signature --remote
+  agent-presence status
+  agent-presence status --remote
   ```
 
   Never paste the literal key into shell history, commits, PR descriptions, or docs — only the file path and the environment-variable name are safe.

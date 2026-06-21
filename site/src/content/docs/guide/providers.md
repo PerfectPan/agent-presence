@@ -3,7 +3,7 @@ title: Providers
 description: magic-builder (default) and feishu-signature (direct).
 ---
 
-Both providers read the **same** l.garyyang slot. Slot value updates always flow to that backend; the provider only decides which preview URL Feishu embeds.
+Both providers read the **same** hosted slot. Slot value updates always flow to that backend; the provider only decides which preview URL Feishu embeds.
 
 ## `magic-builder` — default
 
@@ -16,9 +16,9 @@ agent-presence setup            # default provider
 agent-presence url              # https://magic.solutionsuite.cn/r?fid=...
 ```
 
-## `feishu-signature` — direct alternative
+## `feishu-signature` — direct alternative (legacy)
 
-Serves the preview straight from `l.garyyang.work`. No Magic-Builder token required. Use it when Feishu renders that page for you.
+Serves the preview straight from the slot host's own page, with no Magic-Builder token. Feishu may no longer render that page for personal-signature previews, so this path can quietly stop showing anything — prefer `magic-builder` unless you have confirmed the direct page still renders for you.
 
 ```bash
 agent-presence setup --provider feishu-signature
