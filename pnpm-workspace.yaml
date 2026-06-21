@@ -12,3 +12,9 @@ strictDepBuilds: true
 pmOnFail: error
 engineStrict: true
 verifyDepsBeforeRun: error
+
+# Build scripts explicitly allowed to run (required by strictDepBuilds). Used by
+# the docs site under site/ (esbuild also via vitest).
+onlyBuiltDependencies:
+  - esbuild
+  - sharp
