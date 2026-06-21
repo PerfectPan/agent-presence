@@ -1,0 +1,61 @@
+---
+title: Install
+description: Install agent-presence on macOS or Linux.
+---
+
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
+`agent-presence` runs on **macOS and Linux** (Windows is not supported). Credentials live in Keychain on macOS and libsecret on Linux.
+
+## Global install
+
+<Tabs syncKey="pm">
+<TabItem label="pnpm">
+```bash
+pnpm add -g @rivus/agent-presence
+agent-presence setup
+```
+</TabItem>
+<TabItem label="npm">
+```bash
+npm i -g @rivus/agent-presence
+agent-presence setup
+```
+</TabItem>
+<TabItem label="bun">
+```bash
+bun add -g @rivus/agent-presence
+agent-presence setup
+```
+</TabItem>
+</Tabs>
+
+`setup` is the only thing you run. It installs the hooks for every supported agent and links your signature.
+
+## Without a global install
+
+<Tabs syncKey="pm">
+<TabItem label="pnpm">
+```bash
+pnpm dlx @rivus/agent-presence@latest setup
+```
+</TabItem>
+<TabItem label="npm">
+```bash
+npx --yes --registry=https://registry.npmjs.org @rivus/agent-presence@latest setup
+```
+</TabItem>
+<TabItem label="bun">
+```bash
+bunx @rivus/agent-presence@latest setup
+```
+</TabItem>
+</Tabs>
+
+For agent environments that launch hooks with a restricted `PATH`, install hooks with absolute paths:
+
+```bash
+agent-presence setup --hook-command absolute
+```
+
+The default provider is `magic-builder`, so the first `setup` runs the QR login (storing the slot credential) and prompts for a Magic-Builder token. See [Providers](/guide/providers) for the alternative that needs no token.

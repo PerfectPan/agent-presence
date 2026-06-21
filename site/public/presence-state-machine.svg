@@ -1,0 +1,145 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1500" height="1040" viewBox="0 0 1500 1040" role="img" aria-labelledby="title desc">
+  <title id="title">Agent Presence Session State Machine</title>
+  <desc id="desc">A numbered state-machine diagram for agent presence sessions and their transition rules.</desc>
+  <defs>
+    <marker id="arrow-green" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto" markerUnits="userSpaceOnUse">
+      <path d="M 1 1 L 11 6 L 1 11 z" fill="#168A45" />
+    </marker>
+    <marker id="arrow-blue" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto" markerUnits="userSpaceOnUse">
+      <path d="M 1 1 L 11 6 L 1 11 z" fill="#2D5BFF" />
+    </marker>
+    <marker id="arrow-orange" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto" markerUnits="userSpaceOnUse">
+      <path d="M 1 1 L 11 6 L 1 11 z" fill="#B56A00" />
+    </marker>
+    <marker id="arrow-gray" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto" markerUnits="userSpaceOnUse">
+      <path d="M 1 1 L 11 6 L 1 11 z" fill="#59636E" />
+    </marker>
+    <filter id="shadow" x="-8%" y="-8%" width="116%" height="116%">
+      <feDropShadow dx="0" dy="8" stdDeviation="9" flood-color="#111827" flood-opacity="0.10" />
+    </filter>
+    <style>
+      .page { fill: #F7F9FC; }
+      .panel { fill: #FFFFFF; stroke: #DFE5EE; stroke-width: 2; }
+      .card { stroke-width: 2.5; }
+      .title { font: 700 36px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #111827; }
+      .subtitle { font: 500 17px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #4B5563; }
+      .node-title { font: 700 28px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #111827; }
+      .node-text { font: 500 17px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #374151; }
+      .label { font: 700 16px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #111827; }
+      .rule { font: 500 16px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #374151; }
+      .small { font: 500 14px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #4B5563; }
+      .badge { font: 800 12px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; letter-spacing: 0.2px; }
+      .num { font: 800 16px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #FFFFFF; }
+      .arrow-green { stroke: #168A45; stroke-width: 3.5; fill: none; marker-end: url(#arrow-green); }
+      .arrow-blue { stroke: #2D5BFF; stroke-width: 3.5; fill: none; marker-end: url(#arrow-blue); }
+      .arrow-orange { stroke: #B56A00; stroke-width: 3.5; fill: none; marker-end: url(#arrow-orange); }
+      .arrow-gray { stroke: #59636E; stroke-width: 3.5; fill: none; marker-end: url(#arrow-gray); }
+      .arrow-muted { stroke: #9AA4B2; stroke-width: 3; stroke-dasharray: 8 7; fill: none; marker-end: url(#arrow-gray); }
+    </style>
+  </defs>
+
+  <rect class="page" x="0" y="0" width="1500" height="1040" />
+  <text class="title" x="64" y="72">Agent Presence Session State Machine</text>
+  <text class="subtitle" x="64" y="104">Presence is hook-driven. Active count comes from local lifecycle evidence, not process scanning.</text>
+
+  <rect class="panel" x="56" y="132" width="1388" height="520" rx="22" filter="url(#shadow)" />
+  <rect class="panel" x="56" y="690" width="1388" height="290" rx="22" filter="url(#shadow)" />
+
+  <rect class="card" x="100" y="172" width="390" height="112" rx="16" fill="#F8FAFC" stroke="#CBD5E1" />
+  <text class="label" x="130" y="210">Key distinction</text>
+  <text class="rule" x="130" y="240">finished is explicit.</text>
+  <text class="rule" x="130" y="266">expired is only TTL inference.</text>
+
+  <rect class="card" x="100" y="365" width="260" height="132" rx="16" fill="#F3F6FA" stroke="#BCC7D5" />
+  <text class="node-title" x="132" y="418">Missing</text>
+  <text class="node-text" x="132" y="458">No local session record.</text>
+
+  <rect class="card" x="555" y="230" width="325" height="168" rx="18" fill="#EAF7EF" stroke="#2F9E62" />
+  <text class="node-title" x="594" y="292">Running</text>
+  <text class="node-text" x="594" y="336">Hook evidence says work is active.</text>
+  <rect x="742" y="256" width="104" height="32" rx="16" fill="#168A45" />
+  <text class="badge" x="766" y="277" fill="#FFFFFF">COUNTED</text>
+
+  <rect class="card" x="555" y="475" width="325" height="136" rx="18" fill="#FFF6E5" stroke="#D89B32" />
+  <text class="node-title" x="594" y="530">Expired</text>
+  <text class="node-text" x="594" y="570">TTL inferred inactivity.</text>
+  <rect x="746" y="501" width="108" height="32" rx="16" fill="#F6D28C" />
+  <text class="badge" x="768" y="522" fill="#7A4B00">INACTIVE</text>
+
+  <rect class="card" x="1070" y="230" width="325" height="168" rx="18" fill="#EEF2F7" stroke="#7B8794" />
+  <text class="node-title" x="1108" y="292">Finished</text>
+  <text class="node-text" x="1108" y="336">Explicit Stop, idle, or SessionEnd.</text>
+  <rect x="1264" y="256" width="104" height="32" rx="16" fill="#D7DEE8" />
+  <text class="badge" x="1284" y="277" fill="#4B5563">INACTIVE</text>
+
+  <rect class="card" x="1070" y="475" width="325" height="136" rx="18" fill="#EEF4FF" stroke="#2D5BFF" />
+  <text class="node-title" x="1108" y="530">Reset</text>
+  <text class="node-text" x="1108" y="570">Power event or manual reset.</text>
+
+  <path class="arrow-green" d="M 360 431 C 446 431 471 314 545 314" />
+  <circle cx="462" cy="384" r="18" fill="#168A45" />
+  <text class="num" x="457" y="390">1</text>
+
+  <path class="arrow-green" d="M 650 226 C 618 174 818 174 786 226" />
+  <circle cx="718" cy="172" r="18" fill="#168A45" />
+  <text class="num" x="713" y="178">2</text>
+
+  <path class="arrow-gray" d="M 880 314 H 1060" />
+  <circle cx="970" cy="314" r="18" fill="#59636E" />
+  <text class="num" x="965" y="320">3</text>
+
+  <path class="arrow-orange" d="M 718 398 V 465" />
+  <circle cx="718" cy="432" r="18" fill="#B56A00" />
+  <text class="num" x="713" y="438">4</text>
+
+  <path class="arrow-green" d="M 555 543 C 456 504 454 348 545 320" />
+  <circle cx="466" cy="444" r="18" fill="#168A45" />
+  <text class="num" x="461" y="450">5</text>
+
+  <path class="arrow-blue" d="M 1108 230 C 1034 160 874 160 802 226" />
+  <circle cx="956" cy="164" r="18" fill="#2D5BFF" />
+  <text class="num" x="951" y="170">6</text>
+
+  <path class="arrow-muted" d="M 1240 228 C 1430 196 1456 392 1244 398" />
+  <circle cx="1400" cy="310" r="18" fill="#9AA4B2" />
+  <text class="num" x="1395" y="316">7</text>
+
+  <path class="arrow-blue" d="M 880 360 C 976 424 1016 510 1060 543" />
+  <circle cx="980" cy="452" r="18" fill="#2D5BFF" />
+  <text class="num" x="975" y="458">8</text>
+
+  <text class="label" x="96" y="734">Transition rules</text>
+  <text class="small" x="96" y="762">Only running sessions inside TTL contribute to the rendered active count.</text>
+
+  <circle cx="116" cy="807" r="15" fill="#168A45" />
+  <text class="num" x="112" y="813">1</text>
+  <text class="rule" x="142" y="813">missing + start/heartbeat -&gt; running</text>
+
+  <circle cx="116" cy="850" r="15" fill="#168A45" />
+  <text class="num" x="112" y="856">2</text>
+  <text class="rule" x="142" y="856">running + heartbeat -&gt; running, refresh lastHeartbeatAt</text>
+
+  <circle cx="116" cy="893" r="15" fill="#59636E" />
+  <text class="num" x="112" y="899">3</text>
+  <text class="rule" x="142" y="899">running + finish/idle -&gt; finished</text>
+
+  <circle cx="116" cy="936" r="15" fill="#B56A00" />
+  <text class="num" x="112" y="942">4</text>
+  <text class="rule" x="142" y="942">running + no heartbeat inside TTL -&gt; expired</text>
+
+  <circle cx="790" cy="807" r="15" fill="#168A45" />
+  <text class="num" x="786" y="813">5</text>
+  <text class="rule" x="816" y="813">expired + later live heartbeat -&gt; running</text>
+
+  <circle cx="790" cy="850" r="15" fill="#2D5BFF" />
+  <text class="num" x="786" y="856">6</text>
+  <text class="rule" x="816" y="856">finished + UserPromptSubmit/start -&gt; running</text>
+
+  <circle cx="790" cy="893" r="15" fill="#9AA4B2" />
+  <text class="num" x="786" y="899">7</text>
+  <text class="rule" x="816" y="899">finished + ordinary late heartbeat -&gt; ignored</text>
+
+  <circle cx="790" cy="936" r="15" fill="#2D5BFF" />
+  <text class="num" x="786" y="942">8</text>
+  <text class="rule" x="816" y="942">reset/power event -&gt; finish running sessions and sync zero</text>
+</svg>

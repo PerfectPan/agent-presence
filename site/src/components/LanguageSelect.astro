@@ -1,0 +1,27 @@
+---
+// Replaces Starlight's native <select> language picker with two styled links
+// (no OS-native dropdown). Only two locales, so a simple toggle is cleaner.
+---
+<starlight-lang-toggle class="ap-lang">
+  <a href="/" data-loc="en">EN</a>
+  <a href="/zh/" data-loc="zh">中</a>
+</starlight-lang-toggle>
+
+<script is:inline>
+  if (!customElements.get('starlight-lang-toggle'))
+  customElements.define(
+    'starlight-lang-toggle',
+    class extends HTMLElement {
+      connectedCallback() {
+        const p = location.pathname;
+        const isZh = p === '/zh' || p.startsWith('/zh/');
+        const bare = isZh ? p.replace(/^\/zh/, '') || '/' : p;
+        const en = this.querySelector('[data-loc="en"]');
+        const zh = this.querySelector('[data-loc="zh"]');
+        en.href = bare || '/';
+        zh.href = bare === '/' ? '/zh/' : '/zh' + bare;
+        (isZh ? zh : en).classList.add('active');
+      }
+    },
+  );
+</script>

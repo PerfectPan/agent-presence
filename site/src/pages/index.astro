@@ -1,0 +1,48 @@
+---
+import Landing from '../layouts/Landing.astro';
+---
+
+<Landing
+  lang="en"
+  htmlTitle="agent-presence — your AI workforce, live on your Feishu signature"
+  htmlDesc="Sync local coding-agent presence and token usage to your Feishu signature. Five agents, one live badge, dollar-priced token spend — no cron."
+  brandHref="/"
+  docsHref="/guide/install"
+  navDocs="Docs"
+  eyebrow="presence + token spend → your signature"
+  titleLead="See your AI workforce"
+  titleGrad="actually working."
+  ledeHtml="<b>agent-presence</b> pipes your local coding agents — how many are running and what they're burning in tokens — straight into your Feishu signature. Live, priced, and completely hands-off."
+  ctaPrimary="Get started →"
+  installCopy="copy"
+  installCopied="copied"
+  steps={{
+    eyebrow: 'the path',
+    items: [
+      { n: 'hooks', t: 'Agent hooks', d: 'SessionStart · PreToolUse · Stop' },
+      { n: 'state', t: 'Presence state', d: 'live · heartbeat · expired' },
+      { n: 'render', t: 'Debounced render', d: '{total} · {details} · {usage}' },
+      { n: 'feishu', t: 'Feishu signature', d: 'link-preview badge' },
+    ],
+  }}
+  featsTitle="Built for people who live in the terminal"
+  featsSub="It watches the agents you already run and turns their activity into one honest badge."
+  features={[
+    { t: 'Five agents, one badge', d: 'Codex, Claude Code, Gemini CLI, opencode and Pi all report into a single live count — no per-tool setup.' },
+    { t: 'Token spend, with cost', d: 'Calendar-day token totals across every agent, priced to a dollar estimate — ccusage-style, scanned from local transcripts.' },
+    { t: 'Working, not just open', d: 'Counts agents that are actually running. Heartbeats keep them live; idle sessions expire; sleep and wake reset to zero.' },
+    { t: 'No cron, no daemon', d: 'Refreshes on session boundaries through the hooks your agents already fire. Nothing polls in the background.' },
+  ]}
+  provEyebrow="two ways to render"
+  provTitle="Pick the preview that Feishu likes"
+  provSub="Both read the same slot. The default fronts it with a FaaS that Feishu reliably renders; the direct one needs no extra token."
+  pDefaultBadge="default"
+  pDefaultDesc="A preview function on magic.solutionsuite.cn that reads your slot on every fetch — the path Feishu's link preview accepts."
+  pDirectBadge="direct"
+  pDirectDesc="The l.garyyang slot backend served straight as a link preview. No magic-builder token required."
+  endTitle="Put your crew on your signature."
+  endSub="macOS & Linux · two commands · zero background daemons."
+  endDocs="Read the docs →"
+  endStar="Star on GitHub"
+  footNote="Built for terminals."
+/>
