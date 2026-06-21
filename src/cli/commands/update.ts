@@ -1,5 +1,6 @@
-import { configSlotId, debounceMs, getStatePath, loadConfig, providerBaseUrl, providerId, renderTemplates, ttlMs } from '../../config.js';
-import { LGaryYangProvider } from '../../providers/l-garyyang.js';
+import { configSlotId, debounceMs, getStatePath, loadConfig, providerId, renderTemplates, ttlMs } from '../../config.js';
+import { createProvider } from '../../providers/registry.js';
+import { assertSupportsPublish } from '../../providers/types.js';
 import { readCredential } from '../../secret.js';
 import { hasFlag, optionValue } from '../args.js';
 import { syncRenderedSlotWithDeferredFlush } from '../rendered-slot-sync.js';
@@ -8,9 +9,10 @@ import { refreshSignatureUsageBadges, usageRenderPlan } from '../usage-badge.js'
 
 export async function update(args: string[]): Promise<void> {
   const config = await loadConfig();
-  providerId(config, optionValue(args, '--provider'));
+  const activeProvider = providerId(config, optionValue(args, '--provider'));
   const credential = await readCredential(configSlotId(config));
-  const provider = new LGaryYangProvider(providerBaseUrl(config), credential);
+  const provider = createProvider(activeProvider, { config, credential });
+  assertSupportsPublish(provider);
   const statePath = getStatePath();
   const force = hasFlag(args, '--force');
   const silent = hasFlag(args, '--silent');
@@ -26,7 +28,7 @@ export async function update(args: string[]): Promise<void> {
         debounceMs: debounceMs(config),
         value: explicitValue.slice(0, 200)
       },
-      (value) => provider.updateSlot(value)
+      (value) => provider.publishValue(value)
     );
     if (!silent) {
       console.log(JSON.stringify(result, null, 2));
@@ -51,7 +53,7 @@ export async function update(args: string[]): Promise<void> {
       renderTemplates: renderTemplates(config),
       usage: { enabled: usagePlan.enabled, defaultWindow: usagePlan.defaultWindow }
     },
-    (value) => provider.updateSlot(value)
+    (value) => provider.publishValue(value)
   );
   if (!silent) {
     console.log(JSON.stringify(result, null, 2));
