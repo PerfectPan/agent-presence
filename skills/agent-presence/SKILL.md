@@ -7,7 +7,7 @@ description: Use when installing, configuring, verifying, or debugging @rivus/ag
 
 ## Overview
 
-`@rivus/agent-presence` syncs local coding-agent lifecycle events to a Feishu signature link preview. Presence values are written to an `l.garyyang` slot; the default `magic-builder` provider fronts that slot with a FaaS preview on `magic.solutionsuite.cn` (Feishu may not render the direct `l.garyyang.work` page). It does not scan processes; it trusts hooks, TTL, and power events.
+`@rivus/agent-presence` syncs local coding-agent lifecycle events to a Feishu signature link preview. Presence values are written to a hosted slot store; the default `magic-builder` provider fronts that slot with a FaaS preview on `magic.solutionsuite.cn` (Feishu may not render the older direct preview page). It does not scan processes; it trusts hooks, TTL, and power events.
 
 ## Use When
 
@@ -20,7 +20,7 @@ description: Use when installing, configuring, verifying, or debugging @rivus/ag
 
 ## Quick Commands
 
-Bare commands target the default `magic-builder` provider. The first `setup` runs the l.garyyang QR login (stores the slot credential) and prompts for a Magic-Builder token to publish the preview FaaS (open the 妙笔 bot, send `dev`, copy the token).
+Bare commands target the default `magic-builder` provider. The first `setup` runs the QR login (stores the slot credential) and prompts for a Magic-Builder token to publish the preview FaaS (open the 妙笔 bot, send `dev`, copy the token).
 
 ```bash
 pnpm add -g @rivus/agent-presence
@@ -42,12 +42,12 @@ pnpm link --global
 agent-presence setup
 ```
 
-The direct `l.garyyang.work` preview (`--provider feishu-signature`, no Magic-Builder token) is a legacy alternative; Feishu may no longer render it. Its link-preview fields are configured separately:
+The older direct-preview provider (`--provider feishu-signature`, no Magic-Builder token) is a legacy alternative; Feishu may no longer render it. Its link-preview fields are configured separately (use the slot host's base URL):
 
 ```bash
 agent-presence config provider feishu-signature \
-  --base-url "https://l.garyyang.work" \
-  --preview-base-url "https://l.garyyang.work/" \
+  --base-url "https://<slot-host>" \
+  --preview-base-url "https://<slot-host>/" \
   --image-key "img_xxx" \
   --target-url "https://example.com"
 ```
@@ -82,7 +82,7 @@ Pi only counts as active once the user submits a task (`before_agent_start`). Op
 
    ```bash
    agent-presence status --remote                          # FaaS preview the default provider returns
-   agent-presence status --provider feishu-signature --remote  # raw l.garyyang slot value
+   agent-presence status --provider feishu-signature --remote  # raw slot value
    ```
 
 3. Inspect local log:
