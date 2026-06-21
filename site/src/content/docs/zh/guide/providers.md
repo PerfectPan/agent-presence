@@ -3,7 +3,7 @@ title: Provider
 description: magic-builder(默认)与 feishu-signature(直连)。
 ---
 
-两个 provider 读的是**同一个** l.garyyang slot。slot 值的更新始终写到这个后端;provider 只决定飞书嵌入哪个预览 URL。
+两个 provider 读的是**同一个**托管 slot。slot 值的更新始终写到这个后端;provider 只决定飞书嵌入哪个预览 URL。
 
 ## `magic-builder` — 默认
 
@@ -18,7 +18,7 @@ agent-presence url              # https://magic.solutionsuite.cn/r?fid=...
 
 ## `feishu-signature` — 直连备选(遗留)
 
-直接从 `l.garyyang.work` 提供预览,**无需** Magic-Builder token。飞书可能已经不再渲染个性签名的这个直连页,这条路径可能会悄悄变成什么都不显示——除非你确认飞书还能渲染该页,否则优先用 `magic-builder`。
+直接用 slot host 自带的页面提供预览,**无需** Magic-Builder token。飞书可能已经不再渲染个性签名的这个直连页,这条路径可能会悄悄变成什么都不显示——除非你确认飞书还能渲染该页,否则优先用 `magic-builder`。
 
 ```bash
 agent-presence setup --provider feishu-signature

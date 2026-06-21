@@ -8,12 +8,12 @@ Sync local coding-agent presence (and token usage) to a Feishu signature link pr
 Codex / Claude Code / Gemini CLI / opencode / Pi hooks
   -> local presence state
   -> debounced renderer
-  -> l.garyyang slot (value storage)
+  -> hosted slot store (value storage)
   -> magic-builder FaaS preview on magic.solutionsuite.cn
   -> Feishu signature link preview
 ```
 
-`@rivus/agent-presence` is named around presence, not Feishu. The default output is the **magic-builder** FaaS preview on `magic.solutionsuite.cn`: presence values are written to an `l.garyyang` slot, and the FaaS reads them server-side on each Feishu preview fetch. magic-builder is the default because Feishu may not render the direct `l.garyyang.work` page.
+`@rivus/agent-presence` is named around presence, not Feishu. The default output is the **magic-builder** FaaS preview on `magic.solutionsuite.cn`: presence values are written to a hosted slot store, and the FaaS reads them server-side on each Feishu preview fetch. magic-builder is the default because Feishu may not render the older direct preview page.
 
 ## Install
 
@@ -58,7 +58,7 @@ agent-presence setup
 
 Re-running `setup` reuses an existing login (no second QR scan). The signature URL — `https://magic.solutionsuite.cn/r?fid=<faasId>` — carries no credentials. Local config, state, and logs live under `~/.agent-presence/`.
 
-> The direct `l.garyyang.work` preview (`--provider feishu-signature`, no Magic-Builder token) is a legacy alternative and Feishu may no longer render it. See [Providers](https://agent-presence.vercel.app/guide/providers/) if you still want it.
+> An older direct-preview provider (`--provider feishu-signature`, no Magic-Builder token) also exists, but Feishu may no longer render it. See [Providers](https://agent-presence.vercel.app/guide/providers/) if you still want it.
 
 ## Presence
 
@@ -119,7 +119,7 @@ Hook and provider activity is written to `~/.agent-presence/agent-presence.log` 
 Full docs live at **https://agent-presence.vercel.app**:
 
 - [Install](https://agent-presence.vercel.app/guide/install/) · [Quick start](https://agent-presence.vercel.app/guide/quick-start/)
-- [Providers](https://agent-presence.vercel.app/guide/providers/) — magic-builder (default) vs the direct l.garyyang preview
+- [Providers](https://agent-presence.vercel.app/guide/providers/) — magic-builder (default) vs the legacy direct preview
 - [Presence](https://agent-presence.vercel.app/guide/presence/) · [Token usage](https://agent-presence.vercel.app/guide/token-usage/)
 - [Architecture](https://agent-presence.vercel.app/project/architecture/) · [Commands](https://agent-presence.vercel.app/reference/commands/)
 
