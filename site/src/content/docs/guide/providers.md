@@ -16,9 +16,9 @@ agent-presence setup            # default provider
 agent-presence url              # https://magic.solutionsuite.cn/r?fid=...
 ```
 
-## `feishu-signature` — direct alternative
+## `feishu-signature` — direct alternative (legacy)
 
-Serves the preview straight from `l.garyyang.work`. No Magic-Builder token required. Use it when Feishu renders that page for you.
+Serves the preview straight from `l.garyyang.work`, with no Magic-Builder token. Feishu may no longer render that page for personal-signature previews, so this path can quietly stop showing anything — prefer `magic-builder` unless you have confirmed the direct page still renders for you.
 
 ```bash
 agent-presence setup --provider feishu-signature

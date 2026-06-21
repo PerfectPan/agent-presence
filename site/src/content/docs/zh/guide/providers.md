@@ -16,9 +16,9 @@ agent-presence setup            # 默认 provider
 agent-presence url              # https://magic.solutionsuite.cn/r?fid=...
 ```
 
-## `feishu-signature` — 直连备选
+## `feishu-signature` — 直连备选(遗留)
 
-直接从 `l.garyyang.work` 提供预览,**无需** Magic-Builder token。当飞书能正常渲染该页时可用它。
+直接从 `l.garyyang.work` 提供预览,**无需** Magic-Builder token。飞书可能已经不再渲染个性签名的这个直连页,这条路径可能会悄悄变成什么都不显示——除非你确认飞书还能渲染该页,否则优先用 `magic-builder`。
 
 ```bash
 agent-presence setup --provider feishu-signature
