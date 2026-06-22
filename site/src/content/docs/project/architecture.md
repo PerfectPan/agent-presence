@@ -15,4 +15,8 @@ The pipeline is event-driven: hooks fire on session boundaries, mutate a lock-gu
 
 Token usage is read **after the fact** from local agent transcripts, never from hook payloads (lifecycle events do not carry token counts).
 
+## Providers
+
+CLI commands resolve a provider through a small registry (`createProvider`) and assert only the capability they need — login, publish, or signature URL — so they never depend on a concrete backend. The shared remote value store is modelled as a `SlotBackend`: both `magic-builder` (default) and `feishu-signature` compose the same backend for login/publish/info and differ only in which preview URL Feishu embeds. Neither provider depends on the other, and a future provider with its own storage can implement the interface without touching the slot backend.
+
 For the full design and trust boundaries, see `docs/architecture.md` in the repository.
