@@ -25,8 +25,13 @@ agent-presence usage --json
 agent-presence config show
 agent-presence config render --zero "..." --one "..." --many "..."
 
+agent-presence source list                       # 列出所有被统计的源及其来源
+agent-presence source add <npm-package> --yes     # 安装并注册一个源插件
+agent-presence source add <pkg> --registry <url> --id <id>
+agent-presence source remove <id>                 # 反注册并卸载该包
+
 agent-presence uninstall             # 移除 hook(保留凭据)
 agent-presence uninstall --all
 ```
 
-hook 命令由 `setup` 自动安装,且永不阻塞智能体。
+hook 命令由 `setup` 自动安装,且永不阻塞智能体。添加、覆盖或禁用被统计的智能体见 [Sources](/zh/guide/sources/)。

@@ -25,8 +25,13 @@ agent-presence usage --json
 agent-presence config show
 agent-presence config render --zero "..." --one "..." --many "..."
 
+agent-presence source list                       # every counted source + its origin
+agent-presence source add <npm-package> --yes     # install & register a source plugin
+agent-presence source add <pkg> --registry <url> --id <id>
+agent-presence source remove <id>                 # unregister + uninstall the package
+
 agent-presence uninstall             # remove hooks (keeps credentials)
 agent-presence uninstall --all
 ```
 
-Hook commands are installed automatically by `setup` and never block the agent.
+Hook commands are installed automatically by `setup` and never block the agent. See [Sources](/guide/sources/) for adding, overriding, or disabling the counted agents.

@@ -110,6 +110,18 @@ agent-presence config show
 
 Hooks are installed by `setup` but can be invoked directly, e.g. `agent-presence hook --source codex --event SessionStart`. They never block the coding agent. Full reference: [Commands](https://agent-presence.vercel.app/reference/commands/).
 
+## Sources
+
+The counted agents (`codex`, `claude`, `gemini`, `opencode`, `pi`) are a **source table** your config can extend, override, or disable. Add one with a config-only `match` spec, a local `handler` module, or by installing a package:
+
+```bash
+agent-presence source add @your-scope/agent-presence-youragent --yes   # --registry <url> for an internal registry
+agent-presence source list
+agent-presence source remove youragent
+```
+
+A source plugin runs in-process and can read your slot credential, so `add` requires confirmation and only trusted packages should be added. Override or disable a built-in via `plugins.sources` in `~/.agent-presence/config.json`. Full guide: [Sources](https://agent-presence.vercel.app/guide/sources/).
+
 ## Logs
 
 Hook and provider activity is written to `~/.agent-presence/agent-presence.log` (override with `AGENT_PRESENCE_LOG_FILE`). Bearer tokens, full Authorization headers, QR tickets, and full slot values are never logged.
@@ -120,6 +132,7 @@ Full docs live at **https://agent-presence.vercel.app**:
 
 - [Install](https://agent-presence.vercel.app/guide/install/) · [Quick start](https://agent-presence.vercel.app/guide/quick-start/)
 - [Providers](https://agent-presence.vercel.app/guide/providers/) — magic-builder (default) vs the legacy direct preview
+- [Sources](https://agent-presence.vercel.app/guide/sources/) — add, override, or disable the counted agents
 - [Presence](https://agent-presence.vercel.app/guide/presence/) · [Token usage](https://agent-presence.vercel.app/guide/token-usage/)
 - [Architecture](https://agent-presence.vercel.app/project/architecture/) · [Commands](https://agent-presence.vercel.app/reference/commands/)
 
