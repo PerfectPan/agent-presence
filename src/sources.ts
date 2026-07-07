@@ -1,17 +1,17 @@
-import { lstatSync } from 'node:fs';
+import { lstatSync, readFileSync } from 'node:fs';
 import { isAbsolute } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import {
   getConfigPath,
   pluginSourcesConfig,
   type AppConfig,
   type SourceMatchField,
-  type SourceMatchSpec
+  type SourceMatchSpec,
+  type SourcePluginConfig
 } from './config.js';
 import { pickString, type StringEnv } from './hooks/context.js';
 import {
   BUILTIN_SOURCE_PLUGINS,
-  isBuiltinSource,
   type SourceContext,
   type SourcePlugin
 } from './cli/hook-context.js';
@@ -19,12 +19,15 @@ import { writeLog } from './log.js';
 
 export type { SourcePlugin, SourceContext } from './cli/hook-context.js';
 
+/** A `handler` of the form `builtin:<id>` reuses a shipped in-code resolver. */
+const BUILTIN_HANDLER_PREFIX = 'builtin:';
+
 /**
  * Environment variable name fragments that may carry the slot credential or
  * other secrets. A config source handler runs in-process and could read
  * `process.env` directly, but we do not *hand* it these: this stops buggy
  * handlers from echoing a token and removes "we give you the credential" as the
- * baseline. Built-in sources are trusted and receive the raw environment.
+ * baseline. Built-in (`builtin:`) sources are trusted and receive the raw env.
  */
 const SECRET_ENV_PATTERNS = [/TOKEN/i, /SECRET/i, /CREDENTIAL/i, /SLOT_ID/i, /PASSWORD/i, /API_KEY/i];
 
@@ -39,12 +42,56 @@ export function curatedEnv(env: StringEnv): StringEnv {
   return curated;
 }
 
+interface DefaultSourcesFile {
+  sources?: Record<string, SourcePluginConfig>;
+}
+
+let defaultSourcesCache: Record<string, SourcePluginConfig> | undefined;
+
+/** The shipped default source table (the five built-ins as `builtin:<id>`). */
+function defaultSources(): Record<string, SourcePluginConfig> {
+  if (defaultSourcesCache) {
+    return defaultSourcesCache;
+  }
+  try {
+    const path = fileURLToPath(new URL('./sources.default.json', import.meta.url));
+    const parsed = JSON.parse(readFileSync(path, 'utf8')) as DefaultSourcesFile;
+    defaultSourcesCache = parsed.sources ?? {};
+  } catch {
+    // If the shipped defaults are somehow missing, fall back to the in-code
+    // built-in ids so presence never silently stops counting first-party agents.
+    defaultSourcesCache = Object.fromEntries(
+      Object.keys(BUILTIN_SOURCE_PLUGINS).map((id) => [id, { handler: `${BUILTIN_HANDLER_PREFIX}${id}` }])
+    );
+  }
+  return defaultSourcesCache;
+}
+
 /**
- * Resolve a source id to its hook context through the unified registry.
- * Built-in sources (registered statically) win over a same-id config source and
- * receive the raw environment. Config sources receive a curated environment.
- * Unknown sources with no configuration return `{}` (the unchanged fallback), so
- * a truly unknown `--source` is silently skipped.
+ * The effective source table: the shipped defaults with the user's
+ * `config.plugins.sources` merged over them by id. A same-id user entry
+ * overrides the default (retarget or disable a built-in); a new id adds a
+ * source. Entries with `enabled: false` are dropped.
+ */
+export function mergedSources(config: AppConfig): Record<string, SourcePluginConfig> {
+  const merged: Record<string, SourcePluginConfig> = { ...defaultSources() };
+  for (const [id, entry] of Object.entries(pluginSourcesConfig(config))) {
+    merged[id] = entry;
+  }
+  for (const [id, entry] of Object.entries(merged)) {
+    if (entry.enabled === false) {
+      delete merged[id];
+    }
+  }
+  return merged;
+}
+
+/**
+ * Resolve a source id to its hook context through the merged source table.
+ * A `builtin:` entry reuses a trusted shipped resolver (raw environment); a user
+ * `handler`/`match` entry is guarded and receives a credential-stripped
+ * environment. A disabled or unknown source returns `{}` (the unchanged
+ * fallback), so those `--source` hooks are silently skipped.
  *
  * Fail-open: any loading or resolution error is logged with non-secret fields
  * only and degrades to `{}` — a source must never break a hook.
@@ -54,11 +101,23 @@ export async function resolveHookContextForSource(
   payload: unknown,
   config: AppConfig
 ): Promise<SourceContext> {
-  if (isBuiltinSource(source)) {
-    return BUILTIN_SOURCE_PLUGINS[source].resolveHookContext(payload, process.env) ?? {};
+  const entry = mergedSources(config)[source];
+  if (!entry) {
+    return {};
   }
 
-  const plugin = await loadConfiguredSource(source, config);
+  const builtinId = builtinHandlerId(entry.handler);
+  if (builtinId) {
+    const plugin = BUILTIN_SOURCE_PLUGINS[builtinId];
+    if (!plugin) {
+      await writeLog(`source invalid source=${source} reason=unknown-builtin builtin=${builtinId}`);
+      return {};
+    }
+    // Trusted: shipped resolver, raw environment (built-ins use env fallbacks).
+    return plugin.resolveHookContext(payload, process.env) ?? {};
+  }
+
+  const plugin = await loadConfiguredSource(source, entry);
   if (!plugin) {
     return {};
   }
@@ -71,23 +130,25 @@ export async function resolveHookContextForSource(
   }
 }
 
+function builtinHandlerId(handler: string | undefined): string | undefined {
+  if (handler && handler.startsWith(BUILTIN_HANDLER_PREFIX)) {
+    return handler.slice(BUILTIN_HANDLER_PREFIX.length);
+  }
+  return undefined;
+}
+
 const pluginCache = new Map<string, SourcePlugin | undefined>();
 
-async function loadConfiguredSource(source: string, config: AppConfig): Promise<SourcePlugin | undefined> {
+async function loadConfiguredSource(source: string, entry: SourcePluginConfig): Promise<SourcePlugin | undefined> {
   if (pluginCache.has(source)) {
     return pluginCache.get(source);
   }
-  const plugin = await loadConfiguredSourceUncached(source, config);
+  const plugin = await loadConfiguredSourceUncached(source, entry);
   pluginCache.set(source, plugin);
   return plugin;
 }
 
-async function loadConfiguredSourceUncached(source: string, config: AppConfig): Promise<SourcePlugin | undefined> {
-  const entry = pluginSourcesConfig(config)[source];
-  if (!entry) {
-    return undefined;
-  }
-
+async function loadConfiguredSourceUncached(source: string, entry: SourcePluginConfig): Promise<SourcePlugin | undefined> {
   if (entry.handler) {
     return loadHandlerSource(source, entry.handler);
   }
@@ -224,32 +285,52 @@ function errorName(error: unknown): string {
   return error instanceof Error ? error.name : 'Error';
 }
 
+export type SourceKind = 'builtin' | 'handler' | 'match' | 'invalid';
+
 export interface SourceDescriptor {
   id: string;
-  origin: 'builtin' | 'config';
-  /** A config source whose id collides with a built-in never resolves. */
-  shadowedByBuiltin: boolean;
+  /** Whether this id comes from the shipped defaults or the user's config. */
+  origin: 'default' | 'config';
+  /** How the source resolves: a trusted built-in, a JS handler, or a match spec. */
+  kind: SourceKind;
+  /** Whether a user config entry has overridden the shipped default for this id. */
+  overridesDefault: boolean;
 }
 
 /**
- * Every registered source and where it comes from. Used by `config show` so
- * users can confirm wiring without running a hook.
+ * The merged source table described for `config show`, so users can confirm
+ * which sources are active, where each comes from, and how it resolves —
+ * without running a hook. Disabled sources are omitted (they are not active).
  */
 export function describeSources(config: AppConfig): SourceDescriptor[] {
-  const builtins: SourceDescriptor[] = Object.keys(BUILTIN_SOURCE_PLUGINS).map((id) => ({
-    id,
-    origin: 'builtin',
-    shadowedByBuiltin: false
-  }));
-  const configured: SourceDescriptor[] = Object.keys(pluginSourcesConfig(config)).map((id) => ({
-    id,
-    origin: 'config',
-    shadowedByBuiltin: isBuiltinSource(id)
-  }));
-  return [...builtins, ...configured];
+  const defaults = defaultSources();
+  const userEntries = pluginSourcesConfig(config);
+  return Object.entries(mergedSources(config)).map(([id, entry]) => {
+    const fromConfig = id in userEntries;
+    return {
+      id,
+      origin: fromConfig ? 'config' : 'default',
+      kind: sourceKind(entry),
+      overridesDefault: fromConfig && id in defaults
+    };
+  });
 }
 
-/** Test-only: reset the per-process load cache. */
+function sourceKind(entry: SourcePluginConfig): SourceKind {
+  if (builtinHandlerId(entry.handler)) {
+    return 'builtin';
+  }
+  if (entry.handler) {
+    return 'handler';
+  }
+  if (entry.match) {
+    return 'match';
+  }
+  return 'invalid';
+}
+
+/** Test-only: reset the per-process caches. */
 export function resetSourcePluginCacheForTests(): void {
   pluginCache.clear();
+  defaultSourcesCache = undefined;
 }

@@ -1,0 +1,9 @@
+{
+  "sources": {
+    "codex": { "handler": "builtin:codex" },
+    "claude": { "handler": "builtin:claude" },
+    "gemini": { "handler": "builtin:gemini" },
+    "opencode": { "handler": "builtin:opencode" },
+    "pi": { "handler": "builtin:pi" }
+  }
+}

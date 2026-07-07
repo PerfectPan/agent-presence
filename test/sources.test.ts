@@ -9,6 +9,7 @@ import {
   buildMatchSource,
   curatedEnv,
   describeSources,
+  mergedSources,
   resetSourcePluginCacheForTests,
   resolveHookContextForSource
 } from '../src/sources.js';
@@ -58,21 +59,28 @@ describe('curatedEnv', () => {
   });
 });
 
-describe('resolveHookContextForSource — built-ins', () => {
-  it('resolves every built-in source through the registry', async () => {
+describe('resolveHookContextForSource — built-ins from the default table', () => {
+  it('resolves every built-in source through the shipped defaults', async () => {
     const context = await resolveHookContextForSource('codex', { session_id: 'codex-1', cwd: '/repo' }, {});
     expect(context.sessionId).toBe('codex-1');
     expect(context.project).toBe('/repo');
     expect(BUILTIN_SOURCE_IDS).toEqual(['codex', 'claude', 'gemini', 'opencode', 'pi']);
   });
 
-  it('lets a built-in source win over a same-id config entry', async () => {
+  it('lets a same-id config entry override a built-in default', async () => {
     const config: AppConfig = {
-      plugins: { sources: { codex: { match: { sessionId: { payloadKeys: ['ignored'] } } } } }
+      plugins: {
+        sources: { codex: { match: { sessionId: { payloadKeys: ['my_id'], payloadFirst: true } } } }
+      }
     };
-    const context = await resolveHookContextForSource('codex', { session_id: 'codex-1', cwd: '/repo' }, config);
-    expect(context.sessionId).toBe('codex-1');
-    expect(context.project).toBe('/repo');
+    const context = await resolveHookContextForSource('codex', { my_id: 'overridden', session_id: 'ignored' }, config);
+    expect(context.sessionId).toBe('overridden');
+  });
+
+  it('drops a built-in when the user disables it', async () => {
+    const config: AppConfig = { plugins: { sources: { pi: { enabled: false } } } };
+    const context = await resolveHookContextForSource('pi', { session_id: 'pi-1', cwd: '/repo' }, config);
+    expect(context).toEqual({});
   });
 
   it('returns an empty context for a truly unknown source with no config', async () => {
@@ -237,29 +245,62 @@ describe('resolveHookContextForSource — JS handler', () => {
   });
 });
 
-describe('describeSources', () => {
-  it('lists built-in sources plus configured ones and flags shadowing', () => {
+describe('mergedSources', () => {
+  it('returns just the shipped built-in defaults when no config sources are set', () => {
+    expect(mergedSources({})).toEqual({
+      codex: { handler: 'builtin:codex' },
+      claude: { handler: 'builtin:claude' },
+      gemini: { handler: 'builtin:gemini' },
+      opencode: { handler: 'builtin:opencode' },
+      pi: { handler: 'builtin:pi' }
+    });
+  });
+
+  it('overrides a default by id and adds new sources, dropping disabled ones', () => {
     const config: AppConfig = {
-      plugins: { sources: { myagent: { handler: '/x.mjs' }, codex: { match: {} } } }
+      plugins: {
+        sources: {
+          codex: { match: { sessionId: { payloadKeys: ['x'] } } },
+          myagent: { handler: '/x.mjs' },
+          gemini: { enabled: false }
+        }
+      }
+    };
+    const merged = mergedSources(config);
+    expect(merged.codex).toEqual({ match: { sessionId: { payloadKeys: ['x'] } } });
+    expect(merged.myagent).toEqual({ handler: '/x.mjs' });
+    expect(merged.gemini).toBeUndefined();
+    expect(merged.claude).toEqual({ handler: 'builtin:claude' });
+  });
+});
+
+describe('describeSources', () => {
+  it('describes the merged table with origin, kind, and override flags', () => {
+    const config: AppConfig = {
+      plugins: {
+        sources: {
+          codex: { match: { sessionId: { payloadKeys: ['x'] } } },
+          myagent: { handler: '/x.mjs' },
+          pi: { enabled: false }
+        }
+      }
     };
     expect(describeSources(config)).toEqual([
-      { id: 'codex', origin: 'builtin', shadowedByBuiltin: false },
-      { id: 'claude', origin: 'builtin', shadowedByBuiltin: false },
-      { id: 'gemini', origin: 'builtin', shadowedByBuiltin: false },
-      { id: 'opencode', origin: 'builtin', shadowedByBuiltin: false },
-      { id: 'pi', origin: 'builtin', shadowedByBuiltin: false },
-      { id: 'myagent', origin: 'config', shadowedByBuiltin: false },
-      { id: 'codex', origin: 'config', shadowedByBuiltin: true }
+      { id: 'codex', origin: 'config', kind: 'match', overridesDefault: true },
+      { id: 'claude', origin: 'default', kind: 'builtin', overridesDefault: false },
+      { id: 'gemini', origin: 'default', kind: 'builtin', overridesDefault: false },
+      { id: 'opencode', origin: 'default', kind: 'builtin', overridesDefault: false },
+      { id: 'myagent', origin: 'config', kind: 'handler', overridesDefault: false }
     ]);
   });
 
-  it('lists just the built-ins when no config sources are set', () => {
+  it('lists just the built-in defaults when no config sources are set', () => {
     expect(describeSources({})).toEqual([
-      { id: 'codex', origin: 'builtin', shadowedByBuiltin: false },
-      { id: 'claude', origin: 'builtin', shadowedByBuiltin: false },
-      { id: 'gemini', origin: 'builtin', shadowedByBuiltin: false },
-      { id: 'opencode', origin: 'builtin', shadowedByBuiltin: false },
-      { id: 'pi', origin: 'builtin', shadowedByBuiltin: false }
+      { id: 'codex', origin: 'default', kind: 'builtin', overridesDefault: false },
+      { id: 'claude', origin: 'default', kind: 'builtin', overridesDefault: false },
+      { id: 'gemini', origin: 'default', kind: 'builtin', overridesDefault: false },
+      { id: 'opencode', origin: 'default', kind: 'builtin', overridesDefault: false },
+      { id: 'pi', origin: 'default', kind: 'builtin', overridesDefault: false }
     ]);
   });
 });

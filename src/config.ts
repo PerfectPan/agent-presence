@@ -60,17 +60,26 @@ export interface SourceMatchSpec {
 }
 
 /**
- * A configured presence source. `handler` (an npm specifier or absolute path to a
- * module exporting a `SourcePlugin`) takes precedence over the no-code `match`
- * spec. Built-in source ids always win over a same-id entry here.
+ * A configured presence source, keyed by source id in the merged source table.
+ *
+ * Resolution order within one entry: `enabled: false` disables the source;
+ * otherwise `handler` (an npm specifier, absolute path, or the `builtin:<id>`
+ * form that reuses a shipped resolver) wins over the no-code `match` spec.
+ *
+ * The shipped `sources.default.json` provides the five built-ins as
+ * `{ handler: "builtin:<id>" }`. A user's `config.plugins.sources` is merged
+ * over those defaults by id: a same-id entry overrides the default (letting a
+ * user retarget or disable a built-in), and a new id adds a source.
  */
 export interface SourcePluginConfig {
   handler?: string;
   match?: SourceMatchSpec;
+  /** Set false to drop this source from the merged table. Defaults to true. */
+  enabled?: boolean;
 }
 
 export interface PluginsConfig {
-  /** Presence sources keyed by source id. */
+  /** Presence sources keyed by source id, merged over the shipped defaults. */
   sources?: Record<string, SourcePluginConfig>;
 }
 
