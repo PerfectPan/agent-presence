@@ -1,4 +1,5 @@
 import { configSlotId, debounceMs, feishuSignatureConfig, getConfigPath, loadConfig, providerId, renderTemplates, ttlMs } from '../../config.js';
+import { describeSources } from '../../sources.js';
 
 export async function printConfig(): Promise<void> {
   const config = await loadConfig();
@@ -11,7 +12,8 @@ export async function printConfig(): Promise<void> {
         slotId: configSlotId(config) ?? '',
         ttlMs: ttlMs(config),
         debounceMs: debounceMs(config),
-        render: renderTemplates(config)
+        render: renderTemplates(config),
+        sources: describeSources(config)
       },
       null,
       2

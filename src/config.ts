@@ -41,6 +41,39 @@ export interface UsageConfig {
   pricing?: PricingOverrides;
 }
 
+/**
+ * A declarative field spec, mirroring `PickStringOptions` so a `match`-based
+ * source can reach nested payloads and control env-vs-payload precedence exactly
+ * like the built-in resolvers do.
+ */
+export interface SourceMatchField {
+  envKeys?: string[];
+  payloadKeys?: string[];
+  nestedPayloadKeys?: string[];
+  payloadFirst?: boolean;
+}
+
+export interface SourceMatchSpec {
+  sessionId?: SourceMatchField;
+  project?: SourceMatchField;
+  event?: SourceMatchField;
+}
+
+/**
+ * A configured presence source. `handler` (an npm specifier or absolute path to a
+ * module exporting a `SourcePlugin`) takes precedence over the no-code `match`
+ * spec. Built-in source ids always win over a same-id entry here.
+ */
+export interface SourcePluginConfig {
+  handler?: string;
+  match?: SourceMatchSpec;
+}
+
+export interface PluginsConfig {
+  /** Presence sources keyed by source id. */
+  sources?: Record<string, SourcePluginConfig>;
+}
+
 export interface AppConfig {
   provider?: ProviderId | 'l-garyyang';
   providerBaseUrl?: string;
@@ -57,6 +90,7 @@ export interface AppConfig {
   debounceMs?: number;
   render?: RenderTemplates;
   usage?: UsageConfig;
+  plugins?: PluginsConfig;
 }
 
 export function getDefaultHomeDir(): string {
@@ -234,6 +268,10 @@ export function usageSignatureWindowDays(config: AppConfig): number {
 
 export function usagePricingOverrides(config: AppConfig): PricingOverrides {
   return config.usage?.pricing ?? {};
+}
+
+export function pluginSourcesConfig(config: AppConfig): Record<string, SourcePluginConfig> {
+  return config.plugins?.sources ?? {};
 }
 
 export function configSlotId(config: AppConfig): string | undefined {

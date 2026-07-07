@@ -2,10 +2,11 @@ import { configSlotId, debounceMs, getStatePath, loadConfig, providerId, renderT
 import { createProvider } from '../../providers/registry.js';
 import { assertSupportsPublish } from '../../providers/types.js';
 import { readCredential } from '../../secret.js';
+import { resolveHookContextForSource } from '../../sources.js';
 import { applyAgentEvent, isSessionBoundaryEvent } from '../../state.js';
 import { hasFlag, optionValue } from '../args.js';
 import { errorMessage } from '../errors.js';
-import { resolveHookContext, writeHookOutput } from '../hook-context.js';
+import { writeHookOutput } from '../hook-context.js';
 import { writeHookDiagnostic } from '../hook-diagnostics.js';
 import { readStdinJson, writeLog } from '../io.js';
 import { syncRenderedSlotWithDeferredFlush } from '../rendered-slot-sync.js';
@@ -16,7 +17,8 @@ export async function hook(args: string[]): Promise<void> {
     const source = optionValue(args, '--source') ?? 'codex';
     const silent = hasFlag(args, '--silent');
     const payload = await readStdinJson();
-    const context = resolveHookContext(source, payload);
+    const config = await loadConfig();
+    const context = await resolveHookContextForSource(source, payload, config);
     const event = optionValue(args, '--event') ?? context.event ?? 'Heartbeat';
     await writeHookDiagnostic({
       source,
@@ -32,7 +34,6 @@ export async function hook(args: string[]): Promise<void> {
       return;
     }
 
-    const config = await loadConfig();
     const statePath = getStatePath();
     const now = Date.now();
 

@@ -96,7 +96,8 @@ src/cli/app.ts              command routing
 src/cli/args.ts             argv parsing helpers
 src/cli/ui.ts               Clack wrapper and non-TTY fallback
 src/cli/slot-sync.ts        state-lock to provider-sync bridge
-src/cli/hook-context.ts     source-specific hook context selection
+src/cli/hook-context.ts     built-in source hook context selection
+src/sources.ts              source registry: built-ins plus configured plugin sources
 src/cli/commands/*.ts       one command or subcommand per file
 src/json-file.ts            shared JSON read and atomic write helpers
 src/hooks/context.ts        shared hook payload/env string extraction
@@ -198,6 +199,8 @@ Pi          before_agent_start, turn_start, tool_execution_start, tool_execution
 
 Codex hooks always print `{}` so they remain valid pass-through hooks. Claude Code, Gemini CLI, opencode, and Pi hooks run with `--silent`.
 
+The five sources above are built in. Additional sources can be onboarded through configuration without a core change; see [Source Registry](#source-registry).
+
 For Pi specifically, the extension intentionally does **not** treat the Pi `session_start` event as an active-session signal — that event fires whenever the Pi TUI opens, including when the user has not yet submitted a task. Activation is gated on `before_agent_start`, which only fires after the user submits a prompt. Heartbeats come from `turn_start` and `tool_execution_*`. Finishes come from `agent_end` (turn done) and `session_shutdown` (Pi quit, reload, or session switch).
 
 Hook commands are managed entries. Installers identify them by the `agent-presence hook` or legacy `agent-signature hook` command shape, remove the old managed entries, and then add the current managed entry. This keeps reruns from accumulating duplicate hooks.
@@ -290,6 +293,19 @@ Capabilities are optional because not every provider supports every operation:
 The two shipped providers are not independent backends: they read and write the **same** slot. That shared storage is modelled explicitly as a `SlotBackend` (`src/providers/slot-backend.ts`), implemented by `LGaryYangSlotBackend`. Both `feishu-signature` and `magic-builder` *compose* the same `SlotBackend` for login/publish/info and differ only in the signature URL (and, for magic-builder, the `getRemotePreview` FaaS read). Neither provider depends on the other.
 
 The capability layer is deliberately generic (`publishValue`, not `updateSlot`) so a future provider with its own, slot-unrelated storage can implement `PresenceProvider` directly and never touch `SlotBackend`. Its own credential model and login flow would be added alongside at that point; the registry seam itself does not change.
+
+### Source Registry
+
+`src/cli/hook-context.ts` defines a single `SourcePlugin` interface (`{ id, resolveHookContext(payload, env) }`) and registers the five built-in sources (`codex`, `claude`, `gemini`, `opencode`, `pi`) statically in `BUILTIN_SOURCE_PLUGINS` — a registry keyed by id, mirroring the provider registry, rather than a hardcoded `if`-chain. `src/sources.ts` layers config sources on top through one entry point, `resolveHookContextForSource(source, payload, config)`: built-ins always win, and an unknown source with no configuration returns an empty context (the unchanged silent-skip fallback).
+
+Built-in and config sources implement the same interface; "built-in vs config" is only "registered statically (bundled, zero trust cost) vs registered from config", not two code paths. Downstream of context resolution the pipeline is already source-agnostic — `AgentSession.source` is a plain string, `renderDetails` groups by it verbatim, and `normalizeEvent` understands the PascalCase lifecycle events — so a new source only needs a way to turn its hook payload into `{ sessionId, project, event }`.
+
+A config source is configured under `plugins.sources` in `config.json`, keyed by source id, in one of two tiers:
+
+- **Declarative `match`** — no code. Each of `sessionId` / `project` / `event` is a `pickString`-shaped field spec (`envKeys` / `payloadKeys` / `nestedPayloadKeys` / `payloadFirst`), so it reaches nested payloads and controls env-vs-payload precedence exactly like a built-in resolver.
+- **JS `handler`** — an absolute path or npm specifier for an ESM module whose `default` export is a `SourcePlugin`. agent-presence imports it in-process during a hook.
+
+Because a `handler` runs in-process with full CLI trust (including credential access), loading is guarded: it is opt-in (no `plugins` key means no loading), the handler receives a **curated env** with credential-bearing keys stripped (built-ins, being trusted, receive the raw environment), an absolute-path handler is refused if it is a symlink / not owned by the current user / world-writable, and `handler` entries are ignored entirely if `config.json` itself is world-writable or not user-owned. Handler failures fail open — logged with non-secret fields only, degrading to an empty context — so a config source can never break a hook. `agent-presence config show` lists every registered source with its `origin` (`builtin`/`config`) and flags any config entry shadowed by a built-in. Full design: [`rfcs/source-plugins.md`](../rfcs/source-plugins.md).
 
 ### Provider
 
@@ -537,6 +553,7 @@ remote value is wrong but local is correct      -> provider sync path bug or del
 - Codex hooks are pass-through and bounded by agent hook timeouts.
 - Setup modifies only known hook/plugin/watcher locations and preserves unrelated user entries.
 - Logs are local diagnostics. They must be redacted by construction and should remain useful even when shared in a bug report.
+- The credential guarantees above ("not written to logs / never leaves the machine") describe the **built-in** code paths. A user-configured source `handler` (see [Source Registry](#source-registry)) runs in-process with full CLI trust, which includes the ability to read the slot credential; agent-presence reduces the default exposure (curated env, path/config ownership checks, opt-in loading, redaction-safe fail-open logging) but does not sandbox the handler, so a `handler` is code the operator is responsible for vetting. The no-code `match` tier runs no user code and carries none of this risk.
 - The `magic-builder` provider is the one deliberate exception to "credentials never leave the machine": its published FaaS embeds the l.garyyang slot bearer so it can read the slot on `magic.solutionsuite.cn`. This is gated behind explicit operator action and documented under [Magic-Builder Provider](#magic-builder-provider); the embedded value is the low-sensitivity slot bearer only, never the magic-builder token (which stays in the OS keyring).
 
 ## Package And Release Safety
@@ -560,4 +577,4 @@ CI installs with a frozen pnpm lockfile and `--ignore-scripts`. Release uses Cha
 
 ## Extension Points
 
-New agent sources should add a hook adapter that emits the shared lifecycle actions. New providers should implement the same slot-style contract first, so profile-specific or network-specific write logic stays behind provider boundaries. A provider may also be a pure **front-end** that reuses an existing slot store and only changes how the signature URL is published, as `magic-builder` does over `feishu-signature`.
+New agent sources ship best as a built-in hook adapter that emits the shared lifecycle actions. A source that cannot live in core — an internal agent, or one that must be onboarded without a public release — plugs in through the [Source Registry](#source-registry) via a `plugins.sources` config entry (declarative `match` or a JS `handler`) instead. New providers should implement the same slot-style contract first, so profile-specific or network-specific write logic stays behind provider boundaries. A provider may also be a pure **front-end** that reuses an existing slot store and only changes how the signature URL is published, as `magic-builder` does over `feishu-signature`.
