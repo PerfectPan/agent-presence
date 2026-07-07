@@ -203,12 +203,12 @@ async function loadHandlerSource(source: string, handler: string): Promise<Sourc
  */
 async function resolveHandlerSpecifier(source: string, handler: string): Promise<string | undefined> {
   if (!isAbsolute(handler)) {
-    // Bare npm specifier: resolve from the plugins dir's node_modules (that is
-    // where `source add` installs), not the user's cwd. A require anchored in
-    // the plugins dir gives us the concrete file to import.
+    // Bare npm specifier: resolve strictly from the plugins dir's node_modules
+    // (where `source add` installs), not the user's cwd and not ancestor
+    // node_modules. The explicit `paths` confines resolution to that directory.
     try {
       const require = createRequire(join(getPluginsDir(), 'noop.js'));
-      return pathToFileURL(require.resolve(handler)).href;
+      return pathToFileURL(require.resolve(handler, { paths: [join(getPluginsDir(), 'node_modules')] })).href;
     } catch (error) {
       await writeLog(`source refused source=${source} reason=specifier-unresolved error=${errorName(error)}`);
       return undefined;

@@ -1,3 +1,4 @@
+import { isAbsolute } from 'node:path';
 import { loadConfig, removePluginSource, saveConfig, setPluginSource } from '../../config.js';
 import { installPluginPackage, packageNameFromSpec, uninstallPluginPackage } from '../../plugin-install.js';
 import { describeSources, loadSourcePluginForValidation } from '../../sources.js';
@@ -71,6 +72,19 @@ async function addSource(args: string[]): Promise<void> {
   }
 
   const id = explicitId ?? validation.id;
+  if (explicitId && explicitId !== validation.id) {
+    // A source only resolves when the config key matches the plugin's own id
+    // (see loadHandlerSource), so a mismatched --id would install cleanly yet
+    // never count anything. Reject up front rather than leave a dead entry.
+    showWarning(
+      `--id "${explicitId}" does not match the package's declared source id "${validation.id}"; ` +
+        `re-run without --id, or pass --id ${validation.id}. Removing the installed package.`
+    );
+    await uninstallPluginPackage(installed.packageName, {}).catch(() => undefined);
+    process.exitCode = 1;
+    return;
+  }
+
   const config = await loadConfig();
   await saveConfig(setPluginSource(config, id, { handler: installed.packageName }));
 
@@ -105,7 +119,7 @@ async function removeSource(args: string[]): Promise<void> {
   // If the entry pointed at an installed package (a bare specifier, not an
   // absolute path or builtin:), uninstall it too unless asked to keep it.
   const handler = entry.handler;
-  if (!keepPackage && handler && !handler.startsWith('builtin:') && !handler.startsWith('/')) {
+  if (!keepPackage && handler && !handler.startsWith('builtin:') && !isAbsolute(handler)) {
     await uninstallPluginPackage(packageNameFromSpec(handler), {}).catch((error) => {
       showWarning(`removed config entry, but package uninstall failed: ${errorMessage(error)}`);
     });

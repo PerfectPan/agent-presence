@@ -273,10 +273,11 @@ The `match` (declarative) tier runs **no** user code and is the recommended path
 standard agents; it is unaffected by the handler guardrails.
 
 **Module resolution.** `handler` is resolved with dynamic `import()`. An absolute
-path is converted via `pathToFileURL`. A bare specifier resolves through the
-**agent-presence runtime's** module graph (`~/.agent-presence/runtime`), *not* the
-user's cwd — so an internal package must be installed there. Absolute paths under a
-user-owned directory are the recommended form for internal packages.
+path is converted via `pathToFileURL`. A bare specifier resolves strictly from the
+**plugins dir's `node_modules`** (`~/.agent-presence/plugins/node_modules`, override
+`AGENT_PRESENCE_PLUGINS_DIR`) via `require.resolve(spec, { paths: [...] })` — where
+`source add` installs — *not* the user's cwd or ancestor `node_modules`. Absolute
+paths under a user-owned directory are also supported for internal packages.
 
 Loading is lazy and cached per process: each `agent-presence hook` invocation is a
 fresh short-lived Node process, so a handler is imported at most **once per hook**,

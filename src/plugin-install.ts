@@ -51,7 +51,7 @@ export async function installPluginPackage(spec: string, options: InstallPluginO
 export async function uninstallPluginPackage(packageName: string, options: InstallPluginOptions = {}): Promise<void> {
   const pluginsDir = options.pluginsDir ?? getPluginsDir();
   const runner = options.runner ?? defaultNpmRunner;
-  await runner(['uninstall', packageName, '--no-audit', '--no-fund'], pluginsDir);
+  await runner(['uninstall', packageName, '--no-audit', '--no-fund', '--ignore-scripts'], pluginsDir);
 }
 
 /**
