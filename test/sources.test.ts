@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { chmodSync, mkdtempSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from 'node:fs';
 import { rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -239,6 +239,19 @@ describe('resolveHookContextForSource — JS handler', () => {
       'ok.mjs',
       `export default { id: 'myagent', resolveHookContext() { return { sessionId: 'x' }; } };`
     );
+    const config: AppConfig = { plugins: { sources: { myagent: { handler: handlerPath } } } };
+    const context = await resolveHookContextForSource('myagent', {}, config);
+    expect(context).toEqual({});
+  });
+
+  it('refuses a handler whose parent directory is world-writable', async () => {
+    const dir = join(workDir, 'wideopen');
+    mkdirSync(dir, { recursive: true });
+    const handlerPath = join(dir, 'handler.mjs');
+    writeFileSync(handlerPath, `export default { id: 'myagent', resolveHookContext() { return { sessionId: 'x' }; } };`, {
+      mode: 0o600
+    });
+    chmodSync(dir, 0o777);
     const config: AppConfig = { plugins: { sources: { myagent: { handler: handlerPath } } } };
     const context = await resolveHookContextForSource('myagent', {}, config);
     expect(context).toEqual({});

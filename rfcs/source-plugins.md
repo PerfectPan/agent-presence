@@ -73,6 +73,12 @@ groups by `session.source` verbatim (`src/render.ts:128-137`), and
 - Full sandboxing of a JS handler. It runs in-process with the same trust as the
   CLI that imports it. v1 adds cheap guardrails (opt-in, path/config ownership
   checks, curated env) but does not isolate the handler. See Security.
+- Closing the check-to-`import()` TOCTOU window completely. The guardrails `lstat`
+  the handler file and its parent directory for ownership/mode before importing, but
+  a same-user process could still race a swap between the check and the import.
+  Fully closing this needs fd-based validation (`open` + `fstat` + import from fd),
+  which is out of scope for v1; the practical bound remains "you own the file and its
+  directory, and you vet the code."
 - Changing storage, providers, rendering, or the state machine.
 
 ## Proposed Design
@@ -250,14 +256,23 @@ to `handler` entries:
   byte-for-byte current behavior.
 - **Curated env.** A handler receives a filtered env (`curatedEnv`) with credential
   names stripped (`*TOKEN*`, `*SECRET*`, `*CREDENTIAL*`, `*SLOT_ID*`, `*PASSWORD*`,
-  `*API_KEY*`), not raw `process.env`. In-process code can still read globals, but
-  the default "we hand you the token" is removed and buggy handlers can't echo it.
+  `*API_KEY*`, `*PRIVATE_KEY*`, `*ACCESS_KEY*`), not raw `process.env`. This is a
+  **best-effort denylist**, not a confidentiality guarantee — in-process code can
+  read `process.env` or the keyring directly; the point is only that we do not
+  *hand* a handler the token by default and a buggy handler can't trivially echo one.
 - **Path validation for absolute handlers.** Before `import()`, `lstat` the resolved
-  file and refuse (fail open + log) if it is a symlink, not owned by the current uid,
-  or group/world-writable — mirroring the repo's `0o700`/reject-symlink posture.
+  file **and its parent directory** and refuse (fail open + log) if the file is a
+  symlink, or either the file or its directory is not owned by the current uid or is
+  group/world-writable — mirroring the repo's `0o700`/reject-symlink posture. This
+  narrows, but does not fully close, the check-to-`import()` TOCTOU window (see
+  Non-Goals).
 - **Config trust.** Before honoring any `handler`, stat `config.json`; if it is
   world/group-writable or not user-owned, ignore `handler` entries and log. An
   attacker who can write config must not gain code execution.
+- **Registry-spec-only install.** `source add` accepts a plain registry spec
+  (`pkg`, `pkg@range`, `@scope/pkg[@range]`) and rejects git/url/tarball/`file:`/npm
+  alias specs, whose installed directory name would not match the recorded handler
+  and would leave a dead config entry. Install runs `npm --ignore-scripts`.
 - **Redaction-safe fail-open logging.** Handler failures log only non-secret fields
   (source id, `error.name`, resolved handler path) — never raw `error.message` or
   payload contents (there is no token redactor in `log-sanitize.ts`, so raw

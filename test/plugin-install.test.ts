@@ -4,7 +4,7 @@ import { mkdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { AppConfig } from '../src/config.js';
-import { installPluginPackage, packageNameFromSpec, uninstallPluginPackage } from '../src/plugin-install.js';
+import { installPluginPackage, isSupportedPackageSpec, packageNameFromSpec, uninstallPluginPackage } from '../src/plugin-install.js';
 import {
   loadSourcePluginForValidation,
   resetSourcePluginCacheForTests,
@@ -63,7 +63,41 @@ describe('packageNameFromSpec', () => {
   });
 });
 
+describe('isSupportedPackageSpec', () => {
+  it('accepts plain and scoped registry specs with optional versions', () => {
+    for (const spec of ['pkg', 'pkg@1.2.3', 'pkg@next', '@scope/pkg', '@scope/pkg@1.0.0', 'agent-presence-x']) {
+      expect(isSupportedPackageSpec(spec)).toBe(true);
+    }
+  });
+
+  it('rejects git/url/tarball/file/alias and path specs', () => {
+    for (const spec of [
+      'git+https://example.com/x.git',
+      'https://example.com/x.tgz',
+      'file:../local',
+      'alias@npm:real',
+      './relative/path',
+      '/abs/path.tgz',
+      'a b',
+      ''
+    ]) {
+      expect(isSupportedPackageSpec(spec)).toBe(false);
+    }
+  });
+});
+
 describe('installPluginPackage', () => {
+  it('rejects an unsupported spec before running npm', async () => {
+    let called = false;
+    const runner = async () => {
+      called = true;
+    };
+    await expect(installPluginPackage('git+https://example.com/x.git', { pluginsDir, runner })).rejects.toThrow(
+      /unsupported package spec/
+    );
+    expect(called).toBe(false);
+  });
+
   it('installs into the plugins dir and reports name + version', async () => {
     const runner = fakeNpm(
       'agent-presence-myagent',

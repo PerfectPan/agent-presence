@@ -1,6 +1,6 @@
 import { lstatSync, readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import { isAbsolute, join } from 'node:path';
+import { dirname, isAbsolute, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import {
   getConfigPath,
@@ -26,12 +26,15 @@ const BUILTIN_HANDLER_PREFIX = 'builtin:';
 
 /**
  * Environment variable name fragments that may carry the slot credential or
- * other secrets. A config source handler runs in-process and could read
- * `process.env` directly, but we do not *hand* it these: this stops buggy
- * handlers from echoing a token and removes "we give you the credential" as the
- * baseline. Built-in (`builtin:`) sources are trusted and receive the raw env.
+ * other secrets. This is a **best-effort denylist**, not a guarantee: a handler
+ * runs in-process and can read `process.env` (or the OS keyring) directly, so
+ * this cannot enforce confidentiality. Its purpose is narrow — cover this app's
+ * own credential vars and common secret-name shapes so we do not *hand* a token
+ * to a handler by default and a buggy handler cannot trivially echo one. It
+ * intentionally errs toward stripping (any `*TOKEN*`/`*SECRET*`/… name). Built-in
+ * (`builtin:`) sources are trusted and receive the raw env.
  */
-const SECRET_ENV_PATTERNS = [/TOKEN/i, /SECRET/i, /CREDENTIAL/i, /SLOT_ID/i, /PASSWORD/i, /API_KEY/i];
+const SECRET_ENV_PATTERNS = [/TOKEN/i, /SECRET/i, /CREDENTIAL/i, /SLOT_ID/i, /PASSWORD/i, /API_?KEY/i, /PRIVATE_?KEY/i, /ACCESS_KEY/i];
 
 export function curatedEnv(env: StringEnv): StringEnv {
   const curated: StringEnv = {};
@@ -227,6 +230,19 @@ async function resolveHandlerSpecifier(source: string, handler: string): Promise
     }
     if ((info.mode & 0o022) !== 0) {
       await writeLog(`source refused source=${source} reason=handler-world-writable`);
+      return undefined;
+    }
+    // A writable parent dir lets another user swap the (otherwise fine) file, so
+    // narrow the swap window by requiring the directory be owned and not
+    // group/world-writable too. This does not fully close the check-to-import
+    // TOCTOU gap (see the RFC), but removes the easy directory-swap vector.
+    const parent = lstatSync(dirname(handler));
+    if (typeof process.getuid === 'function' && parent.uid !== process.getuid()) {
+      await writeLog(`source refused source=${source} reason=handler-dir-not-owned`);
+      return undefined;
+    }
+    if ((parent.mode & 0o022) !== 0) {
+      await writeLog(`source refused source=${source} reason=handler-dir-world-writable`);
       return undefined;
     }
   } catch (error) {
