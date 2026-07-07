@@ -1,8 +1,10 @@
 import { lstatSync, readFileSync } from 'node:fs';
-import { isAbsolute } from 'node:path';
+import { createRequire } from 'node:module';
+import { isAbsolute, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import {
   getConfigPath,
+  getPluginsDir,
   pluginSourcesConfig,
   type AppConfig,
   type SourceMatchField,
@@ -196,14 +198,21 @@ async function loadHandlerSource(source: string, handler: string): Promise<Sourc
 /**
  * Convert a `handler` config value into a spec `import()` can consume. Absolute
  * paths are validated (owner, mode, symlink) and converted to `file://` URLs;
- * bare specifiers are passed through to resolve via the runtime's module graph.
+ * bare specifiers are resolved against the plugins dir's `node_modules` (where
+ * `source add` installs packages).
  */
 async function resolveHandlerSpecifier(source: string, handler: string): Promise<string | undefined> {
   if (!isAbsolute(handler)) {
-    // Bare npm specifier: resolves through the agent-presence runtime's
-    // node_modules, not the user's cwd. Resolution/typo errors surface as a
-    // logged load failure in loadHandlerSource.
-    return handler;
+    // Bare npm specifier: resolve from the plugins dir's node_modules (that is
+    // where `source add` installs), not the user's cwd. A require anchored in
+    // the plugins dir gives us the concrete file to import.
+    try {
+      const require = createRequire(join(getPluginsDir(), 'noop.js'));
+      return pathToFileURL(require.resolve(handler)).href;
+    } catch (error) {
+      await writeLog(`source refused source=${source} reason=specifier-unresolved error=${errorName(error)}`);
+      return undefined;
+    }
   }
 
   try {
@@ -279,6 +288,30 @@ function isSourcePlugin(value: unknown): value is SourcePlugin {
     typeof (value as SourcePlugin).id === 'string' &&
     typeof (value as SourcePlugin).resolveHookContext === 'function'
   );
+}
+
+export type SourceValidation = { ok: true; id: string } | { ok: false; reason: string };
+
+/**
+ * Import a just-installed package by name and confirm its default export is a
+ * usable `SourcePlugin`, returning its declared `id`. Used by `source add` to
+ * fail loudly before writing a config entry, rather than discovering a bad
+ * package silently at hook time.
+ */
+export async function loadSourcePluginForValidation(packageName: string): Promise<SourceValidation> {
+  const specifier = await resolveHandlerSpecifier(packageName, packageName);
+  if (!specifier) {
+    return { ok: false, reason: 'package could not be resolved from the plugins dir' };
+  }
+  try {
+    const module = (await import(specifier)) as { default?: unknown };
+    if (!isSourcePlugin(module.default)) {
+      return { ok: false, reason: 'default export is not a { id, resolveHookContext } source plugin' };
+    }
+    return { ok: true, id: module.default.id };
+  } catch (error) {
+    return { ok: false, reason: errorName(error) };
+  }
 }
 
 function errorName(error: unknown): string {

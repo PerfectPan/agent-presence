@@ -51,6 +51,10 @@ groups by `session.source` verbatim (`src/render.ts:128-137`), and
   opencode event remapping, pi's session-start handling) intact by referencing it
   from the table via a `builtin:<id>` handler, rather than trying to re-express it
   as declarative config.
+- Provide a `source add/list/remove` command so an operator can download and
+  register a source-plugin npm package (into an isolated plugins dir) without
+  hand-editing config or the module path — the "just install it" path, with an
+  internal-registry override.
 - Preserve the hard invariant that a hook never throws into or blocks the agent:
   source loading and resolution are fail-open (log and fall back to `{}`).
 
@@ -195,7 +199,46 @@ id is a built-in one.
 its `origin` (`default`/`config`), `kind` (`builtin`/`handler`/`match`), and whether
 it `overridesDefault` — so users can confirm wiring without running a hook.
 
-### 4. Security guardrails (v1)
+### 4. Installing a source by package (`source add/list/remove`)
+
+Rather than hand-editing config and placing a module, an operator can install a
+source-plugin npm package directly:
+
+```bash
+agent-presence source add @company/agent-presence-myagent          # public registry
+agent-presence source add @company/agent-presence-myagent \
+  --registry https://npm.internal.example --id myagent --yes       # internal registry
+agent-presence source list                                         # the merged table
+agent-presence source remove myagent                               # unregister + uninstall
+```
+
+`source add` (in `src/plugin-install.ts` + `src/cli/commands/source.ts`):
+
+1. `npm install <spec>` into an **isolated plugins dir**
+   (`~/.agent-presence/plugins/`, override `AGENT_PRESENCE_PLUGINS_DIR`), so packages
+   land under `<pluginsDir>/node_modules`, never in the CLI's own install or the
+   user's cwd. Flags: `--save --ignore-scripts --no-audit --no-fund`, and
+   `--registry` from `--registry`/`AGENT_PRESENCE_REGISTRY` (defaults to the public
+   registry). npm is spawned via `execFile` (no shell); a missing `npm` yields a
+   clear error.
+2. **Validate** the installed package exports a real `SourcePlugin`
+   (`loadSourcePluginForValidation`) and learn its `id`; on failure the package is
+   uninstalled again and nothing is written.
+3. Record a single `config.plugins.sources.<id> = { handler: "<packageName>" }`
+   entry — the merged table stays the one source of truth; `add` is just a
+   convenience over the same config a user could write by hand.
+
+A bare specifier resolves at hook time from the plugins dir's `node_modules` (via
+`createRequire` anchored there), not the user's cwd. `source remove` deletes the
+config entry and, if it pointed at an installed package (not `builtin:` or an
+absolute path), uninstalls it too (`--keep-package` to leave it). `uninstall --all`
+removes the whole plugins dir.
+
+Because `add` downloads and then runs third-party code in the credential-bearing
+process, it prints an explicit trust notice and requires confirmation (`--yes`, or an
+interactive prompt) before installing — see Security.
+
+### 5. Security guardrails (v1)
 
 A JS `handler` runs in-process with full CLI trust, which **includes reading the
 slot credential** (Keychain via `security find-generic-password`, or env tokens).
@@ -220,6 +263,11 @@ to `handler` entries:
   payload contents (there is no token redactor in `log-sanitize.ts`, so raw
   interpolation is unsafe). The resolved handler path is logged once at load time as
   an audit trail.
+- **Explicit consent for `source add`.** Because it downloads then runs third-party
+  code in the credential-bearing process, `add` prints a trust notice and requires
+  `--yes` or an interactive confirmation; `npm install` runs with `--ignore-scripts`
+  to avoid arbitrary install-time script execution, though the imported module itself
+  still runs at hook time.
 
 The `match` (declarative) tier runs **no** user code and is the recommended path for
 standard agents; it is unaffected by the handler guardrails.

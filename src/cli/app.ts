@@ -5,6 +5,7 @@ import { login } from './commands/login.js';
 import { reset } from './commands/reset.js';
 import { setup } from './commands/setup.js';
 import { printStatus } from './commands/status.js';
+import { source } from './commands/source.js';
 import { uninstall } from './commands/uninstall.js';
 import { update } from './commands/update.js';
 import { printUsage } from './commands/usage.js';
@@ -41,6 +42,9 @@ export async function runCli(argv: string[]): Promise<void> {
       return;
     case 'config':
       await configure(parsed.args);
+      return;
+    case 'source':
+      await source(parsed.args);
       return;
     case 'status':
       await printStatus(parsed.args);
