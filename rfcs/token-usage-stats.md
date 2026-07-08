@@ -16,15 +16,20 @@ signature that already shows live presence.
 
 - A CLI command that reports token usage over calendar-day windows (default
   today and the last 7 days), per source, with an estimated USD cost.
-- Coverage of every source that records usage locally: Claude, Codex, Pi.
+- Coverage of every source that records usage locally: Claude, Codex, Pi. (Since
+  extended to opencode and Gemini, and generalised into a `scanUsage` capability
+  on the source table — see [`source-usage.md`](./source-usage.md).)
 - Optionally surface today's usage in the signature, reusing the existing render
   pipeline rather than a second update path.
 - Pricing that can be corrected per deployment without a code change.
 
 ## Non-Goals
 
-- Gemini accounting. The Gemini CLI does not persist per-message token usage
-  locally, so it cannot be derived; it is reported as "not tracked".
+- ~~Gemini accounting. The Gemini CLI does not persist per-message token usage
+  locally, so it cannot be derived; it is reported as "not tracked".~~
+  **Superseded.** Current Gemini CLI *does* persist per-turn token usage in its
+  local chat transcripts (`~/.gemini/tmp/<hash>/chats/`), so it is now tracked
+  (priced from the table, like Codex). See [`source-usage.md`](./source-usage.md).
 - Real-time per-event metering. Usage is computed by scanning transcripts after
   the fact (the same approach as ccusage), not from hook payloads — hook events
   do not carry token counts.

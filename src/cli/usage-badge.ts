@@ -6,6 +6,7 @@ import {
   type AppConfig
 } from '../config.js';
 import { referencedUsageWindows } from '../render.js';
+import { billableSources } from '../sources.js';
 import { renderUsageBadge } from '../usage/format.js';
 import { collectWindowUsage } from '../usage/index.js';
 import { loadState, saveState, withStateLock } from '../state.js';
@@ -51,11 +52,15 @@ export async function refreshSignatureUsageBadges(
   }
 
   const pricing = usagePricingOverrides(config);
+  // Runs on the hook path (session boundaries), so scan only the first-party
+  // built-in sources — never load third-party JS handlers here (`includeHandlers:
+  // false` keeps `billableSources` from `import()`ing them on the hot path).
+  const sources = await billableSources(config, { includeHandlers: false });
   let badges: Record<string, string>;
   try {
     const results = await Promise.all(
       plan.windows.map(async (days) => {
-        const window = await collectWindowUsage({ days, now, pricing });
+        const window = await collectWindowUsage({ days, now, pricing, sources });
         return [String(days), renderUsageBadge(window.total.totalTokens, window.total.costUsd)] as const;
       })
     );

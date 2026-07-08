@@ -17,14 +17,17 @@ agent-presence usage --json     # 结构化输出
 
 ## 各数据源
 
+Token 统计是驱动 presence 的同一张源表的一种能力：实现了 `scanUsage` 的源即可计费。五个内置源全部支持，第三方源插件也可以实现。
+
 | 源 | Token 统计 |
 | --- | --- |
 | Claude Code | 支持 — 按价目表计价、去重、排除 `<synthetic>` |
 | Codex | 支持 — 对会话累计总量做差分 |
 | Pi | 支持 — 用 Pi 自己记录的成本 |
-| Gemini CLI | 仅 presence — 本地无逐条 token 记录 |
+| opencode | 支持 — 读取本地 SQLite 存储；用 opencode 记录的成本 |
+| Gemini CLI | 支持 — 读取本地会话 transcript；按价目表计价 |
 
-无价目表的模型成本显示 `n/a`;token 数始终精确。可在 `~/.agent-presence/config.json` 按模型覆盖单价。
+无价目表的模型成本显示 `n/a`；token 数始终精确。可在 `~/.agent-presence/config.json` 按模型覆盖单价。Pi 与 opencode 会记录真实成本，直接采用；其余按价目表计价。
 
 ## 放进签名
 

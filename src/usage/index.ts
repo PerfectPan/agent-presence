@@ -1,12 +1,25 @@
 import { DAY_MS, startOfLocalDayMs } from '../time.js';
+import { writeLog } from '../log.js';
 import { resolveRecordCost, type PricingOverrides } from './pricing.js';
-import { scanClaude } from './scan-claude.js';
-import { scanCodex } from './scan-codex.js';
-import { scanPi } from './scan-pi.js';
-import type { SourceUsage, UsageRecord, UsageSource, UsageTotals, WindowUsage } from './types.js';
+import type {
+  BillableSource,
+  SourceUsage,
+  UsageRecord,
+  UsageSource,
+  UsageTotals,
+  WindowUsage
+} from './types.js';
 
 export type { ModelPricing, PricingOverrides } from './pricing.js';
-export type { SourceUsage, UsageRecord, UsageSource, UsageTotals, WindowUsage } from './types.js';
+export type {
+  BillableSource,
+  ScanWindow,
+  SourceUsage,
+  UsageRecord,
+  UsageSource,
+  UsageTotals,
+  WindowUsage
+} from './types.js';
 export { DEFAULT_PRICING, resolvePricing, resolveRecordCost } from './pricing.js';
 
 export interface CollectOptions {
@@ -19,33 +32,46 @@ export interface CollectOptions {
   /** Window upper bound (epoch ms); defaults supplied by the caller. */
   now: number;
   pricing?: PricingOverrides;
-  /** Per-source root overrides, mainly for tests. */
-  roots?: Partial<Record<UsageSource, string>>;
+  /**
+   * The billable sources to scan, in display order — resolved once by the caller
+   * via `billableSources()` (see `src/sources.ts`) so every window in a run uses
+   * the same set and order.
+   */
+  sources: BillableSource[];
+  /** Per-source root overrides keyed by source id, mainly for tests. */
+  roots?: Record<string, string>;
 }
 
-const SOURCE_ORDER: UsageSource[] = ['claude', 'codex', 'pi'];
-
 /**
- * Collect token usage across all supported sources for a calendar-day window
+ * Collect token usage across the billable sources for a calendar-day window
  * ending at `now`. The lower bound snaps to local midnight so "today" resets at
  * 00:00 and never shrinks mid-day, rather than sliding as a rolling 24h window
- * would. Gemini is intentionally absent: it does not persist per-message token
- * usage locally, so it cannot be accounted for.
+ * would.
+ *
+ * Sources are iterated dynamically from the merged source table (each source is
+ * one thing that declares all its capabilities), not a hardcoded set. A source
+ * whose scan throws is isolated: its failure is logged and it contributes
+ * nothing, mirroring how presence resolution fails open — one unreadable
+ * transcript store never breaks the whole run.
  */
 export async function collectWindowUsage(options: CollectOptions): Promise<WindowUsage> {
   const untilMs = options.now;
   const sinceMs = startOfLocalDayMs(options.now) - (options.days - 1) * DAY_MS;
-  const scanOptions = { sinceMs, untilMs };
 
-  const [claude, codex, pi] = await Promise.all([
-    scanClaude({ ...scanOptions, root: options.roots?.claude }),
-    scanCodex({ ...scanOptions, root: options.roots?.codex }),
-    scanPi({ ...scanOptions, root: options.roots?.pi })
-  ]);
+  const perSource = await Promise.all(
+    options.sources.map((source) =>
+      source.scanUsage({ sinceMs, untilMs, root: options.roots?.[source.id] }).catch(async (error) => {
+        // Fail-soft: one source's unreadable data must not break the whole run,
+        // mirroring how presence resolution fails open. Log it (redaction-safe,
+        // name only); a log-write failure must not resurface as the scan error.
+        await writeLog(`usage scan failed source=${source.id} error=${errorName(error)}`).catch(() => {});
+        return [] as UsageRecord[];
+      })
+    )
+  );
 
-  const records = [...claude, ...codex, ...pi];
-  const bySource = SOURCE_ORDER.map((source) =>
-    summarise(source, records.filter((record) => record.source === source), options.pricing)
+  const bySource = options.sources.map((source, index) =>
+    summarise(source.id, perSource[index], options.pricing)
   );
 
   return {
@@ -111,4 +137,8 @@ function emptyTotals(): UsageTotals {
     totalTokens: 0,
     costUsd: 0
   };
+}
+
+function errorName(error: unknown): string {
+  return error instanceof Error ? error.name : 'Error';
 }

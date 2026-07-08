@@ -2,14 +2,10 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 
 import { forEachJsonl, listJsonlFiles, parseTimestamp } from './read-jsonl.js';
-import type { UsageRecord } from './types.js';
+import type { ScanWindow, UsageRecord } from './types.js';
 
-export interface ScanOptions {
-  /** Override the transcript root (mainly for tests). */
-  root?: string;
-  sinceMs: number;
-  untilMs: number;
-}
+/** Alias of the shared window shape; each scanner accepts `{ sinceMs, untilMs, root? }`. */
+export type ScanOptions = ScanWindow;
 
 /** Default Claude transcript root, honouring `CLAUDE_CONFIG_DIR` like ccusage. */
 export function defaultClaudeRoot(): string {

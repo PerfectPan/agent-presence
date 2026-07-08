@@ -312,6 +312,19 @@ Trust follows the `builtin:` marker, not the id: a user who overrides `codex` wi
 
 `agent-presence source add <npm-package>` downloads a source-plugin package and registers it, so operators do not hand-edit config. It `npm install`s (via `execFile`, with `--ignore-scripts`) into an isolated plugins dir (`~/.agent-presence/plugins/`, override `AGENT_PRESENCE_PLUGINS_DIR`) so packages land under `<pluginsDir>/node_modules`, never in the CLI's own install; use `--registry` (or `AGENT_PRESENCE_REGISTRY`) for an internal registry. It then validates the package exports a real `SourcePlugin`, and records `plugins.sources.<id> = { handler: "<packageName>" }` — the merged table stays the one source of truth. At hook time a bare specifier resolves from the plugins dir via `createRequire`. `source list` prints the merged table; `source remove <id>` unregisters and (unless `--keep-package`) uninstalls the package; `uninstall --all` removes the whole plugins dir. Because `add` downloads and runs third-party code in the credential-bearing process, it prints a trust notice and requires `--yes` or an interactive confirmation.
 
+#### Token usage (`scanUsage`)
+
+Token/cost accounting is a **capability of the same source table**, not a separate subsystem: `SourcePlugin` carries an optional `scanUsage(window)` method, so a source is one thing that declares all its capabilities. A source that implements `scanUsage` is billable; one that omits it (any `match` source) contributes presence only. All five built-ins are billable — each pairs its presence resolver with a transcript scanner (`src/usage/scan-*.ts`) registered on its `BUILTIN_SOURCE_PLUGINS` entry — and a JS `handler` source can implement `scanUsage` too.
+
+`billableSources(config)` (`src/sources.ts`) enumerates the merged table's billable sources, in table order, through the **same** trust/resolution path as presence (`builtin:` → trusted shipped plugin; JS `handler` → the guarded, cached loader; `match` → skipped). `collectWindowUsage()` iterates that list — no hardcoded source set — so `agent-presence usage` and the signature badge both cover every billable source dynamically. Usage stays **after-the-fact transcript scanning** (ccusage-style), independent of the hook data flow; hook events never carry token counts.
+
+Two trust/portability details:
+
+- **Hot path stays first-party.** The signature-badge refresh runs on the hook path at session boundaries, so it calls `billableSources(config, { includeHandlers: false })` — it scans only the first-party built-ins and never `import()`s a third-party `handler` to probe for `scanUsage`. The standalone `usage` command is interactive and includes handlers.
+- **`node:sqlite` is guarded.** The opencode scanner prefers opencode's SQLite store (`~/.local/share/opencode/opencode.db`) and imports `node:sqlite` **dynamically inside the function** (with a legacy-JSON fallback), because that builtin does not exist before Node 22 while `engines.node` allows `>=20`. A static import would break the hook on older Node.
+
+Cost semantics reuse `src/usage/pricing.ts` unchanged: Pi and opencode log a real per-message cost, which is trusted as-is (even `0`); Claude, Codex, and Gemini reprice by model substring, and an unpriced model shows `n/a` while token counts stay exact. Full design: [`rfcs/source-usage.md`](../rfcs/source-usage.md).
+
 ### Provider
 
 `src/providers/l-garyyang.ts` implements the first slot backend:
