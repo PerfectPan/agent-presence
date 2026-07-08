@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.7.0
+
+### Minor Changes
+
+- 9e3e6c3: Model every presence source — built-in and third-party — as an entry in one source table, so operators can add, override, or disable a source purely by config. The five built-ins ship as a default table (`sources.default.json`, each referencing its in-code resolver via a `builtin:<id>` handler); a user's `plugins.sources` in `~/.agent-presence/config.json` merges over it by id: a same-id entry overrides a built-in, a new id adds a source, and `enabled: false` disables one. Not writing anything leaves the shipped defaults in effect.
+
+  A source resolves via `builtin:<id>` (trusted, raw env), a no-code declarative `match` spec (payload/env field mappings), or a JS `handler` module (npm specifier or absolute path). `agent-presence config show` prints the merged table with each source's origin, kind, and override flag.
+
+  A new `agent-presence source add/list/remove` command downloads and registers a source-plugin npm package: `add` runs `npm install` (with `--ignore-scripts`, and a `--registry`/`AGENT_PRESENCE_REGISTRY` override for internal registries) into an isolated plugins dir (`~/.agent-presence/plugins/`), validates the package exports a real source plugin, and records a `plugins.sources` entry; `remove` unregisters and uninstalls it; `uninstall --all` clears the plugins dir. Because it downloads and runs third-party code in the credential-bearing process, `add` prints a trust notice and requires `--yes` or an interactive confirmation.
+
+  JS `handler` loading is opt-in and guarded: the handler receives a credential-stripped env, absolute-path handlers must be user-owned, non-symlink, and non-world-writable, `handler` entries are ignored when `config.json` is world-writable, and any load/resolution failure fails open so a source can never break a hook. Trust follows the `builtin:` marker, not the id, so overriding a built-in drops to the guarded path. No behavior change when no `plugins.sources` is configured.
+
+- 6985bd1: Unify token/cost accounting under the source table: `SourcePlugin` gains an optional `scanUsage(window)` capability, so a source is one thing that declares all of its capabilities. A source that implements `scanUsage` is billable; one that omits it (any `match` source) contributes presence only.
+
+  `agent-presence usage` (and the signature usage badge) now iterate the merged source table's billable sources dynamically via `billableSources()` — through the same trust/resolution path as presence — instead of a hardcoded `claude/codex/pi` trio. A JS `handler` source can therefore be billable too; the hook/badge path never loads third-party handlers (`includeHandlers: false`).
+
+  All five built-ins are now billable. The three existing scanners (Claude, Codex, Pi) are wired onto their built-in `scanUsage` unchanged, and two new scanners are added:
+
+  - **opencode** — reads the local SQLite store (`~/.local/share/opencode/opencode.db`, with a legacy JSON fallback) via node's builtin `node:sqlite`, imported dynamically so Node <22 is unaffected; trusts opencode's logged per-message cost like Pi.
+  - **Gemini CLI** — reads the local chat transcripts (`~/.gemini/tmp/<hash>/chats/`, honoring `GEMINI_CLI_HOME`); priced from the table like Codex. This corrects the earlier, now-incorrect claim that Gemini keeps no local per-message token log.
+
+  `UsageSource` widens from the `'claude' | 'codex' | 'pi'` union to `string`. The pricing pipeline and the presence/source-table semantics are unchanged.
+
 ## 0.6.1
 
 ### Patch Changes
