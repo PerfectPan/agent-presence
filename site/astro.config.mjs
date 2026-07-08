@@ -76,6 +76,7 @@ export default defineConfig({
             { label: 'Install', translations: { 'zh-CN': '安装' }, slug: 'guide/install' },
             { label: 'Quick start', translations: { 'zh-CN': '快速上手' }, slug: 'guide/quick-start' },
             { label: 'Providers', translations: { 'zh-CN': 'Provider' }, slug: 'guide/providers' },
+            { label: 'Sources', translations: { 'zh-CN': 'Sources' }, slug: 'guide/sources' },
             { label: 'Token usage', translations: { 'zh-CN': 'Token 统计' }, slug: 'guide/token-usage' },
             { label: 'Presence semantics', translations: { 'zh-CN': 'Presence 语义' }, slug: 'guide/presence' },
           ],

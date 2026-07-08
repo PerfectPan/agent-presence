@@ -2,6 +2,7 @@
 .env
 .env.*
 node_modules/
+.pnpm-store/
 dist/
 package-lock.json
 *.tgz

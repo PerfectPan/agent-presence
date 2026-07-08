@@ -20,3 +20,7 @@ token 统计是**事后**从本地 transcript 读取的,从不依赖 hook 负载
 CLI 命令通过一个小的注册表(`createProvider`)解析 provider,只断言自己需要的能力——登录、发布、或签名 URL——因此从不依赖某个具体后端。共享的远端值存储抽象成 `SlotBackend`:`magic-builder`(默认)和 `feishu-signature` 都**组合**同一个后端来做登录/发布/读取,只在飞书嵌入哪个预览 URL 上分叉。两个 provider 互不依赖;未来一个有自己存储的新 provider,可以直接实现该接口而完全不碰 slot 后端。
 
 完整设计与信任边界见仓库里的 `docs/architecture.md`。
+
+## Sources
+
+哪些智能体贡献 presence,由一张**源表(source table)**决定。五个内置源作为默认表随包发布(每个通过 `builtin:<id>` handler 引用一个代码内解析器);用户配置里的 `plugins.sources` 按 id 合并覆盖其上——同 id 覆盖内置,新 id 新增,`enabled: false` 禁用。一个源可通过 `builtin:<id>`(可信、原始环境变量)、零代码的声明式 `match` 规则、或一个 JS `handler` 模块来解析。`agent-presence source add` 会把源插件 npm 包装进一个独立的 plugins 目录并注册;handler 在进程内带护栏运行(剥离凭据的环境、路径/配置属主校验)且 fail-open,坏掉的源永远不会阻塞 hook。见 [Sources 指南](/zh/guide/sources/)。

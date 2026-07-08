@@ -41,6 +41,48 @@ export interface UsageConfig {
   pricing?: PricingOverrides;
 }
 
+/**
+ * A declarative field spec, mirroring `PickStringOptions` so a `match`-based
+ * source can reach nested payloads and control env-vs-payload precedence exactly
+ * like the built-in resolvers do.
+ */
+export interface SourceMatchField {
+  envKeys?: string[];
+  payloadKeys?: string[];
+  nestedPayloadKeys?: string[];
+  payloadFirst?: boolean;
+}
+
+export interface SourceMatchSpec {
+  sessionId?: SourceMatchField;
+  project?: SourceMatchField;
+  event?: SourceMatchField;
+}
+
+/**
+ * A configured presence source, keyed by source id in the merged source table.
+ *
+ * Resolution order within one entry: `enabled: false` disables the source;
+ * otherwise `handler` (an npm specifier, absolute path, or the `builtin:<id>`
+ * form that reuses a shipped resolver) wins over the no-code `match` spec.
+ *
+ * The shipped `sources.default.json` provides the five built-ins as
+ * `{ handler: "builtin:<id>" }`. A user's `config.plugins.sources` is merged
+ * over those defaults by id: a same-id entry overrides the default (letting a
+ * user retarget or disable a built-in), and a new id adds a source.
+ */
+export interface SourcePluginConfig {
+  handler?: string;
+  match?: SourceMatchSpec;
+  /** Set false to drop this source from the merged table. Defaults to true. */
+  enabled?: boolean;
+}
+
+export interface PluginsConfig {
+  /** Presence sources keyed by source id, merged over the shipped defaults. */
+  sources?: Record<string, SourcePluginConfig>;
+}
+
 export interface AppConfig {
   provider?: ProviderId | 'l-garyyang';
   providerBaseUrl?: string;
@@ -57,6 +99,7 @@ export interface AppConfig {
   debounceMs?: number;
   render?: RenderTemplates;
   usage?: UsageConfig;
+  plugins?: PluginsConfig;
 }
 
 export function getDefaultHomeDir(): string {
@@ -81,6 +124,16 @@ export function getStatePath(): string {
 
 export function getLogPath(): string {
   return process.env.AGENT_PRESENCE_LOG_FILE ?? process.env.AGENT_SIGNATURE_LOG_FILE ?? join(getHomeDir(), 'agent-presence.log');
+}
+
+/**
+ * Directory that holds user-installed source plugins. `source add` runs
+ * `npm install` with this as the prefix, so packages land under
+ * `<pluginsDir>/node_modules`, isolated from the CLI's own install and from any
+ * project the user is in.
+ */
+export function getPluginsDir(): string {
+  return process.env.AGENT_PRESENCE_PLUGINS_DIR ?? join(getHomeDir(), 'plugins');
 }
 
 export async function loadConfig(configPath = getConfigPath()): Promise<AppConfig> {
@@ -234,6 +287,37 @@ export function usageSignatureWindowDays(config: AppConfig): number {
 
 export function usagePricingOverrides(config: AppConfig): PricingOverrides {
   return config.usage?.pricing ?? {};
+}
+
+export function pluginSourcesConfig(config: AppConfig): Record<string, SourcePluginConfig> {
+  return config.plugins?.sources ?? {};
+}
+
+/** Return a copy of `config` with the source `id` set to `entry`. */
+export function setPluginSource(config: AppConfig, id: string, entry: SourcePluginConfig): AppConfig {
+  const next: AppConfig = { ...config };
+  const plugins = { ...(next.plugins ?? {}) };
+  plugins.sources = { ...(plugins.sources ?? {}), [id]: entry };
+  next.plugins = plugins;
+  return next;
+}
+
+/** Return a copy of `config` with the source `id` removed from `plugins.sources`. */
+export function removePluginSource(config: AppConfig, id: string): AppConfig {
+  const next: AppConfig = { ...config };
+  if (!next.plugins?.sources || !(id in next.plugins.sources)) {
+    return next;
+  }
+  const sources = { ...next.plugins.sources };
+  delete sources[id];
+  const plugins = { ...next.plugins };
+  if (Object.keys(sources).length > 0) {
+    plugins.sources = sources;
+  } else {
+    delete plugins.sources;
+  }
+  next.plugins = Object.keys(plugins).length > 0 ? plugins : undefined;
+  return next;
 }
 
 export function configSlotId(config: AppConfig): string | undefined {

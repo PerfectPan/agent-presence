@@ -110,6 +110,18 @@ agent-presence config show
 
 hook 由 `setup` 自动安装，也可直接调用，如 `agent-presence hook --source codex --event SessionStart`，它们不会阻塞编码智能体。完整命令见 [Commands](https://agent-presence.vercel.app/zh/reference/commands/)。
 
+## Sources
+
+被统计的智能体（`codex`、`claude`、`gemini`、`opencode`、`pi`）是一张**源表**，你的配置可以扩展、覆盖或禁用它。新增一个源可用纯配置的 `match` 规则、本地 `handler` 模块，或直接安装一个包：
+
+```bash
+agent-presence source add @your-scope/agent-presence-youragent --yes   # 内网源加 --registry <url>
+agent-presence source list
+agent-presence source remove youragent
+```
+
+源插件在进程内运行、能读取你的 slot 凭据，所以 `add` 需要确认，且只应添加你信任的包。覆盖或禁用内置源通过 `~/.agent-presence/config.json` 里的 `plugins.sources`。完整指南见 [Sources](https://agent-presence.vercel.app/zh/guide/sources/)。
+
 ## 日志
 
 hook 和 provider 活动写到 `~/.agent-presence/agent-presence.log`（用 `AGENT_PRESENCE_LOG_FILE` 覆盖）。bearer token、完整 Authorization 头、二维码 ticket、完整 slot 值都不会被记录。
@@ -120,6 +132,7 @@ hook 和 provider 活动写到 `~/.agent-presence/agent-presence.log`（用 `AGE
 
 - [安装](https://agent-presence.vercel.app/zh/guide/install/) · [快速开始](https://agent-presence.vercel.app/zh/guide/quick-start/)
 - [Providers](https://agent-presence.vercel.app/zh/guide/providers/) —— magic-builder（默认）与遗留的直连预览
+- [Sources](https://agent-presence.vercel.app/zh/guide/sources/) —— 添加、覆盖或禁用被统计的智能体
 - [Presence](https://agent-presence.vercel.app/zh/guide/presence/) · [Token 用量](https://agent-presence.vercel.app/zh/guide/token-usage/)
 - [架构](https://agent-presence.vercel.app/zh/project/architecture/) · [命令](https://agent-presence.vercel.app/zh/reference/commands/)
 

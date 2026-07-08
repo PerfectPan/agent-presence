@@ -1,5 +1,6 @@
 import { rm } from 'node:fs/promises';
 import { getConfigPath, getStatePath, loadConfig, saveConfig } from '../../config.js';
+import { removePluginsDir } from '../../plugin-install.js';
 import { deleteCredential } from '../../secret.js';
 import { runUninstallScripts } from '../../setup.js';
 import { hasFlag } from '../args.js';
@@ -32,6 +33,11 @@ export async function uninstall(args: string[] = []): Promise<void> {
   if (clearState) {
     await rm(getStatePath(), { force: true });
     showInfo('local state cleared');
+  }
+
+  if (hasFlag(args, '--all')) {
+    await removePluginsDir();
+    showInfo('installed source plugins removed');
   }
 
   finishOutro('uninstall: ok');

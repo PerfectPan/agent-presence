@@ -9,6 +9,9 @@ Usage:
   agent-presence config show
   agent-presence config provider feishu-signature [--base-url <url>] [--preview-base-url <url>] [--image-key <key>] [--target-url <url>] [--reset]
   agent-presence config render [--zero <template>] [--one <template>] [--many <template>] [--reset]
+  agent-presence source list
+  agent-presence source add <npm-package> [--id <id>] [--registry <url>] [--yes]
+  agent-presence source remove <id> [--keep-package]
   agent-presence status [--provider feishu-signature] [--remote]
   agent-presence usage [--days <n>] [--json]
   agent-presence update [--provider feishu-signature] [--force] [--value <text>] [--silent]
