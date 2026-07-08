@@ -1,24 +1,24 @@
 import { loadConfig, usagePricingOverrides } from '../../config.js';
+import { billableSources } from '../../sources.js';
 import { formatCost, formatTokens } from '../../usage/format.js';
-import { collectWindowUsage, type UsageSource, type WindowUsage } from '../../usage/index.js';
+import { collectWindowUsage, type WindowUsage } from '../../usage/index.js';
 import { hasFlag, optionValue } from '../args.js';
-
-const SOURCE_LABEL: Record<UsageSource, string> = {
-  claude: 'claude',
-  codex: 'codex',
-  pi: 'pi'
-};
 
 export async function printUsage(args: string[]): Promise<void> {
   const config = await loadConfig();
   const pricing = usagePricingOverrides(config);
   const now = Date.now();
 
+  // Resolve the billable sources once (handlers included — the standalone
+  // command is the interactive path), so every window shares the same set and
+  // order.
+  const sources = await billableSources(config);
+
   const explicitDays = readDays(optionValue(args, '--days'));
   const windowDays = explicitDays !== undefined ? [explicitDays] : [1, 7];
 
   const windows = await Promise.all(
-    windowDays.map((days) => collectWindowUsage({ days, now, pricing }))
+    windowDays.map((days) => collectWindowUsage({ days, now, pricing, sources }))
   );
 
   if (hasFlag(args, '--json')) {
@@ -27,7 +27,7 @@ export async function printUsage(args: string[]): Promise<void> {
     return;
   }
 
-  console.log(renderTable(windowDays, windows));
+  console.log(renderUsageTable(windowDays, windows));
 }
 
 function readDays(value: string | undefined): number | undefined {
@@ -41,8 +41,16 @@ function readDays(value: string | undefined): number | undefined {
   return parsed;
 }
 
-function renderTable(windowDays: number[], windows: WindowUsage[]): string {
-  const sources: UsageSource[] = ['claude', 'codex', 'pi'];
+/**
+ * Render the human-readable usage table. Exported for tests: the source rows are
+ * dynamic (whatever the merged source table produced), one row per source in
+ * merged-table order, labelled by the source id itself.
+ */
+export function renderUsageTable(windowDays: number[], windows: WindowUsage[]): string {
+  // Sources come from the merged source table (in table order), so the row set
+  // is dynamic. Take the union of ids seen across windows, preserving the order
+  // each window reports them in. The row label is the source id itself.
+  const sources = orderedSources(windows);
   const lines: string[] = [];
   lines.push('agent-presence usage — token consumption (calendar-day window)');
   lines.push('');
@@ -55,7 +63,7 @@ function renderTable(windowDays: number[], windows: WindowUsage[]): string {
 
   const rows: string[][] = [headerCells];
   for (const source of sources) {
-    const cells = [SOURCE_LABEL[source]];
+    const cells = [source];
     for (const window of windows) {
       const group = window.bySource.find((entry) => entry.source === source);
       cells.push(
@@ -77,9 +85,18 @@ function renderTable(windowDays: number[], windows: WindowUsage[]): string {
   }
   lines.push(divider(widths));
   lines.push(formatRow(totalCells, widths));
-  lines.push('');
-  lines.push('gemini: not tracked (no local per-message token log)');
   return lines.join('\n');
+}
+
+/** Union of source ids across windows, in first-seen (merged-table) order. */
+export function orderedSources(windows: WindowUsage[]): string[] {
+  const seen = new Set<string>();
+  for (const window of windows) {
+    for (const entry of window.bySource) {
+      seen.add(entry.source);
+    }
+  }
+  return [...seen];
 }
 
 function columnWidths(rows: string[][]): number[] {

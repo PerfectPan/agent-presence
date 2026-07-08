@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import type { AppConfig } from '../src/config.js';
 import { BUILTIN_SOURCE_IDS } from '../src/cli/hook-context.js';
 import {
+  billableSources,
   buildMatchSource,
   curatedEnv,
   describeSources,
@@ -315,5 +316,61 @@ describe('describeSources', () => {
       { id: 'opencode', origin: 'default', kind: 'builtin', overridesDefault: false },
       { id: 'pi', origin: 'default', kind: 'builtin', overridesDefault: false }
     ]);
+  });
+});
+
+describe('billableSources', () => {
+  it('exposes every built-in as billable, in merged-table order', async () => {
+    const sources = await billableSources({});
+    expect(sources.map((s) => s.id)).toEqual(['codex', 'claude', 'gemini', 'opencode', 'pi']);
+    expect(sources.every((s) => typeof s.scanUsage === 'function')).toBe(true);
+  });
+
+  it('drops a disabled built-in from the billable set', async () => {
+    const sources = await billableSources({ plugins: { sources: { gemini: { enabled: false } } } });
+    expect(sources.map((s) => s.id)).not.toContain('gemini');
+  });
+
+  it('omits presence-only match sources (no scanUsage)', async () => {
+    const config: AppConfig = {
+      plugins: { sources: { otheragent: { match: { sessionId: { payloadKeys: ['session_id'] } } } } }
+    };
+    const sources = await billableSources(config);
+    expect(sources.map((s) => s.id)).not.toContain('otheragent');
+    // the built-ins are still billable
+    expect(sources.map((s) => s.id)).toEqual(['codex', 'claude', 'gemini', 'opencode', 'pi']);
+  });
+
+  it('includes a JS handler that implements scanUsage', async () => {
+    const handlerPath = join(workDir, 'billable.mjs');
+    writeFileSync(
+      handlerPath,
+      `export default {
+        id: 'myagent',
+        resolveHookContext() { return {}; },
+        async scanUsage() {
+          return [{ source: 'myagent', model: 'm', timestamp: 0, inputTokens: 1, outputTokens: 0, cacheWriteTokens: 0, cacheReadTokens: 0, costUsd: null }];
+        }
+      };`,
+      { mode: 0o600 }
+    );
+    const config: AppConfig = { plugins: { sources: { myagent: { handler: handlerPath } } } };
+    const sources = await billableSources(config);
+    const myagent = sources.find((s) => s.id === 'myagent');
+    expect(myagent).toBeDefined();
+    const records = await myagent!.scanUsage({ sinceMs: 0, untilMs: 1 });
+    expect(records).toHaveLength(1);
+    expect(records[0].source).toBe('myagent');
+  });
+
+  it('never loads a JS handler when includeHandlers is false (hook/badge path)', async () => {
+    // A handler that throws on import would break resolution if loaded; with
+    // includeHandlers:false it must be skipped entirely, leaving only built-ins.
+    const handlerPath = join(workDir, 'explode.mjs');
+    writeFileSync(handlerPath, `throw new Error('must not be imported');`, { mode: 0o600 });
+    const config: AppConfig = { plugins: { sources: { myagent: { handler: handlerPath } } } };
+
+    const sources = await billableSources(config, { includeHandlers: false });
+    expect(sources.map((s) => s.id)).toEqual(['codex', 'claude', 'gemini', 'opencode', 'pi']);
   });
 });

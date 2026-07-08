@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { collectWindowUsage } from '../src/usage/index.js';
+import { collectWindowUsage, type BillableSource, type UsageRecord } from '../src/usage/index.js';
 import { scanClaude } from '../src/usage/scan-claude.js';
 import { scanCodex } from '../src/usage/scan-codex.js';
 import { scanPi } from '../src/usage/scan-pi.js';
@@ -212,6 +212,12 @@ describe('scanPi', () => {
 });
 
 describe('collectWindowUsage', () => {
+  // Explicit source list so the run is hermetic (no reading the real ~/.claude,
+  // ~/.gemini, ~/.local/share/opencode on the test machine). Roots are keyed by id.
+  const claudeSource: BillableSource = { id: 'claude', scanUsage: scanClaude };
+  const codexSource: BillableSource = { id: 'codex', scanUsage: scanCodex };
+  const piSource: BillableSource = { id: 'pi', scanUsage: scanPi };
+
   it('aggregates across sources with per-source and total cost', async () => {
     await writeJsonl('claude.jsonl', [
       {
@@ -225,6 +231,7 @@ describe('collectWindowUsage', () => {
     const window = await collectWindowUsage({
       days: 1,
       now: NOW,
+      sources: [claudeSource, codexSource, piSource],
       roots: { claude: dir, codex: dir, pi: dir }
     });
 
@@ -242,11 +249,74 @@ describe('collectWindowUsage', () => {
     const window = await collectWindowUsage({
       days: 7,
       now: NOW,
+      sources: [claudeSource, codexSource, piSource],
       roots: { claude: dir, codex: dir, pi: dir }
     });
     const startOfToday = new Date(NOW);
     startOfToday.setHours(0, 0, 0, 0);
     expect(window.sinceMs).toBe(startOfToday.getTime() - 6 * DAY);
     expect(window.untilMs).toBe(NOW);
+  });
+
+  it('iterates the given sources dynamically, in order, one row per source', async () => {
+    const fakeA: BillableSource = {
+      id: 'alpha',
+      scanUsage: async () => [
+        {
+          source: 'alpha',
+          model: 'x',
+          timestamp: NOW - 1000,
+          inputTokens: 3,
+          outputTokens: 0,
+          cacheWriteTokens: 0,
+          cacheReadTokens: 0,
+          costUsd: 1.5
+        } satisfies UsageRecord
+      ]
+    };
+    const fakeB: BillableSource = { id: 'beta', scanUsage: async () => [] };
+
+    const window = await collectWindowUsage({ days: 1, now: NOW, sources: [fakeA, fakeB] });
+    expect(window.bySource.map((s) => s.source)).toEqual(['alpha', 'beta']);
+    expect(window.bySource[0]).toMatchObject({ entries: 1, inputTokens: 3, costUsd: 1.5 });
+    expect(window.bySource[1]).toMatchObject({ entries: 0, totalTokens: 0 });
+    expect(window.total.costUsd).toBeCloseTo(1.5, 5);
+  });
+
+  it('with no billable sources, contributes nothing (empty bySource, null cost)', async () => {
+    const window = await collectWindowUsage({ days: 1, now: NOW, sources: [] });
+    expect(window.bySource).toEqual([]);
+    expect(window.total.totalTokens).toBe(0);
+    expect(window.total.costUsd).toBeNull();
+  });
+
+  it('isolates a throwing source: it contributes nothing but others still count', async () => {
+    const boom: BillableSource = {
+      id: 'boom',
+      scanUsage: async () => {
+        throw new Error('unreadable transcript store');
+      }
+    };
+    const ok: BillableSource = {
+      id: 'ok',
+      scanUsage: async () => [
+        {
+          source: 'ok',
+          model: 'y',
+          timestamp: NOW - 1000,
+          inputTokens: 7,
+          outputTokens: 0,
+          cacheWriteTokens: 0,
+          cacheReadTokens: 0,
+          costUsd: 0.25
+        } satisfies UsageRecord
+      ]
+    };
+
+    const window = await collectWindowUsage({ days: 1, now: NOW, sources: [boom, ok] });
+    expect(window.bySource.map((s) => s.source)).toEqual(['boom', 'ok']);
+    expect(window.bySource[0]).toMatchObject({ entries: 0, totalTokens: 0 });
+    expect(window.bySource[1]).toMatchObject({ entries: 1, inputTokens: 7 });
+    expect(window.total.inputTokens).toBe(7);
   });
 });

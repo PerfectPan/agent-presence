@@ -17,6 +17,7 @@ import {
   type SourceContext,
   type SourcePlugin
 } from './cli/hook-context.js';
+import type { BillableSource } from './usage/types.js';
 import { writeLog } from './log.js';
 
 export type { SourcePlugin, SourceContext } from './cli/hook-context.js';
@@ -111,28 +112,84 @@ export async function resolveHookContextForSource(
     return {};
   }
 
+  const resolved = await resolveSourcePlugin(source, entry);
+  if (!resolved) {
+    return {};
+  }
+
+  // Trusted (built-in): raw env, built-ins rely on env fallbacks. Otherwise a
+  // guarded handler/match plugin gets a credential-stripped env.
+  const env = resolved.trusted ? process.env : curatedEnv(process.env);
+  try {
+    return resolved.plugin.resolveHookContext(payload, env) ?? {};
+  } catch (error) {
+    await writeLog(`source resolve failed source=${source} error=${errorName(error)}`);
+    return {};
+  }
+}
+
+interface ResolvedSource {
+  plugin: SourcePlugin;
+  /** Whether this resolved via the trusted `builtin:` path (raw env) or the guarded path. */
+  trusted: boolean;
+}
+
+/**
+ * Resolve one merged-table entry to its `SourcePlugin`, the single trust
+ * decision shared by presence and usage. A `builtin:<id>` entry maps to the
+ * trusted shipped plugin; a JS `handler`/`match` entry goes through the guarded,
+ * `pluginCache`-backed loader. Trust follows the `builtin:` marker, not the id.
+ *
+ * `includeHandlers: false` skips JS `handler` entries entirely (no `import()`),
+ * so the hook/badge path can enumerate billable sources without loading
+ * third-party code. `match` and `builtin:` entries are always resolved (they run
+ * no user-supplied code).
+ */
+async function resolveSourcePlugin(
+  source: string,
+  entry: SourcePluginConfig,
+  options: { includeHandlers?: boolean } = {}
+): Promise<ResolvedSource | undefined> {
+  const includeHandlers = options.includeHandlers ?? true;
+
   const builtinId = builtinHandlerId(entry.handler);
   if (builtinId) {
     const plugin = BUILTIN_SOURCE_PLUGINS[builtinId];
     if (!plugin) {
       await writeLog(`source invalid source=${source} reason=unknown-builtin builtin=${builtinId}`);
-      return {};
+      return undefined;
     }
-    // Trusted: shipped resolver, raw environment (built-ins use env fallbacks).
-    return plugin.resolveHookContext(payload, process.env) ?? {};
+    return { plugin, trusted: true };
+  }
+
+  if (entry.handler && !includeHandlers) {
+    return undefined; // Don't load third-party code on the hook/badge path.
   }
 
   const plugin = await loadConfiguredSource(source, entry);
-  if (!plugin) {
-    return {};
-  }
+  return plugin ? { plugin, trusted: false } : undefined;
+}
 
-  try {
-    return plugin.resolveHookContext(payload, curatedEnv(process.env)) ?? {};
-  } catch (error) {
-    await writeLog(`source resolve failed source=${source} error=${errorName(error)}`);
-    return {};
+/**
+ * The merged-table sources that expose `scanUsage`, in table order — the input
+ * to `collectWindowUsage`. `includeHandlers` defaults to `true` (the `usage`
+ * command may load a billable JS handler); the signature-badge refresh passes
+ * `false` so no third-party module is imported on the hook path, scanning only
+ * the first-party `builtin:` sources.
+ */
+export async function billableSources(
+  config: AppConfig,
+  options: { includeHandlers?: boolean } = {}
+): Promise<BillableSource[]> {
+  const billable: BillableSource[] = [];
+  for (const [id, entry] of Object.entries(mergedSources(config))) {
+    const resolved = await resolveSourcePlugin(id, entry, options);
+    const scanUsage = resolved?.plugin.scanUsage;
+    if (scanUsage) {
+      billable.push({ id, scanUsage: scanUsage.bind(resolved.plugin) });
+    }
   }
+  return billable;
 }
 
 function builtinHandlerId(handler: string | undefined): string | undefined {
