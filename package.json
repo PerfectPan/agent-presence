@@ -18,7 +18,7 @@
     "agent-signature": "./dist/src/cli.js"
   },
   "scripts": {
-    "build": "rm -rf dist && tsc -p tsconfig.build.json && cp src/sources.default.json dist/src/sources.default.json && chmod +x dist/src/cli.js dist/scripts/*.js",
+    "build": "rm -rf dist && tsc -p tsconfig.build.json && cp src/sources.default.json dist/src/sources.default.json && cp src/usage/litellm-pricing.json dist/src/usage/litellm-pricing.json && chmod +x dist/src/cli.js dist/scripts/*.js",
     "install:all-hooks": "pnpm run install:codex-hook && pnpm run install:claude-hook && pnpm run install:opencode-plugin && pnpm run install:gemini-hook && pnpm run install:pi-extension && pnpm run install:shutdown-watcher",
     "install:claude-hook": "node dist/scripts/install-claude-hook.js",
     "install:codex-hook": "node dist/scripts/install-codex-hook.js",
@@ -38,6 +38,7 @@
     "release": "changeset publish",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit",
+    "update-pricing": "node scripts/update-pricing.mjs",
     "version": "changeset version"
   },
   "publishConfig": {

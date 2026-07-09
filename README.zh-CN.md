@@ -82,7 +82,7 @@ agent-presence usage --days 7   # 单个自然日窗口
 agent-presence usage --json     # 给脚本用的结构化输出
 ```
 
-可以用渲染变量（`{usage_1d}`、`{usage_7d}`）或 `usage.showInSignature: true` 把它放进签名。数据来源、定价覆盖、过期徽标的 `—` 占位见 [Token 用量](https://agent-presence.vercel.app/zh/guide/token-usage/)。
+可以用渲染变量（`{usage_1d}`、`{usage_7d}`）或 `usage.showInSignature: true` 把它放进签名。支持模型会按内置 LiteLLM 快照计价（私有模型仍可用 pricing override），数据来源和过期徽标的 `—` 占位见 [Token 用量](https://agent-presence.vercel.app/zh/guide/token-usage/)。
 
 ## 自定义文案
 

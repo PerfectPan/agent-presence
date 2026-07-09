@@ -18,9 +18,12 @@ function record(partial: Partial<UsageRecord>): UsageRecord {
 
 describe('resolvePricing', () => {
   it('matches the longest substring key', () => {
-    expect(resolvePricing('claude-opus-4-8')?.input).toBe(15);
+    // Exact supported-model snapshot keys beat broader fallback aliases.
+    expect(resolvePricing('claude-opus-4-8')?.input).toBe(5);
     expect(resolvePricing('claude-sonnet-4-6')?.input).toBe(3);
-    expect(resolvePricing('gpt-5.5')?.input).toBe(1.25);
+    // gpt-5.5 is present in the LiteLLM snapshot and must beat the broader gpt-5 fallback.
+    expect(resolvePricing('gpt-5.5')?.input).toBe(5);
+    expect(resolvePricing('gpt-5.5')?.output).toBe(30);
   });
 
   it('returns null for unknown models', () => {
@@ -30,8 +33,19 @@ describe('resolvePricing', () => {
   it('applies overrides over defaults', () => {
     const pricing = resolvePricing('claude-opus-4-8', { opus: { input: 99 } });
     expect(pricing?.input).toBe(99);
-    // unspecified fields fall back to the default opus rates
+    // unspecified fields fall back to the matched fallback alias
     expect(pricing?.output).toBe(75);
+  });
+
+  it('applies overrides over the LiteLLM snapshot', () => {
+    const pricing = resolvePricing('gpt-5.5', { 'gpt-5.5': { input: 7 } });
+    expect(pricing).toEqual({ input: 7, output: 30, cacheWrite: 5, cacheRead: 0.5 });
+  });
+
+  it('prices supported LiteLLM snapshot models without per-machine overrides', () => {
+    expect(resolvePricing('claude-fable-5')).toEqual({ input: 10, output: 50, cacheWrite: 12.5, cacheRead: 1 });
+    expect(resolvePricing('DeepSeek-V4-Pro')).toEqual({ input: 0.435, output: 0.87, cacheWrite: 0, cacheRead: 0.003625 });
+    expect(resolvePricing('Gemini-3-Flash-Preview')).toEqual({ input: 0.5, output: 3, cacheWrite: 0.5, cacheRead: 0.05 });
   });
 });
 
@@ -45,8 +59,8 @@ describe('resolveRecordCost', () => {
     const cost = resolveRecordCost(
       record({ inputTokens: 1_000_000, outputTokens: 1_000_000, cacheReadTokens: 1_000_000 })
     );
-    // opus: 15 input + 75 output + 1.5 cacheRead per MTok
-    expect(cost).toBeCloseTo(15 + 75 + 1.5, 5);
+    // claude-opus-4-8 from the LiteLLM snapshot: 5 input + 25 output + 0.5 cacheRead per MTok
+    expect(cost).toBeCloseTo(5 + 25 + 0.5, 5);
   });
 
   it('returns null when the model is unpriced', () => {
