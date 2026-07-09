@@ -76,13 +76,15 @@ describe('ccusage cost parity (per-bucket formula)', () => {
     expect(resolveRecordCost(record({ source: 'opencode', costUsd: 0 }), PRICES)).toBe(0);
   });
 
-  it('reports null (not a wrong number) for an unpriced in-house model', () => {
-    // gpt-5.5 / fable-5 etc. are not in DEFAULT_PRICING; until an override is
-    // added they must yield null, keeping token counts exact.
-    expect(resolveRecordCost(record({ model: 'fable-5', inputTokens: 1_000_000 }))).toBeNull();
-    // With an explicit override, the same record prices via the formula above.
-    const priced = resolveRecordCost(record({ model: 'fable-5', inputTokens: 1_000_000 }), {
-      'fable-5': { input: 15, output: 75, cacheWrite: 18.75, cacheRead: 1.5 }
+  it('prices supported snapshot models and returns null for an unsupported one', () => {
+    expect(resolveRecordCost(record({ model: 'gpt-5.5', inputTokens: 1_000_000 }))).toBeCloseTo(5, 6);
+    // openrouter-3o is not in the supported LiteLLM snapshot; keep tokens exact
+    // and report unknown cost rather than inventing a number.
+    expect(resolveRecordCost(record({ model: 'openrouter-3o', inputTokens: 1_000_000 }))).toBeNull();
+    // With an explicit override, the same unsupported model prices via the
+    // formula above.
+    const priced = resolveRecordCost(record({ model: 'openrouter-3o', inputTokens: 1_000_000 }), {
+      'openrouter-3o': { input: 15, output: 75, cacheWrite: 18.75, cacheRead: 1.5 }
     });
     expect(priced).toBeCloseTo(15, 6);
   });

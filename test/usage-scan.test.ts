@@ -237,8 +237,8 @@ describe('collectWindowUsage', () => {
 
     const claude = window.bySource.find((s) => s.source === 'claude');
     expect(claude?.inputTokens).toBe(1_000_000);
-    expect(claude?.costUsd).toBeCloseTo(15, 5); // 1M input @ opus $15/MTok
-    expect(window.total.costUsd).toBeCloseTo(15, 5);
+    expect(claude?.costUsd).toBeCloseTo(5, 5); // 1M input @ claude-opus-4-8 $5/MTok
+    expect(window.total.costUsd).toBeCloseTo(5, 5);
     const startOfToday = new Date(NOW);
     startOfToday.setHours(0, 0, 0, 0);
     expect(window.sinceMs).toBe(startOfToday.getTime()); // calendar-day: snaps to local midnight
