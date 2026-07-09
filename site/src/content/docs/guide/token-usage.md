@@ -27,7 +27,7 @@ Usage is a capability of the same source table that drives presence: a source th
 | opencode | yes — reads the local SQLite store; uses the cost opencode records |
 | Gemini CLI | yes — reads the local chat transcripts; priced from the table |
 
-Cost shows `n/a` for models with no pricing entry; token counts are always exact. Override pricing per model in `~/.agent-presence/config.json`. Pi and opencode log a real cost, so those are used as-is; the rest are priced from the table.
+Cost shows `n/a` for models with no pricing entry; token counts are always exact. Pi and opencode log a real cost, so those are used as-is. Other sources are priced from the bundled LiteLLM snapshot for supported models (for example `gpt-5.5`, `claude-fable-5`, `deepseek-v4-pro`, and `gemini-3-flash-preview`), with a small fallback table for older aliases. Override pricing per model in `~/.agent-presence/config.json` when your deployment uses a private or unlisted model.
 
 ## In the signature
 

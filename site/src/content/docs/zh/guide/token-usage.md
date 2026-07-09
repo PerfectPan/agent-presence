@@ -27,7 +27,7 @@ Token 统计是驱动 presence 的同一张源表的一种能力：实现了 `sc
 | opencode | 支持 — 读取本地 SQLite 存储；用 opencode 记录的成本 |
 | Gemini CLI | 支持 — 读取本地会话 transcript；按价目表计价 |
 
-无价目表的模型成本显示 `n/a`；token 数始终精确。可在 `~/.agent-presence/config.json` 按模型覆盖单价。Pi 与 opencode 会记录真实成本，直接采用；其余按价目表计价。
+无价目表的模型成本显示 `n/a`；token 数始终精确。Pi 与 opencode 会记录真实成本，直接采用。其余源优先使用内置的 LiteLLM 支持模型快照计价（例如 `gpt-5.5`、`claude-fable-5`、`deepseek-v4-pro`、`gemini-3-flash-preview`），再回退到少量旧别名价目表。若你的部署使用私有或未收录模型，可在 `~/.agent-presence/config.json` 按模型覆盖单价。
 
 ## 放进签名
 

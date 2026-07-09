@@ -82,7 +82,7 @@ agent-presence usage --days 7   # a single calendar-day window
 agent-presence usage --json     # structured output for scripts
 ```
 
-Surface it in the signature with render variables (`{usage_1d}`, `{usage_7d}`) or `usage.showInSignature: true`. Sources, pricing overrides, and the stale-badge `—` guard: [Token usage](https://agent-presence.vercel.app/guide/token-usage/).
+Surface it in the signature with render variables (`{usage_1d}`, `{usage_7d}`) or `usage.showInSignature: true`. Supported models are priced from a bundled LiteLLM snapshot (private models can still use pricing overrides); sources and the stale-badge `—` guard: [Token usage](https://agent-presence.vercel.app/guide/token-usage/).
 
 ## Configure copy
 
