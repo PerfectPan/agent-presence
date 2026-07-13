@@ -50,10 +50,12 @@ A new `src/usage/` module, independent of the presence hook path:
     `output_tokens`, so keeping the first under-counts output. Exclude
     `<synthetic>` turns. (Cross-checked against `ccusage`: matches to within
     live-write noise; an earlier keep-first version under-counted output ~3.8%.)
-  - Codex: diff the monotonic cumulative `total_token_usage` per session and
-    attribute each increment to its event timestamp; summing the per-event
-    `last_token_usage` double-counts (~1.6x here). Scan both `sessions/` and
-    `archived_sessions/`. Split cached input out of input.
+  - Codex: prefer each real event's `last_token_usage`, falling back to a
+    saturating diff of `total_token_usage` for older logs. Forked/subagent
+    sessions replay the parent's token history in one timestamp second; detect
+    that prefix from `forked_from_id` / `thread_spawn`, skip it while retaining
+    its cumulative baseline, then count only the child's new events. Scan both
+    `sessions/` and `archived_sessions/`. Split cached input out of input.
   - Pi: trust the cost Pi already records in the transcript (display mode).
 - `pricing.ts` — best-effort USD-per-MTok table matched by model substring
   (longest match wins), overridable via `config.usage.pricing`. Unknown models

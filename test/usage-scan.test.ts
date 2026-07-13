@@ -114,7 +114,14 @@ describe('scanClaude', () => {
   });
 });
 
-function codexCount(ts: number, input: number, cached: number, output: number, total: number): unknown {
+function codexCount(
+  ts: number,
+  input: number,
+  cached: number,
+  output: number,
+  total: number,
+  last?: { input: number; cached: number; output: number; total: number }
+): unknown {
   return {
     timestamp: iso(ts),
     type: 'event_msg',
@@ -126,7 +133,17 @@ function codexCount(ts: number, input: number, cached: number, output: number, t
           cached_input_tokens: cached,
           output_tokens: output,
           total_tokens: total
-        }
+        },
+        ...(last
+          ? {
+              last_token_usage: {
+                input_tokens: last.input,
+                cached_input_tokens: last.cached,
+                output_tokens: last.output,
+                total_tokens: last.total
+              }
+            }
+          : {})
       }
     }
   };
@@ -153,12 +170,12 @@ describe('scanCodex', () => {
     expect(records[0]).toMatchObject({ inputTokens: 800, cacheReadTokens: 200, outputTokens: 50, cacheWriteTokens: 0 });
   });
 
-  it('treats a cumulative drop as a context reset (counts the post-reset usage)', async () => {
+  it('uses last_token_usage when a cumulative total resets', async () => {
     const root = await writeJsonl('reset.jsonl', [
       { timestamp: iso(NOW - 6000), type: 'turn_context', payload: { model: 'gpt-5.5' } },
       codexCount(NOW - 5000, 5000, 0, 100, 5100),
-      // cumulative drops (compaction) — the new snapshot is counted in full
-      codexCount(NOW - 4000, 800, 0, 30, 830)
+      // cumulative drops (compaction), but the per-turn usage remains exact
+      codexCount(NOW - 4000, 800, 0, 30, 830, { input: 800, cached: 0, output: 30, total: 830 })
     ]);
 
     const records = await scanCodex({ root, sinceMs: NOW - DAY, untilMs: NOW });
@@ -167,6 +184,32 @@ describe('scanCodex', () => {
       0
     );
     expect(totalTokens).toBe(5100 + 830);
+  });
+
+  it('skips a forked session replay prefix and counts only new subagent usage', async () => {
+    const replayMs = NOW - 5000;
+    const root = await writeJsonl('forked.jsonl', [
+      {
+        timestamp: iso(replayMs - 1),
+        type: 'session_meta',
+        payload: { forked_from_id: 'parent', source: { subagent: { thread_spawn: { depth: 1 } } } }
+      },
+      { timestamp: iso(replayMs - 1), type: 'turn_context', payload: { model: 'gpt-5.5' } },
+      // Replayed parent history: many cumulative events are collapsed into one second.
+      codexCount(replayMs, 100, 20, 10, 110, { input: 100, cached: 20, output: 10, total: 110 }),
+      codexCount(replayMs + 1, 250, 50, 25, 275, { input: 150, cached: 30, output: 15, total: 165 }),
+      // First real child event arrives in the next second and must be counted.
+      codexCount(replayMs + 1000, 290, 60, 35, 325, { input: 40, cached: 10, output: 10, total: 50 })
+    ]);
+
+    const records = await scanCodex({ root, sinceMs: NOW - DAY, untilMs: NOW });
+    expect(records).toHaveLength(1);
+    expect(records[0]).toMatchObject({
+      model: 'gpt-5.5',
+      inputTokens: 30,
+      cacheReadTokens: 10,
+      outputTokens: 10
+    });
   });
 
   it('maintains the cumulative baseline across the window edge (no inflated first increment)', async () => {
