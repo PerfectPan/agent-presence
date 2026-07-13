@@ -32,6 +32,8 @@ import Landing from '../../layouts/Landing.astro';
     { t: 'token 消耗,带成本', d: '跨所有智能体的自然日 token 总量,并估算到美元——ccusage 风格,从本地 transcript 扫描得来。' },
     { t: '在干活,而非只是开着', d: '只统计真正在跑的智能体。心跳维持在线;空闲会话过期;休眠与唤醒归零。' },
     { t: '无 cron,无常驻', d: '通过智能体本就会触发的 hook,在会话边界刷新。后台没有任何轮询。' },
+    { meta: 'source add', t: '接入你自己的智能体', d: '安装 source 包、零代码映射规整的 hook payload,或在复杂场景加载本地 handler。', href: '/zh/guide/sources/', cta: '了解 Sources →' },
+    { meta: 'plugins.sources', t: '无需 fork 即可覆盖', d: '在同一张 source table 里新增来源、替换内置解析器或禁用某个来源,无需修改 CLI 核心。', href: '/zh/guide/sources/', cta: '查看 source table →' },
   ]}
   provEyebrow="两种渲染方式"
   provTitle="选飞书认的那种预览"
