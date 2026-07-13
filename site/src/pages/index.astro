@@ -32,6 +32,8 @@ import Landing from '../layouts/Landing.astro';
     { t: 'Token spend, with cost', d: 'Calendar-day token totals across every agent, priced to a dollar estimate — ccusage-style, scanned from local transcripts.' },
     { t: 'Working, not just open', d: 'Counts agents that are actually running. Heartbeats keep them live; idle sessions expire; sleep and wake reset to zero.' },
     { t: 'No cron, no daemon', d: 'Refreshes on session boundaries through the hooks your agents already fire. Nothing polls in the background.' },
+    { meta: 'source add', t: 'Bring your own agent', d: 'Install a source package, map a regular hook payload with no code, or load a local handler when the payload needs custom logic.', href: '/guide/sources/', cta: 'Explore Sources →' },
+    { meta: 'plugins.sources', t: 'Override without a fork', d: 'Add a source, replace a built-in resolver, or disable one from a single merged source table — without patching the CLI core.', href: '/guide/sources/', cta: 'See the source table →' },
   ]}
   provEyebrow="two ways to render"
   provTitle="Pick the preview that Feishu likes"

@@ -114,8 +114,10 @@ const {
             {features.map((f) => (
               <article class="feat">
                 <span class="feat__mark" aria-hidden="true" />
+                {f.meta && <span class="feat__meta">{f.meta}</span>}
                 <h3>{f.t}</h3>
                 <p>{f.d}</p>
+                {f.href && <a class="feat__link" href={f.href}>{f.cta}</a>}
               </article>
             ))}
           </div>
@@ -222,11 +224,16 @@ const {
       .sec__sub { color: var(--ap-text-dim); margin: 12px 0 0; max-width: 40em; font-size: 15px; }
 
       .feat__grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; margin-top: 32px; }
-      .feat { position: relative; border: 1px solid var(--ap-border-soft); border-radius: var(--ap-radius); padding: 22px 22px 20px; background: var(--ap-panel); box-shadow: 0 1px 2px rgba(26,24,38,.04), 0 18px 40px -28px rgba(20,40,90,.18); overflow: hidden; transition: border-color .2s, transform .2s, box-shadow .2s; }
+      .feat { position: relative; display: flex; flex-direction: column; border: 1px solid var(--ap-border-soft); border-radius: var(--ap-radius); padding: 22px 22px 20px; background: var(--ap-panel); box-shadow: 0 1px 2px rgba(26,24,38,.04), 0 18px 40px -28px rgba(20,40,90,.18); overflow: hidden; transition: border-color .2s, transform .2s, box-shadow .2s; }
       .feat:hover { border-color: rgba(37,99,235,.35); transform: translateY(-3px); box-shadow: 0 1px 2px rgba(26,24,38,.04), 0 26px 50px -26px rgba(37,99,235,.26); }
       .feat__mark { position: absolute; top: 0; left: 24px; width: 38px; height: 3px; border-radius: 0 0 3px 3px; background: var(--ap-grad); }
+      .feat__meta { align-self: flex-start; margin-top: 3px; font-family: var(--ap-font-mono); font-size: 11px; color: var(--ap-blue); padding: 3px 8px; border: 1px solid rgba(37,99,235,.18); border-radius: 999px; background: var(--ap-grad-soft); }
       .feat h3 { font-family: var(--ap-font-display); font-weight: 600; font-size: 18px; color: var(--ap-text); margin: 6px 0 0; }
+      .feat__meta + h3 { margin-top: 12px; }
       .feat p { color: var(--ap-text-dim); margin: 10px 0 0; font-size: 14px; }
+      .feat__link { align-self: flex-start; margin-top: auto; padding-top: 18px; color: var(--ap-blue-deep); font-family: var(--ap-font-display); font-weight: 600; font-size: 13.5px; text-decoration: none; }
+      .feat__link:hover { color: var(--ap-blue); text-decoration: underline; text-underline-offset: 3px; }
+      .feat__link:focus-visible { outline: 2px solid var(--ap-blue); outline-offset: 4px; border-radius: 2px; }
 
       .prov__in { display: grid; grid-template-columns: .9fr 1.1fr; gap: clamp(28px, 5vw, 56px); align-items: center; }
       .prov__cards { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
