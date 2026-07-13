@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.8.1
+
+### Patch Changes
+
+- 8d86578: Prevent Codex Desktop subagent transcript replays from inflating token totals in `agent-presence usage` and the Feishu signature badge. Forked session replay prefixes are now excluded using the same event semantics as ccusage while genuine subagent usage remains counted.
+
 ## 0.8.0
 
 ### Minor Changes
