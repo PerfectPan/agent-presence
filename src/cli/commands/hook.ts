@@ -41,7 +41,7 @@ export async function hook(args: string[]): Promise<void> {
     // reuse the cached values, so high-frequency tool events do no scanning.
     const usagePlan = usageRenderPlan(config);
     if (usagePlan.enabled && isSessionBoundaryEvent(event)) {
-      await refreshSignatureUsageBadges(config, statePath, now);
+      await refreshSignatureUsageBadges(config, statePath, now, source);
     }
 
     await syncRenderedSlotWithDeferredFlush(
