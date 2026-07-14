@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.8.3
+
+### Patch Changes
+
+- a2f6ecc: Keep deferred slot delivery cache-only so agent hooks cannot trigger a cross-source usage rescan. Preserve cached usage badges when macOS power events reset active sessions, and reject cross-midnight source snapshot mixtures.
+
 ## 0.8.2
 
 ### Patch Changes
