@@ -10,7 +10,9 @@
 
 ### Patch Changes
 
-- Scope session-boundary usage refreshes to the agent that emitted the hook. Signature state now stores per-source contributions and aggregates them without allowing an OpenCode event to rescan or overwrite Codex usage; explicit `agent-presence update` remains the full-refresh path.
+- Keep deferred slot flushes cache-only so an OpenCode hook retry cannot fall through to `agent-presence update` and rescan Codex, Claude, or other sources.
+- Preserve cached token usage when the macOS power watcher clears active sessions on sleep, lid close, or wake; custom `{usage_Nd}` templates no longer collapse to an empty label such as `今日 `.
+- Refuse to aggregate per-source usage snapshots from different calendar days, so the first hook after midnight cannot label yesterday's cached totals as today's usage.
 
 ## 0.8.1
 

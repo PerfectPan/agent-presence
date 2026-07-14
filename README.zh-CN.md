@@ -62,7 +62,7 @@ agent-presence setup
 
 ## Presence
 
-统计的是「正在工作的智能体」，而不是「打开了多少个终端窗口」。一个 session 会从 running 进入 `finished`（明确结束，忽略迟到 heartbeat）或 `expired`（3 分钟无 heartbeat；后续真实 heartbeat 可恢复为 running）。睡眠、合盖、唤醒都会把计数重置为 0。
+统计的是「正在工作的智能体」，而不是「打开了多少个终端窗口」。一个 session 会从 running 进入 `finished`（明确结束，忽略迟到 heartbeat）或 `expired`（3 分钟无 heartbeat；后续真实 heartbeat 可恢复为 running）。睡眠、合盖、唤醒都会把计数重置为 0，但会保留已缓存的 token 用量。
 
 ```text
 0 -> AI 牛马暂未开工
@@ -82,7 +82,7 @@ agent-presence usage --days 7   # 单个自然日窗口
 agent-presence usage --json     # 给脚本用的结构化输出
 ```
 
-可以用渲染变量（`{usage_1d}`、`{usage_7d}`）或 `usage.showInSignature: true` 把它放进签名。每个智能体的会话边界只刷新自己来源的缓存贡献；`agent-presence update` 才执行显式全量刷新，签名层随后汇总。支持模型会按内置 LiteLLM 快照计价（私有模型仍可用 pricing override），数据来源和过期徽标的 `—` 占位见 [Token 用量](https://agent-presence.vercel.app/zh/guide/token-usage/)。
+可以用渲染变量（`{usage_1d}`、`{usage_7d}`）或 `usage.showInSignature: true` 把它放进签名。每个智能体的会话边界只刷新自己来源的缓存贡献；provider 的延迟 flush 只发布缓存、不重新扫描，`agent-presence update` 才执行显式全量刷新，签名层随后汇总。支持模型会按内置 LiteLLM 快照计价（私有模型仍可用 pricing override），数据来源和过期徽标的 `—` 占位见 [Token 用量](https://agent-presence.vercel.app/zh/guide/token-usage/)。
 
 ## 自定义文案
 

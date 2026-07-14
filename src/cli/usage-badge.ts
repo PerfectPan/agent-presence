@@ -7,6 +7,7 @@ import {
 } from '../config.js';
 import { referencedUsageWindows } from '../render.js';
 import { billableSources } from '../sources.js';
+import { calendarDaysBetween } from '../time.js';
 import { renderUsageBadge } from '../usage/format.js';
 import { collectWindowUsage } from '../usage/index.js';
 import type { BillableSource, PricingOverrides } from '../usage/index.js';
@@ -131,10 +132,16 @@ export async function refreshUsageBadgeCache(options: UsageBadgeCacheRefresh): P
       const bySource = options.source ? { ...activeSnapshots, ...refreshed } : refreshed;
       snapshots[days] = bySource;
 
-      // A partially migrated cache cannot produce a truthful aggregate. Keep
-      // the previous badge until every configured built-in has a contribution
-      // (an explicit update always establishes the complete baseline).
-      if (options.sources.every((source) => bySource[source.id] !== undefined)) {
+      // A partial or cross-midnight cache cannot produce a truthful aggregate:
+      // calendar-day windows shift at midnight, so yesterday's source snapshot
+      // is incompatible with a source refreshed today. Keep the previous badge
+      // until every configured built-in has a current-day contribution.
+      if (
+        options.sources.every((source) => {
+          const snapshot = bySource[source.id];
+          return snapshot !== undefined && calendarDaysBetween(snapshot.scannedAt, options.now) === 0;
+        })
+      ) {
         const aggregate = aggregateSnapshots(Object.values(bySource));
         badges[days] = renderUsageBadge(aggregate.totalTokens, aggregate.costUsd);
         rebuiltWindows += 1;

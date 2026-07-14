@@ -72,7 +72,7 @@ const delayMs = Number(process.argv[1]);
 const nodePath = process.argv[2];
 const cliPath = process.argv[3];
 setTimeout(() => {
-  const child = spawn(nodePath, [cliPath, 'update', '--force', '--silent'], {
+  const child = spawn(nodePath, [cliPath, 'flush', '--force', '--silent'], {
     detached: true,
     env: process.env,
     stdio: 'ignore'
