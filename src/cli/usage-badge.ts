@@ -9,7 +9,8 @@ import { referencedUsageWindows } from '../render.js';
 import { billableSources } from '../sources.js';
 import { renderUsageBadge } from '../usage/format.js';
 import { collectWindowUsage } from '../usage/index.js';
-import { loadState, saveState, withStateLock } from '../state.js';
+import type { BillableSource, PricingOverrides } from '../usage/index.js';
+import { loadState, saveState, withStateLock, type UsageSnapshot } from '../state.js';
 
 export interface UsageRenderPlan {
   /** Whether any usage badge should be rendered into the signature. */
@@ -35,16 +36,16 @@ export function usageRenderPlan(config: AppConfig): UsageRenderPlan {
 }
 
 /**
- * Rescan transcripts and refresh the cached usage badges in state for every
- * window the signature references. Called only on session-boundary events (and
- * explicit updates): each scan reads the whole calendar-day window, so a single
- * refresh is complete — no per-event scanning, no cron. The scans run outside
- * the state lock and any failure leaves the previous cache intact.
+ * Refresh cached usage for every window the signature references. A hook passes
+ * its source id and scans only that source; an explicit update omits the source
+ * and rebuilds every built-in contribution. Scans run outside the state lock
+ * and any failure leaves the previous cache intact.
  */
 export async function refreshSignatureUsageBadges(
   config: AppConfig,
   statePath: string,
-  now: number
+  now: number,
+  source?: string
 ): Promise<void> {
   const plan = usageRenderPlan(config);
   if (!plan.enabled) {
@@ -52,27 +53,113 @@ export async function refreshSignatureUsageBadges(
   }
 
   const pricing = usagePricingOverrides(config);
-  // Runs on the hook path (session boundaries), so scan only the first-party
-  // built-in sources — never load third-party JS handlers here (`includeHandlers:
-  // false` keeps `billableSources` from `import()`ing them on the hot path).
+  // The signature path stays first-party even for explicit updates: never load
+  // third-party JS handlers here (`includeHandlers: false` keeps
+  // `billableSources` from `import()`ing them on the hot path).
   const sources = await billableSources(config, { includeHandlers: false });
-  let badges: Record<string, string>;
+  await refreshUsageBadgeCache({
+    statePath,
+    now,
+    windows: plan.windows,
+    pricing,
+    sources,
+    source
+  });
+}
+
+export interface UsageBadgeCacheRefresh {
+  statePath: string;
+  now: number;
+  windows: number[];
+  sources: BillableSource[];
+  pricing?: PricingOverrides;
+  /** A hook refresh owns only this source. Omit for an explicit full refresh. */
+  source?: string;
+}
+
+/**
+ * Refresh source-owned usage snapshots, then rebuild each aggregate badge from
+ * the cached contributions. A hook supplies its source id; explicit updates
+ * omit it and replace the complete built-in snapshot set.
+ */
+export async function refreshUsageBadgeCache(options: UsageBadgeCacheRefresh): Promise<void> {
+  const selectedSources = options.source
+    ? options.sources.filter((candidate) => candidate.id === options.source)
+    : options.sources;
+  if (options.source && selectedSources.length === 0) {
+    return;
+  }
+
+  let results: Array<readonly [string, Record<string, UsageSnapshot>]>;
   try {
-    const results = await Promise.all(
-      plan.windows.map(async (days) => {
-        const window = await collectWindowUsage({ days, now, pricing, sources });
-        return [String(days), renderUsageBadge(window.total.totalTokens, window.total.costUsd)] as const;
+    results = await Promise.all(
+      options.windows.map(async (days) => {
+        const window = await collectWindowUsage({
+          days,
+          now: options.now,
+          pricing: options.pricing,
+          sources: selectedSources
+        });
+        return [
+          String(days),
+          Object.fromEntries(
+            window.bySource.map((usage) => [
+              usage.source,
+              { totalTokens: usage.totalTokens, costUsd: usage.costUsd, scannedAt: options.now }
+            ])
+          )
+        ] as const;
       })
     );
-    badges = Object.fromEntries(results);
   } catch {
     return; // keep the previously cached badges on scan failure
   }
 
-  await withStateLock(statePath, async () => {
-    const state = await loadState(statePath);
-    state.usageBadges = { ...state.usageBadges, ...badges };
-    state.usageBadgesAt = now;
-    await saveState(state, statePath);
+  await withStateLock(options.statePath, async () => {
+    const state = await loadState(options.statePath);
+    const snapshots = { ...state.usageSnapshots };
+    const badges = { ...state.usageBadges };
+    let rebuiltWindows = 0;
+
+    for (const [days, refreshed] of results) {
+      const activeSnapshots = Object.fromEntries(
+        options.sources.flatMap((source) => {
+          const snapshot = snapshots[days]?.[source.id];
+          return snapshot ? [[source.id, snapshot] as const] : [];
+        })
+      );
+      const bySource = options.source ? { ...activeSnapshots, ...refreshed } : refreshed;
+      snapshots[days] = bySource;
+
+      // A partially migrated cache cannot produce a truthful aggregate. Keep
+      // the previous badge until every configured built-in has a contribution
+      // (an explicit update always establishes the complete baseline).
+      if (options.sources.every((source) => bySource[source.id] !== undefined)) {
+        const aggregate = aggregateSnapshots(Object.values(bySource));
+        badges[days] = renderUsageBadge(aggregate.totalTokens, aggregate.costUsd);
+        rebuiltWindows += 1;
+      }
+    }
+
+    state.usageSnapshots = snapshots;
+    state.usageBadges = badges;
+    if (results.length > 0 && rebuiltWindows === results.length) {
+      state.usageBadgesAt = options.now;
+    }
+    await saveState(state, options.statePath);
   });
+}
+
+function aggregateSnapshots(snapshots: UsageSnapshot[]): { totalTokens: number; costUsd: number | null } {
+  let totalTokens = 0;
+  let costUsd = 0;
+  let sawCost = false;
+  for (const snapshot of snapshots) {
+    totalTokens += snapshot.totalTokens;
+    if (snapshot.costUsd !== null) {
+      sawCost = true;
+      costUsd += snapshot.costUsd;
+    }
+  }
+  return { totalTokens, costUsd: sawCost ? costUsd : null };
 }

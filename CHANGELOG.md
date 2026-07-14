@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Patch Changes
+
+- Scope session-boundary usage refreshes to the agent that emitted the hook. Signature state now stores per-source contributions and aggregates them without allowing an OpenCode event to rescan or overwrite Codex usage; explicit `agent-presence update` remains the full-refresh path.
+
 ## 0.8.1
 
 ### Patch Changes

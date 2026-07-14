@@ -25,6 +25,14 @@ export interface PresenceState {
   /** Cached usage badges for the signature, keyed by window day count. */
   usageBadges?: Record<string, string>;
   usageBadgesAt?: number;
+  /** Per-window source contributions used to rebuild aggregate usage badges. */
+  usageSnapshots?: Record<string, Record<string, UsageSnapshot>>;
+}
+
+export interface UsageSnapshot {
+  totalTokens: number;
+  costUsd: number | null;
+  scannedAt: number;
 }
 
 export interface AgentEventInput {
@@ -81,7 +89,8 @@ export function normalizeState(raw: PresenceState): PresenceState {
     lastValue: state.lastValue ?? '',
     pendingSlotFlushAt: typeof state.pendingSlotFlushAt === 'number' ? state.pendingSlotFlushAt : undefined,
     usageBadges: normalizeUsageBadges(state.usageBadges),
-    usageBadgesAt: typeof state.usageBadgesAt === 'number' ? state.usageBadgesAt : undefined
+    usageBadgesAt: typeof state.usageBadgesAt === 'number' ? state.usageBadgesAt : undefined,
+    usageSnapshots: normalizeUsageSnapshots(state.usageSnapshots)
   };
 }
 
@@ -96,6 +105,45 @@ function normalizeUsageBadges(raw: unknown): Record<string, string> | undefined 
     }
   }
   return Object.keys(badges).length > 0 ? badges : undefined;
+}
+
+function normalizeUsageSnapshots(raw: unknown): Record<string, Record<string, UsageSnapshot>> | undefined {
+  if (typeof raw !== 'object' || raw === null) {
+    return undefined;
+  }
+  const windows: Record<string, Record<string, UsageSnapshot>> = {};
+  for (const [days, rawSources] of Object.entries(raw as Record<string, unknown>)) {
+    if (!/^\d+$/.test(days) || typeof rawSources !== 'object' || rawSources === null) {
+      continue;
+    }
+    const sources: Record<string, UsageSnapshot> = {};
+    for (const [source, rawSnapshot] of Object.entries(rawSources as Record<string, unknown>)) {
+      if (!source || typeof rawSnapshot !== 'object' || rawSnapshot === null) {
+        continue;
+      }
+      const snapshot = rawSnapshot as Partial<UsageSnapshot>;
+      if (
+        typeof snapshot.totalTokens !== 'number' ||
+        !Number.isFinite(snapshot.totalTokens) ||
+        snapshot.totalTokens < 0 ||
+        (snapshot.costUsd !== null &&
+          (typeof snapshot.costUsd !== 'number' || !Number.isFinite(snapshot.costUsd) || snapshot.costUsd < 0)) ||
+        typeof snapshot.scannedAt !== 'number' ||
+        !Number.isFinite(snapshot.scannedAt)
+      ) {
+        continue;
+      }
+      sources[source] = {
+        totalTokens: snapshot.totalTokens,
+        costUsd: snapshot.costUsd,
+        scannedAt: snapshot.scannedAt
+      };
+    }
+    if (Object.keys(sources).length > 0) {
+      windows[days] = sources;
+    }
+  }
+  return Object.keys(windows).length > 0 ? windows : undefined;
 }
 
 export function applyAgentEvent(state: PresenceState, input: AgentEventInput): PresenceState {

@@ -36,6 +36,27 @@ describe('normalizeState usage badge cache', () => {
     expect(normalized.usageBadgesAt).toBe(1700);
   });
 
+  it('preserves valid source snapshots and drops malformed contributions', () => {
+    const raw = {
+      ...createEmptyState(),
+      usageSnapshots: {
+        '1': {
+          codex: { totalTokens: 100, costUsd: 1.25, scannedAt: 1700 },
+          broken: { totalTokens: -1, costUsd: 1, scannedAt: 1700 }
+        },
+        bad: {
+          claude: { totalTokens: 200, costUsd: 2, scannedAt: 1700 }
+        }
+      }
+    } as PresenceState;
+
+    expect(normalizeState(raw).usageSnapshots).toEqual({
+      '1': {
+        codex: { totalTokens: 100, costUsd: 1.25, scannedAt: 1700 }
+      }
+    });
+  });
+
   it('drops malformed cache entries and fields', () => {
     const raw = {
       ...createEmptyState(),

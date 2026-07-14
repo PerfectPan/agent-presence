@@ -36,8 +36,8 @@ export async function update(args: string[]): Promise<void> {
     return;
   }
 
-  // An explicit update is infrequent, so refresh usage badges here too (when
-  // enabled) before rendering, mirroring the hook path's boundary refresh.
+  // An explicit update is infrequent, so establish a complete usage snapshot
+  // before rendering. Hook boundaries refresh only their owning source.
   const usagePlan = usageRenderPlan(config);
   if (usagePlan.enabled) {
     await refreshSignatureUsageBadges(config, statePath, now);
