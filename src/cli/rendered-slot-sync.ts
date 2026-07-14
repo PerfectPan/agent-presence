@@ -9,7 +9,8 @@ interface RenderedSlotSyncOptions {
   debounceMs: number;
   ttlMs: number;
   renderTemplates?: RenderTemplates;
-  usage?: { enabled: boolean; defaultWindow: number };
+  /** Required at the command boundary so cached usage cannot disappear by omission. */
+  usage: { enabled: boolean; defaultWindow: number };
 }
 
 export async function syncRenderedSlotWithDeferredFlush(

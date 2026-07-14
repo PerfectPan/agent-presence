@@ -1,5 +1,6 @@
 import { parseArgs } from './args.js';
 import { configure } from './commands/config.js';
+import { flush } from './commands/flush.js';
 import { hook } from './commands/hook.js';
 import { login } from './commands/login.js';
 import { reset } from './commands/reset.js';
@@ -54,6 +55,9 @@ export async function runCli(argv: string[]): Promise<void> {
       return;
     case 'update':
       await update(parsed.args);
+      return;
+    case 'flush':
+      await flush(parsed.args);
       return;
     case 'reset':
       await reset(parsed.args);

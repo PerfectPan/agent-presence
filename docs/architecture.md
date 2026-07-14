@@ -17,6 +17,7 @@ Two paths share this pipeline:
 ```text
 interactive path: login / setup / config / status / url / update / reset
 hook path:        agent lifecycle event -> silent CLI -> local state -> optional slot sync
+deferred path:    scheduled internal flush -> render cached state -> slot sync
 ```
 
 The interactive path can use prompts and rich output. The hook path must be fast, bounded, non-interactive, and safe to call from another agent runtime.
@@ -83,6 +84,7 @@ Machine-facing commands stay plain:
 
 ```text
 status/update/reset -> JSON or silent output
+flush               -> internal cache-only deferred publisher
 hook                -> pass-through `{}` for Codex or silent output for other agents
 url                 -> raw URL only
 ```
@@ -233,7 +235,7 @@ finished + ordinary late heartbeat      -> finished, ignored
 finished + UserPromptSubmit/start       -> running, new active turn for same agent session
 unknown finish id + matching source/project running session
                                          -> finish latest matching running session
-reset / power event                      -> finish all running sessions and sync zero
+reset / power event                      -> finish all running sessions, preserve cached usage, and sync zero
 ```
 
 This gives the model two recovery paths without process scanning:
@@ -273,6 +275,8 @@ Templates are configurable through `agent-presence config render` and environmen
 Slot writes are rate-limited because the slot provider should not be hammered by hook traffic. Hooks update local state immediately, then the renderer compares the newly rendered value with `lastValue` and `lastSlotUpdateAt`.
 
 Normal updates obey the debounce interval. `update --force` and `reset --force` bypass the local debounce when the user or power watcher explicitly asks for a sync.
+
+A debounced or rate-limited write schedules the internal `flush --force --silent` command. `flush` renders the already-persisted presence and usage cache; it never collects transcripts. This keeps retrying provider delivery separate from the explicit `update` command, whose application semantics include a complete usage refresh.
 
 Network I/O is kept outside the state mutation lock. That keeps hook contention small and prevents a slow provider request from blocking unrelated lifecycle writes.
 
@@ -318,7 +322,7 @@ Token/cost accounting is a **capability of the same source table**, not a separa
 
 `billableSources(config)` (`src/sources.ts`) enumerates the merged table's billable sources, in table order, through the **same** trust/resolution path as presence (`builtin:` → trusted shipped plugin; JS `handler` → the guarded, cached loader; `match` → skipped). `collectWindowUsage()` iterates that list — no hardcoded source set — so `agent-presence usage` and the signature badge both cover every billable source dynamically. Usage stays **after-the-fact transcript scanning** (ccusage-style), independent of the hook payload; hook events never carry token counts.
 
-Signature accounting keeps a per-window, per-source snapshot in state. A session-boundary hook refreshes only the contribution owned by its source (`opencode` scans opencode, `codex` scans Codex, and so on), then the renderer aggregates the configured source snapshots. This prevents one agent's lifecycle event or scanner version from recalculating another agent's ledger. An explicit `agent-presence update` is the only signature path that scans and replaces the complete built-in snapshot set. During migration from the older aggregate-only cache, a partial source refresh preserves the previous badge until every configured source has a snapshot; it never presents a partial value as the total.
+Signature accounting keeps a per-window, per-source snapshot in state. A session-boundary hook refreshes only the contribution owned by its source (`opencode` scans opencode, `codex` scans Codex, and so on), then the renderer aggregates the configured source snapshots. This prevents one agent's lifecycle event or scanner version from recalculating another agent's ledger. An explicit `agent-presence update` is the only signature path that scans and replaces the complete built-in snapshot set; deferred flushes and power-event resets only re-render the cache. During migration from the older aggregate-only cache, or after midnight when only some sources have refreshed into the new calendar-day window, a partial source refresh preserves the previous badge and timestamp until every configured source has a compatible current-day snapshot; it never presents a partial or cross-day value as the total.
 
 Two trust/portability details:
 
@@ -510,7 +514,7 @@ Current hook commands log notable failures such as missing session ids or hook e
 The LaunchAgent redirects stdout and stderr to:
 
 ```text
-/tmp/agent-presence-power-watch.log
+~/.agent-presence/power-watch.log
 ```
 
 This log is for watcher startup/runtime failures. It should stay credential-free because the watcher only invokes `agent-presence reset --force --silent`.

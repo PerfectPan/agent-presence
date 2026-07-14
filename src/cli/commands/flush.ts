@@ -2,21 +2,21 @@ import { configSlotId, debounceMs, getStatePath, loadConfig, providerId, renderT
 import { createProvider } from '../../providers/registry.js';
 import { assertSupportsPublish } from '../../providers/types.js';
 import { readCredential } from '../../secret.js';
-import { finishAllSessions } from '../../state.js';
 import { hasFlag, optionValue } from '../args.js';
 import { syncRenderedSlotWithDeferredFlush } from '../rendered-slot-sync.js';
 import { usageRenderPlan } from '../usage-badge.js';
 
-export async function reset(args: string[]): Promise<void> {
+/** Publish the latest cached presence state without collecting usage. */
+export async function flush(args: string[]): Promise<void> {
   const config = await loadConfig();
   const activeProvider = providerId(config, optionValue(args, '--provider'));
   const credential = await readCredential(configSlotId(config));
   const provider = createProvider(activeProvider, { config, credential });
   assertSupportsPublish(provider);
   const statePath = getStatePath();
-  const now = Date.now();
   const force = hasFlag(args, '--force');
   const silent = hasFlag(args, '--silent');
+  const now = Date.now();
   const usagePlan = usageRenderPlan(config);
 
   const result = await syncRenderedSlotWithDeferredFlush(
@@ -29,10 +29,7 @@ export async function reset(args: string[]): Promise<void> {
       renderTemplates: renderTemplates(config),
       usage: { enabled: usagePlan.enabled, defaultWindow: usagePlan.defaultWindow }
     },
-    (value) => provider.publishValue(value),
-    (state) => {
-      finishAllSessions(state, now);
-    }
+    (value) => provider.publishValue(value)
   );
 
   if (!silent) {

@@ -62,7 +62,7 @@ Re-running `setup` reuses an existing login (no second QR scan). The signature U
 
 ## Presence
 
-Counts agents that are actually working, not merely open terminal windows. A session goes running → `finished` (explicit, ignores late heartbeats) or `expired` (no heartbeat for 3 minutes; a later live heartbeat reopens it). Laptop sleep, lid close, and wake reset the count to 0.
+Counts agents that are actually working, not merely open terminal windows. A session goes running → `finished` (explicit, ignores late heartbeats) or `expired` (no heartbeat for 3 minutes; a later live heartbeat reopens it). Laptop sleep, lid close, and wake reset the count to 0 while preserving the cached token-usage badge.
 
 ```text
 0 -> AI 牛马暂未开工
@@ -82,7 +82,7 @@ agent-presence usage --days 7   # a single calendar-day window
 agent-presence usage --json     # structured output for scripts
 ```
 
-Surface it in the signature with render variables (`{usage_1d}`, `{usage_7d}`) or `usage.showInSignature: true`. Each agent's session boundary refreshes only that source's cached contribution; `agent-presence update` performs the explicit full refresh before the signature aggregates them. Supported models are priced from a bundled LiteLLM snapshot (private models can still use pricing overrides); sources and the stale-badge `—` guard: [Token usage](https://agent-presence.vercel.app/guide/token-usage/).
+Surface it in the signature with render variables (`{usage_1d}`, `{usage_7d}`) or `usage.showInSignature: true`. Each agent's session boundary refreshes only that source's cached contribution; deferred provider flushes publish that cache without rescanning, while `agent-presence update` performs the explicit full refresh before the signature aggregates them. Supported models are priced from a bundled LiteLLM snapshot (private models can still use pricing overrides); sources and the stale-badge `—` guard: [Token usage](https://agent-presence.vercel.app/guide/token-usage/).
 
 ## Configure copy
 

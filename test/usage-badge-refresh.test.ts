@@ -160,6 +160,52 @@ describe('refreshUsageBadgeCache', () => {
       }
     });
   });
+
+  it('does not combine source snapshots from different calendar days', async () => {
+    dir = await mkdtemp(join(tmpdir(), 'agent-presence-usage-badge-'));
+    const statePath = join(dir, 'state.json');
+    const yesterday = new Date(2026, 6, 14, 23, 59).getTime();
+    const today = new Date(2026, 6, 15, 0, 1).getTime();
+    await saveState(
+      {
+        sessions: {},
+        usageBadges: { '1': '350 · $3.50' },
+        usageBadgesAt: yesterday,
+        usageSnapshots: {
+          '1': {
+            codex: { totalTokens: 100, costUsd: 1, scannedAt: yesterday },
+            claude: { totalTokens: 200, costUsd: 2, scannedAt: yesterday },
+            opencode: { totalTokens: 50, costUsd: 0.5, scannedAt: yesterday }
+          }
+        }
+      },
+      statePath
+    );
+
+    const sources: BillableSource[] = [
+      { id: 'codex', scanUsage: vi.fn(async () => [record('codex', 20, 0.2)]) },
+      { id: 'claude', scanUsage: vi.fn(async () => [record('claude', 30, 0.3)]) },
+      { id: 'opencode', scanUsage: vi.fn(async () => [record('opencode', 10, 0.1)]) }
+    ];
+
+    await refreshUsageBadgeCache({ statePath, now: today, windows: [1], sources, source: 'opencode' });
+    expect(await loadState(statePath)).toMatchObject({
+      usageBadges: { '1': '350 · $3.50' },
+      usageBadgesAt: yesterday
+    });
+
+    await refreshUsageBadgeCache({ statePath, now: today, windows: [1], sources, source: 'codex' });
+    expect(await loadState(statePath)).toMatchObject({
+      usageBadges: { '1': '350 · $3.50' },
+      usageBadgesAt: yesterday
+    });
+
+    await refreshUsageBadgeCache({ statePath, now: today, windows: [1], sources, source: 'claude' });
+    expect(await loadState(statePath)).toMatchObject({
+      usageBadges: { '1': '60 · $0.60' },
+      usageBadgesAt: today
+    });
+  });
 });
 
 function record(source: string, totalTokens: number, costUsd: number): UsageRecord {
