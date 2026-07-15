@@ -7,6 +7,8 @@ export interface ModelPricing {
   input: number;
   output: number;
   cacheWrite: number;
+  /** One-hour cache creation rate; falls back to cacheWrite when absent. */
+  cacheWrite1h?: number;
   cacheRead: number;
 }
 
@@ -23,9 +25,9 @@ export interface ModelPricing {
  */
 export const DEFAULT_PRICING: Record<string, ModelPricing> = {
   // Anthropic (Claude) — standard tier list prices.
-  opus: { input: 15, output: 75, cacheWrite: 18.75, cacheRead: 1.5 },
-  sonnet: { input: 3, output: 15, cacheWrite: 3.75, cacheRead: 0.3 },
-  haiku: { input: 1, output: 5, cacheWrite: 1.25, cacheRead: 0.1 },
+  opus: { input: 15, output: 75, cacheWrite: 18.75, cacheWrite1h: 30, cacheRead: 1.5 },
+  sonnet: { input: 3, output: 15, cacheWrite: 3.75, cacheWrite1h: 6, cacheRead: 0.3 },
+  haiku: { input: 1, output: 5, cacheWrite: 1.25, cacheWrite1h: 2, cacheRead: 0.1 },
   // OpenAI (Codex) — GPT-5 family list prices. OpenAI bills cached input at a
   // reduced rate and has no separate cache-write charge, so cacheWrite mirrors
   // the input rate and cacheRead is the cached-input rate.
@@ -70,7 +72,13 @@ export function resolvePricing(model: string, overrides: PricingOverrides = {}):
   ) {
     return null;
   }
-  return { input: merged.input, output: merged.output, cacheWrite: merged.cacheWrite, cacheRead: merged.cacheRead };
+  return {
+    input: merged.input,
+    output: merged.output,
+    cacheWrite: merged.cacheWrite,
+    ...(merged.cacheWrite1h === undefined ? {} : { cacheWrite1h: merged.cacheWrite1h }),
+    cacheRead: merged.cacheRead
+  };
 }
 
 function mergeOverrides(overrides: PricingOverrides): Record<string, Partial<ModelPricing>> {
@@ -118,11 +126,17 @@ export function resolveRecordCost(record: UsageRecord, overrides: PricingOverrid
   if (pricing === null) {
     return null;
   }
-  return (
+  const cacheWrite1hTokens = Math.min(
+    record.cacheWriteTokens,
+    Math.max(0, record.cacheWrite1hTokens ?? 0)
+  );
+  const cacheWrite5mTokens = record.cacheWriteTokens - cacheWrite1hTokens;
+  const bucketCost =
     (record.inputTokens * pricing.input +
       record.outputTokens * pricing.output +
-      record.cacheWriteTokens * pricing.cacheWrite +
+      cacheWrite5mTokens * pricing.cacheWrite +
+      cacheWrite1hTokens * (pricing.cacheWrite1h ?? pricing.cacheWrite) +
       record.cacheReadTokens * pricing.cacheRead) /
-    1_000_000
-  );
+    1_000_000;
+  return bucketCost * Math.max(0, record.pricingMultiplier ?? 1);
 }

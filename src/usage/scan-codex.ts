@@ -1,5 +1,5 @@
 import { createReadStream } from 'node:fs';
-import { open } from 'node:fs/promises';
+import { open, readFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline';
@@ -7,6 +7,11 @@ import { createInterface } from 'node:readline';
 import { forEachJsonl, listJsonlFiles, parseTimestamp } from './read-jsonl.js';
 import type { ScanOptions } from './scan-claude.js';
 import type { UsageRecord } from './types.js';
+
+export interface CodexScanOptions extends ScanOptions {
+  /** Override the Codex config path, mainly for tests. */
+  configPath?: string;
+}
 
 export function defaultCodexRoot(): string {
   return join(homedir(), '.codex', 'sessions');
@@ -43,10 +48,14 @@ const REPLAY_PREFIX_BYTES = 16 * 1024;
  * ccusage, then prefer `last_token_usage` for real events. Older logs without
  * it fall back to a saturating diff of cumulative totals.
  */
-export async function scanCodex(options: ScanOptions): Promise<UsageRecord[]> {
+export async function scanCodex(options: CodexScanOptions): Promise<UsageRecord[]> {
   const roots = codexRoots(options.root);
   const files = (await Promise.all(roots.map((root) => listJsonlFiles(root, options.sinceMs)))).flat();
   const records: UsageRecord[] = [];
+  // Match ccusage `--speed auto`: today's Codex report uses the currently
+  // configured service tier for every record in the report.
+  const pricingMultiplier =
+    options.root && !options.configPath ? 1 : await readConfiguredPricingMultiplier(options.configPath);
 
   for (const file of files) {
     let model = '';
@@ -100,6 +109,7 @@ export async function scanCodex(options: ScanOptions): Promise<UsageRecord[]> {
         outputTokens: usage.output,
         cacheWriteTokens: 0,
         cacheReadTokens: cached,
+        pricingMultiplier,
         costUsd: null
       });
     });
@@ -239,6 +249,13 @@ function findModel(entry: Record<string, unknown>): string {
     if (fromPayload) {
       return fromPayload;
     }
+    const threadSettings = p.thread_settings;
+    if (typeof threadSettings === 'object' && threadSettings !== null) {
+      const fromThreadSettings = asString((threadSettings as Record<string, unknown>).model);
+      if (fromThreadSettings) {
+        return fromThreadSettings;
+      }
+    }
     const ctx = p.turn_context;
     if (typeof ctx === 'object' && ctx !== null) {
       const fromCtx = asString((ctx as Record<string, unknown>).model);
@@ -255,6 +272,20 @@ function findModel(entry: Record<string, unknown>): string {
     }
   }
   return '';
+}
+
+async function readConfiguredPricingMultiplier(configPath?: string): Promise<number> {
+  let config: string;
+  try {
+    config = await readFile(configPath ?? join(homedir(), '.codex', 'config.toml'), 'utf8');
+  } catch {
+    return 1;
+  }
+  const serviceTier = /^\s*service_tier\s*=\s*["']([^"']+)["']/m.exec(config)?.[1]?.toLowerCase() ?? '';
+  if (serviceTier === 'priority' || serviceTier === 'fast') {
+    return 2;
+  }
+  return 1;
 }
 
 function asNumber(value: unknown): number {

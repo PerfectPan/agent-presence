@@ -44,7 +44,11 @@ export interface UsageRecord {
   inputTokens: number;
   outputTokens: number;
   cacheWriteTokens: number;
+  /** Subset of cacheWriteTokens created with Claude's one-hour TTL. */
+  cacheWrite1hTokens?: number;
   cacheReadTokens: number;
+  /** Billing-tier multiplier resolved by the source, e.g. Codex priority = 2. */
+  pricingMultiplier?: number;
   /**
    * Cost in USD when the transcript already carries it (Pi, opencode). `null`
    * means the cost must be derived from a pricing table; `undefined` is never

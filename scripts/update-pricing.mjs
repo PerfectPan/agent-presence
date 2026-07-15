@@ -18,6 +18,7 @@ const SUPPORTED_MODELS = [
   'claude-opus-4-1',
   'claude-sonnet-4-6',
   'claude-sonnet-4-5',
+  'claude-sonnet-5',
   'claude-haiku-4-5',
   'claude-fable-5',
   // OpenAI model ids seen in Codex and TraeX transcripts.
@@ -25,6 +26,7 @@ const SUPPORTED_MODELS = [
   'gpt-5-codex',
   'gpt-5.4',
   'gpt-5.5',
+  'gpt-5.6-sol',
   // DeepSeek / Gemini ids seen in opencode and TraeX transcripts.
   'deepseek-v4-pro',
   'gemini-3-flash-preview',
@@ -47,11 +49,14 @@ function toModelPricing(entry) {
   if (input === undefined || output === undefined) {
     return null;
   }
+  const cacheWrite = perMillion(entry.cache_creation_input_token_cost) ?? input;
+  const cacheWrite1h = perMillion(entry.cache_creation_input_token_cost_above_1hr);
   return {
     input,
     output,
     // Providers without a separate cache-write charge bill cache creation as input.
-    cacheWrite: perMillion(entry.cache_creation_input_token_cost) ?? input,
+    cacheWrite,
+    ...(cacheWrite1h === undefined ? {} : { cacheWrite1h }),
     // Providers without a cache-read discount bill cached input as ordinary input.
     cacheRead: perMillion(entry.cache_read_input_token_cost) ?? input
   };

@@ -16,6 +16,7 @@
 
 ### Patch Changes
 
+- Match ccusage cost semantics for current Codex and Claude logs: price `gpt-5.6-sol` and `claude-sonnet-5` exactly, apply Codex's configured priority tier, and distinguish Claude one-hour cache creation from the default cache-write rate.
 - Keep deferred slot flushes cache-only so an OpenCode hook retry cannot fall through to `agent-presence update` and rescan Codex, Claude, or other sources.
 - Preserve cached token usage when the macOS power watcher clears active sessions on sleep, lid close, or wake; custom `{usage_Nd}` templates no longer collapse to an empty label such as `今日 `.
 - Refuse to aggregate per-source usage snapshots from different calendar days, so the first hook after midnight cannot label yesterday's cached totals as today's usage.

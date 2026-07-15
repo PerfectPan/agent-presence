@@ -45,6 +45,10 @@ describe('scanClaude', () => {
             input_tokens: 10,
             output_tokens: 20,
             cache_creation_input_tokens: 5,
+            cache_creation: {
+              ephemeral_5m_input_tokens: 2,
+              ephemeral_1h_input_tokens: 3
+            },
             cache_read_input_tokens: 100
           }
         }
@@ -73,6 +77,7 @@ describe('scanClaude', () => {
       inputTokens: 10,
       outputTokens: 20,
       cacheWriteTokens: 5,
+      cacheWrite1hTokens: 3,
       cacheReadTokens: 100,
       costUsd: null
     });
@@ -150,6 +155,19 @@ function codexCount(
 }
 
 describe('scanCodex', () => {
+  it('uses the current Codex priority tier for ccusage auto-mode parity', async () => {
+    const root = await writeJsonl('priority.jsonl', [
+      { timestamp: iso(NOW - 6000), type: 'turn_context', payload: { model: 'gpt-5.6-sol' } },
+      codexCount(NOW - 5000, 1000, 200, 50, 1050)
+    ]);
+    const configPath = join(dir, 'config.toml');
+    await writeFile(configPath, 'service_tier = "priority"\n', 'utf8');
+
+    const records = await scanCodex({ root, configPath, sinceMs: NOW - DAY, untilMs: NOW });
+    expect(records).toHaveLength(1);
+    expect(records[0]).toMatchObject({ model: 'gpt-5.6-sol', pricingMultiplier: 2 });
+  });
+
   it('diffs the cumulative total (not summing overlapping deltas), splitting cached input', async () => {
     const root = await writeJsonl('rollout.jsonl', [
       { timestamp: iso(NOW - 6000), type: 'turn_context', payload: { model: 'gpt-5.5' } },

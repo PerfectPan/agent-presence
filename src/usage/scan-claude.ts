@@ -96,6 +96,7 @@ function extractRecord(
   const dedupKey = id || requestId ? `${id}:${requestId}` : null;
 
   const u = usage as Record<string, unknown>;
+  const cacheCreation = asRecord(u.cache_creation);
   return {
     record: {
       source: 'claude',
@@ -104,11 +105,16 @@ function extractRecord(
       inputTokens: asNumber(u.input_tokens),
       outputTokens: asNumber(u.output_tokens),
       cacheWriteTokens: asNumber(u.cache_creation_input_tokens),
+      cacheWrite1hTokens: asNumber(cacheCreation?.ephemeral_1h_input_tokens),
       cacheReadTokens: asNumber(u.cache_read_input_tokens),
       costUsd: null
     },
     dedupKey
   };
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : null;
 }
 
 function asNumber(value: unknown): number {
