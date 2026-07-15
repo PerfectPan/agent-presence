@@ -82,7 +82,7 @@ agent-presence usage --days 7   # 单个自然日窗口
 agent-presence usage --json     # 给脚本用的结构化输出
 ```
 
-可以用渲染变量（`{usage_1d}`、`{usage_7d}`）或 `usage.showInSignature: true` 把它放进签名。每个智能体的会话边界只刷新自己来源的缓存贡献；provider 的延迟 flush 只发布缓存、不重新扫描，`agent-presence update` 才执行显式全量刷新，签名层随后汇总。支持模型会按内置 LiteLLM 快照计价（私有模型仍可用 pricing override），数据来源和过期徽标的 `—` 占位见 [Token 用量](https://agent-presence.vercel.app/zh/guide/token-usage/)。
+可以用渲染变量（`{usage_1d}`、`{usage_7d}`）或 `usage.showInSignature: true` 把它放进签名。每个智能体的会话边界只刷新自己来源的缓存贡献；provider 的延迟 flush 只发布缓存、不重新扫描，`agent-presence update` 才执行显式全量刷新，签名层随后汇总。独立的 `usage` 命令每次都会做实时全量扫描，而签名有意展示最近一次各来源边界的缓存快照。支持模型会按内置 LiteLLM 快照计价，并区分模型特有的缓存 TTL 价格和 Codex 当前 service tier（私有模型仍可用 pricing override）；数据来源和过期徽标的 `—` 占位见 [Token 用量](https://agent-presence.vercel.app/zh/guide/token-usage/)。
 
 ## 自定义文案
 

@@ -43,9 +43,30 @@ describe('resolvePricing', () => {
   });
 
   it('prices supported LiteLLM snapshot models without per-machine overrides', () => {
-    expect(resolvePricing('claude-fable-5')).toEqual({ input: 10, output: 50, cacheWrite: 12.5, cacheRead: 1 });
+    expect(resolvePricing('claude-fable-5')).toEqual({
+      input: 10,
+      output: 50,
+      cacheWrite: 12.5,
+      cacheWrite1h: 20,
+      cacheRead: 1
+    });
     expect(resolvePricing('DeepSeek-V4-Pro')).toEqual({ input: 0.435, output: 0.87, cacheWrite: 0, cacheRead: 0.003625 });
     expect(resolvePricing('Gemini-3-Flash-Preview')).toEqual({ input: 0.5, output: 3, cacheWrite: 0.5, cacheRead: 0.05 });
+  });
+
+  it('uses exact LiteLLM prices for the current Codex and Claude model ids', () => {
+    expect(resolvePricing('gpt-5.6-sol')).toMatchObject({
+      input: 5,
+      output: 30,
+      cacheWrite: 6.25,
+      cacheRead: 0.5
+    });
+    expect(resolvePricing('claude-sonnet-5')).toMatchObject({
+      input: 2,
+      output: 10,
+      cacheWrite: 2.5,
+      cacheRead: 0.2
+    });
   });
 });
 
@@ -61,6 +82,29 @@ describe('resolveRecordCost', () => {
     );
     // claude-opus-4-8 from the LiteLLM snapshot: 5 input + 25 output + 0.5 cacheRead per MTok
     expect(cost).toBeCloseTo(5 + 25 + 0.5, 5);
+  });
+
+  it('prices Claude one-hour cache writes at their dedicated rate', () => {
+    const cost = resolveRecordCost({
+      ...record({ model: 'claude-sonnet-5', cacheWriteTokens: 1_000_000 }),
+      cacheWrite1hTokens: 1_000_000
+    });
+
+    expect(cost).toBeCloseTo(4, 6);
+  });
+
+  it('applies the transcript billing-tier multiplier after bucket pricing', () => {
+    const cost = resolveRecordCost({
+      ...record({
+        model: 'gpt-5.6-sol',
+        inputTokens: 1_000_000,
+        outputTokens: 1_000_000,
+        cacheReadTokens: 1_000_000
+      }),
+      pricingMultiplier: 2
+    });
+
+    expect(cost).toBeCloseTo((5 + 30 + 0.5) * 2, 6);
   });
 
   it('returns null when the model is unpriced', () => {
