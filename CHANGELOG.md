@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.8.6
+
+### Patch Changes
+
+- 6d7cd92: Match ccusage when Claude emits cache-creation TTL buckets by summing the five-minute and one-hour breakdown instead of trusting a stale or zero top-level total.
+
 ## 0.8.5
 
 ### Patch Changes
