@@ -40,6 +40,8 @@ export interface CollectOptions {
   sources: BillableSource[];
   /** Per-source root overrides keyed by source id, mainly for tests. */
   roots?: Record<string, string>;
+  /** Reject the collection when any source fails instead of treating it as empty. */
+  failOnSourceError?: boolean;
 }
 
 /**
@@ -52,7 +54,9 @@ export interface CollectOptions {
  * one thing that declares all its capabilities), not a hardcoded set. A source
  * whose scan throws is isolated: its failure is logged and it contributes
  * nothing, mirroring how presence resolution fails open — one unreadable
- * transcript store never breaks the whole run.
+ * transcript store never breaks the whole run. Atomic cache callers can opt
+ * into rejection with `failOnSourceError` so a failed scan is not mistaken for
+ * a real zero-usage contribution.
  */
 export async function collectWindowUsage(options: CollectOptions): Promise<WindowUsage> {
   const untilMs = options.now;
@@ -65,6 +69,9 @@ export async function collectWindowUsage(options: CollectOptions): Promise<Windo
         // mirroring how presence resolution fails open. Log it (redaction-safe,
         // name only); a log-write failure must not resurface as the scan error.
         await writeLog(`usage scan failed source=${source.id} error=${errorName(error)}`).catch(() => {});
+        if (options.failOnSourceError) {
+          throw error;
+        }
         return [] as UsageRecord[];
       })
     )

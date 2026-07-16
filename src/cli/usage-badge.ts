@@ -38,9 +38,9 @@ export function usageRenderPlan(config: AppConfig): UsageRenderPlan {
 
 /**
  * Refresh cached usage for every window the signature references. A hook passes
- * its source id and scans only that source; an explicit update omits the source
- * and rebuilds every built-in contribution. Scans run outside the state lock
- * and any failure leaves the previous cache intact.
+ * its source id and normally scans only that source; the first boundary after
+ * midnight and an explicit update rebuild every built-in contribution. Scans
+ * run outside the state lock and any failure leaves the previous cache intact.
  */
 export async function refreshSignatureUsageBadges(
   config: AppConfig,
@@ -80,14 +80,23 @@ export interface UsageBadgeCacheRefresh {
 
 /**
  * Refresh source-owned usage snapshots, then rebuild each aggregate badge from
- * the cached contributions. A hook supplies its source id; explicit updates
- * omit it and replace the complete built-in snapshot set.
+ * the cached contributions. A hook normally supplies its source id, but the
+ * first source boundary after midnight promotes that refresh to all built-ins
+ * so inactive sources cannot leave the new calendar day permanently stale.
+ * Explicit updates also replace the complete built-in snapshot set.
  */
 export async function refreshUsageBadgeCache(options: UsageBadgeCacheRefresh): Promise<void> {
-  const selectedSources = options.source
-    ? options.sources.filter((candidate) => candidate.id === options.source)
+  const cachedState = await loadState(options.statePath);
+  const refreshSource =
+    options.source &&
+    (cachedState.usageBadgesAt === undefined ||
+      calendarDaysBetween(cachedState.usageBadgesAt, options.now) > 0)
+      ? undefined
+      : options.source;
+  const selectedSources = refreshSource
+    ? options.sources.filter((candidate) => candidate.id === refreshSource)
     : options.sources;
-  if (options.source && selectedSources.length === 0) {
+  if (refreshSource && selectedSources.length === 0) {
     return;
   }
 
@@ -99,7 +108,8 @@ export async function refreshUsageBadgeCache(options: UsageBadgeCacheRefresh): P
           days,
           now: options.now,
           pricing: options.pricing,
-          sources: selectedSources
+          sources: selectedSources,
+          failOnSourceError: true
         });
         return [
           String(days),
@@ -123,19 +133,32 @@ export async function refreshUsageBadgeCache(options: UsageBadgeCacheRefresh): P
     let rebuiltWindows = 0;
 
     for (const [days, refreshed] of results) {
-      const activeSnapshots = Object.fromEntries(
+      const previousSnapshots = Object.fromEntries(
         options.sources.flatMap((source) => {
           const snapshot = snapshots[days]?.[source.id];
           return snapshot ? [[source.id, snapshot] as const] : [];
         })
       );
-      const bySource = options.source ? { ...activeSnapshots, ...refreshed } : refreshed;
+      const bySource = Object.fromEntries(
+        options.sources.flatMap((source) => {
+          const previous = previousSnapshots[source.id];
+          const candidate = refreshed[source.id];
+          if (!candidate) {
+            return previous ? [[source.id, previous] as const] : [];
+          }
+          // Scans happen outside the lock. Preserve a snapshot committed by a
+          // newer overlapping refresh instead of letting an older scan win by
+          // finishing last.
+          const latest =
+            previous && previous.scannedAt > candidate.scannedAt ? previous : candidate;
+          return [[source.id, latest] as const];
+        })
+      );
       snapshots[days] = bySource;
 
-      // A partial or cross-midnight cache cannot produce a truthful aggregate:
-      // calendar-day windows shift at midnight, so yesterday's source snapshot
-      // is incompatible with a source refreshed today. Keep the previous badge
-      // until every configured built-in has a current-day contribution.
+      // A partial cache cannot produce a truthful aggregate. Cross-midnight
+      // refreshes are promoted to a full scan above, so every configured
+      // built-in receives a current-day contribution, including zero usage.
       if (
         options.sources.every((source) => {
           const snapshot = bySource[source.id];
@@ -151,7 +174,7 @@ export async function refreshUsageBadgeCache(options: UsageBadgeCacheRefresh): P
     state.usageSnapshots = snapshots;
     state.usageBadges = badges;
     if (results.length > 0 && rebuiltWindows === results.length) {
-      state.usageBadgesAt = options.now;
+      state.usageBadgesAt = Math.max(state.usageBadgesAt ?? options.now, options.now);
     }
     await saveState(state, options.statePath);
   });
