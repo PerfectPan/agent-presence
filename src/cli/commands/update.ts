@@ -37,7 +37,8 @@ export async function update(args: string[]): Promise<void> {
   }
 
   // An explicit update is infrequent, so establish a complete usage snapshot
-  // before rendering. Hook boundaries refresh only their owning source.
+  // before rendering. Hook boundaries are source-scoped after the day's first
+  // boundary has established a complete built-in snapshot.
   const usagePlan = usageRenderPlan(config);
   if (usagePlan.enabled) {
     await refreshSignatureUsageBadges(config, statePath, now);

@@ -161,7 +161,7 @@ describe('refreshUsageBadgeCache', () => {
     });
   });
 
-  it('does not combine source snapshots from different calendar days', async () => {
+  it('performs a full refresh at the first source boundary after midnight', async () => {
     dir = await mkdtemp(join(tmpdir(), 'agent-presence-usage-badge-'));
     const statePath = join(dir, 'state.json');
     const yesterday = new Date(2026, 6, 14, 23, 59).getTime();
@@ -182,28 +182,30 @@ describe('refreshUsageBadgeCache', () => {
       statePath
     );
 
+    const codexScan = vi.fn(async () => [record('codex', 20, 0.2)]);
+    const claudeScan = vi.fn(async () => [record('claude', 30, 0.3)]);
+    const opencodeScan = vi.fn(async () => []);
     const sources: BillableSource[] = [
-      { id: 'codex', scanUsage: vi.fn(async () => [record('codex', 20, 0.2)]) },
-      { id: 'claude', scanUsage: vi.fn(async () => [record('claude', 30, 0.3)]) },
-      { id: 'opencode', scanUsage: vi.fn(async () => [record('opencode', 10, 0.1)]) }
+      { id: 'codex', scanUsage: codexScan },
+      { id: 'claude', scanUsage: claudeScan },
+      { id: 'opencode', scanUsage: opencodeScan }
     ];
 
-    await refreshUsageBadgeCache({ statePath, now: today, windows: [1], sources, source: 'opencode' });
-    expect(await loadState(statePath)).toMatchObject({
-      usageBadges: { '1': '350 · $3.50' },
-      usageBadgesAt: yesterday
-    });
-
     await refreshUsageBadgeCache({ statePath, now: today, windows: [1], sources, source: 'codex' });
-    expect(await loadState(statePath)).toMatchObject({
-      usageBadges: { '1': '350 · $3.50' },
-      usageBadgesAt: yesterday
-    });
 
-    await refreshUsageBadgeCache({ statePath, now: today, windows: [1], sources, source: 'claude' });
+    expect(codexScan).toHaveBeenCalledTimes(1);
+    expect(claudeScan).toHaveBeenCalledTimes(1);
+    expect(opencodeScan).toHaveBeenCalledTimes(1);
     expect(await loadState(statePath)).toMatchObject({
-      usageBadges: { '1': '60 · $0.60' },
-      usageBadgesAt: today
+      usageBadges: { '1': '50 · $0.50' },
+      usageBadgesAt: today,
+      usageSnapshots: {
+        '1': {
+          codex: { totalTokens: 20, costUsd: 0.2, scannedAt: today },
+          claude: { totalTokens: 30, costUsd: 0.3, scannedAt: today },
+          opencode: { totalTokens: 0, costUsd: null, scannedAt: today }
+        }
+      }
     });
   });
 });

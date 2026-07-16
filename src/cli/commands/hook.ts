@@ -37,8 +37,9 @@ export async function hook(args: string[]): Promise<void> {
     const statePath = getStatePath();
     const now = Date.now();
 
-    // Refresh the cached usage badges only at session boundaries; other events
-    // reuse the cached values, so high-frequency tool events do no scanning.
+    // Refresh cached usage badges only at session boundaries. Same-day events
+    // scan their owning source; the first boundary after midnight scans all
+    // built-ins once so inactive sources cannot block the new day's aggregate.
     const usagePlan = usageRenderPlan(config);
     if (usagePlan.enabled && isSessionBoundaryEvent(event)) {
       await refreshSignatureUsageBadges(config, statePath, now, source);
