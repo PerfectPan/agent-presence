@@ -124,7 +124,7 @@ agent-presence source remove youragent
 
 ## 日志
 
-hook 和 provider 活动写到 `~/.agent-presence/agent-presence.log`（用 `AGENT_PRESENCE_LOG_FILE` 覆盖）。bearer token、完整 Authorization 头、二维码 ticket、完整 slot 值都不会被记录。
+hook 和 provider 活动写到 `~/.agent-presence/agent-presence.log`（用 `AGENT_PRESENCE_LOG_FILE` 覆盖）。日志超过 5 MiB 后会自动压缩，保留最近约 1 MiB 供排障。已有 macOS 安装升级后需运行一次 `agent-presence setup --skip-login`，让常驻的 power watcher 同步获得清理策略。bearer token、完整 Authorization 头、二维码 ticket、完整 slot 值都不会被记录。
 
 ## 文档
 

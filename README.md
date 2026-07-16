@@ -124,7 +124,7 @@ A source plugin runs in-process and can read your slot credential, so `add` requ
 
 ## Logs
 
-Hook and provider activity is written to `~/.agent-presence/agent-presence.log` (override with `AGENT_PRESENCE_LOG_FILE`). Bearer tokens, full Authorization headers, QR tickets, and full slot values are never logged.
+Hook and provider activity is written to `~/.agent-presence/agent-presence.log` (override with `AGENT_PRESENCE_LOG_FILE`). Logs are compacted automatically after 5 MiB, retaining roughly the latest 1 MiB for troubleshooting. Existing macOS users should run `agent-presence setup --skip-login` once after upgrading so the persistent power watcher also receives the retention policy. Bearer tokens, full Authorization headers, QR tickets, and full slot values are never logged.
 
 ## Documentation
 

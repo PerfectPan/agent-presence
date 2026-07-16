@@ -34,6 +34,7 @@
 
 ### Patch Changes
 
+- Bound diagnostic log growth by compacting logs larger than 5 MiB to their latest roughly 1 MiB, including the macOS power watcher log. Existing macOS users should rerun `agent-presence setup --skip-login` once after upgrading to refresh the persistent watcher files.
 - Match ccusage when Claude emits cache-creation TTL buckets by summing the five-minute and one-hour breakdown instead of trusting a stale or zero top-level total.
 - Refresh every built-in usage contribution at the first session boundary after midnight, or when initializing a cache without an aggregate timestamp, so sources that remain unused today contribute zero instead of leaving the signature stuck at `今日 —`. Failed scans keep the previous cache retryable, and overlapping refreshes cannot let older results overwrite newer usage.
 - Match ccusage cost semantics for current Codex and Claude logs: price `gpt-5.6-sol` and `claude-sonnet-5` exactly, apply Codex's configured priority tier, and distinguish Claude one-hour cache creation from the default cache-write rate.
