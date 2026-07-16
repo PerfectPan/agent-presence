@@ -22,7 +22,7 @@
 
 ### Patch Changes
 
-- Refresh every built-in usage contribution at the first session boundary after midnight so sources that remain unused today contribute zero instead of leaving the signature stuck at `今日 —`.
+- Refresh every built-in usage contribution at the first session boundary after midnight, or when initializing a cache without an aggregate timestamp, so sources that remain unused today contribute zero instead of leaving the signature stuck at `今日 —`. Failed scans keep the previous cache retryable, and overlapping refreshes cannot let older results overwrite newer usage.
 - Match ccusage cost semantics for current Codex and Claude logs: price `gpt-5.6-sol` and `claude-sonnet-5` exactly, apply Codex's configured priority tier, and distinguish Claude one-hour cache creation from the default cache-write rate.
 - Keep deferred slot flushes cache-only so an OpenCode hook retry cannot fall through to `agent-presence update` and rescan Codex, Claude, or other sources.
 - Preserve cached token usage when the macOS power watcher clears active sessions on sleep, lid close, or wake; custom `{usage_Nd}` templates no longer collapse to an empty label such as `今日 `.

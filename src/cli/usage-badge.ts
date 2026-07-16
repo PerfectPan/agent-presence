@@ -89,8 +89,8 @@ export async function refreshUsageBadgeCache(options: UsageBadgeCacheRefresh): P
   const cachedState = await loadState(options.statePath);
   const refreshSource =
     options.source &&
-    cachedState.usageBadgesAt !== undefined &&
-    calendarDaysBetween(cachedState.usageBadgesAt, options.now) > 0
+    (cachedState.usageBadgesAt === undefined ||
+      calendarDaysBetween(cachedState.usageBadgesAt, options.now) > 0)
       ? undefined
       : options.source;
   const selectedSources = refreshSource
@@ -108,7 +108,8 @@ export async function refreshUsageBadgeCache(options: UsageBadgeCacheRefresh): P
           days,
           now: options.now,
           pricing: options.pricing,
-          sources: selectedSources
+          sources: selectedSources,
+          failOnSourceError: true
         });
         return [
           String(days),
@@ -132,13 +133,27 @@ export async function refreshUsageBadgeCache(options: UsageBadgeCacheRefresh): P
     let rebuiltWindows = 0;
 
     for (const [days, refreshed] of results) {
-      const activeSnapshots = Object.fromEntries(
+      const previousSnapshots = Object.fromEntries(
         options.sources.flatMap((source) => {
           const snapshot = snapshots[days]?.[source.id];
           return snapshot ? [[source.id, snapshot] as const] : [];
         })
       );
-      const bySource = refreshSource ? { ...activeSnapshots, ...refreshed } : refreshed;
+      const bySource = Object.fromEntries(
+        options.sources.flatMap((source) => {
+          const previous = previousSnapshots[source.id];
+          const candidate = refreshed[source.id];
+          if (!candidate) {
+            return previous ? [[source.id, previous] as const] : [];
+          }
+          // Scans happen outside the lock. Preserve a snapshot committed by a
+          // newer overlapping refresh instead of letting an older scan win by
+          // finishing last.
+          const latest =
+            previous && previous.scannedAt > candidate.scannedAt ? previous : candidate;
+          return [[source.id, latest] as const];
+        })
+      );
       snapshots[days] = bySource;
 
       // A partial cache cannot produce a truthful aggregate. Cross-midnight
@@ -159,7 +174,7 @@ export async function refreshUsageBadgeCache(options: UsageBadgeCacheRefresh): P
     state.usageSnapshots = snapshots;
     state.usageBadges = badges;
     if (results.length > 0 && rebuiltWindows === results.length) {
-      state.usageBadgesAt = options.now;
+      state.usageBadgesAt = Math.max(state.usageBadgesAt ?? options.now, options.now);
     }
     await saveState(state, options.statePath);
   });
