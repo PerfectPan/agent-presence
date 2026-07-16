@@ -3,7 +3,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { collectWindowUsage, type BillableSource, type UsageRecord } from '../src/usage/index.js';
+import {
+  collectWindowUsage,
+  resolveRecordCost,
+  type BillableSource,
+  type UsageRecord
+} from '../src/usage/index.js';
 import { scanClaude } from '../src/usage/scan-claude.js';
 import { scanCodex } from '../src/usage/scan-codex.js';
 import { scanPi } from '../src/usage/scan-pi.js';
@@ -103,6 +108,38 @@ describe('scanClaude', () => {
     const records = await scanClaude({ root, sinceMs: NOW - DAY, untilMs: NOW });
     expect(records).toHaveLength(1);
     expect(records[0].outputTokens).toBe(1810);
+  });
+
+  it('uses the cache creation breakdown when present (matches ccusage)', async () => {
+    const root = await writeJsonl('cache-breakdown.jsonl', [
+      {
+        type: 'assistant',
+        timestamp: iso(NOW - 1000),
+        requestId: 'req_cache',
+        message: {
+          id: 'msg_cache',
+          model: 'claude-opus-4-8',
+          usage: {
+            input_tokens: 0,
+            output_tokens: 0,
+            cache_creation_input_tokens: 0,
+            cache_creation: {
+              ephemeral_5m_input_tokens: 0,
+              ephemeral_1h_input_tokens: 2103
+            },
+            cache_read_input_tokens: 0
+          }
+        }
+      }
+    ]);
+
+    const records = await scanClaude({ root, sinceMs: NOW - DAY, untilMs: NOW });
+    expect(records).toHaveLength(1);
+    expect(records[0]).toMatchObject({
+      cacheWriteTokens: 2103,
+      cacheWrite1hTokens: 2103
+    });
+    expect(resolveRecordCost(records[0])).toBeCloseTo(0.02103, 8);
   });
 
   it('excludes synthetic turns (matches ccusage)', async () => {

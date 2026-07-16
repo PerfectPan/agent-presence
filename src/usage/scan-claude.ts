@@ -97,6 +97,12 @@ function extractRecord(
 
   const u = usage as Record<string, unknown>;
   const cacheCreation = asRecord(u.cache_creation);
+  // Match ccusage: when Claude emits the TTL breakdown, it is authoritative;
+  // the legacy top-level total can be zero even when the 1h bucket is nonzero.
+  const cacheWrite1hTokens = asNumber(cacheCreation?.ephemeral_1h_input_tokens);
+  const cacheWriteTokens = cacheCreation
+    ? asNumber(cacheCreation.ephemeral_5m_input_tokens) + cacheWrite1hTokens
+    : asNumber(u.cache_creation_input_tokens);
   return {
     record: {
       source: 'claude',
@@ -104,8 +110,8 @@ function extractRecord(
       timestamp,
       inputTokens: asNumber(u.input_tokens),
       outputTokens: asNumber(u.output_tokens),
-      cacheWriteTokens: asNumber(u.cache_creation_input_tokens),
-      cacheWrite1hTokens: asNumber(cacheCreation?.ephemeral_1h_input_tokens),
+      cacheWriteTokens,
+      cacheWrite1hTokens,
       cacheReadTokens: asNumber(u.cache_read_input_tokens),
       costUsd: null
     },
