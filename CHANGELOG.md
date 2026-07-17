@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.8.7
+
+### Patch Changes
+
+- 52e1a9d: Bound diagnostic log growth by compacting logs larger than 5 MiB to their latest roughly 1 MiB, including the macOS power watcher log. Existing macOS users should rerun `agent-presence setup --skip-login` once after upgrading to refresh the persistent watcher files.
+
 ## 0.8.6
 
 ### Patch Changes
