@@ -4,7 +4,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { dirname, join } from 'node:path';
 import { homedir } from 'node:os';
-import { buildPowerEventWatcherSwift, buildShutdownWatcherPlist, buildShutdownWatcherScript } from '../src/installers.js';
+import { buildPowerEventWatcherSwift, buildPowerWatcherPlist, buildPowerWatcherScript } from '../src/power-watcher.js';
 import { assertMacOS } from '../src/platform.js';
 
 const execFileAsync = promisify(execFile);
@@ -33,15 +33,23 @@ async function main(): Promise<void> {
   const legacyPlistPath = join(home, 'Library', 'LaunchAgents', `${LEGACY_LABEL}.plist`);
 
   await mkdir(dirname(scriptPath), { recursive: true, mode: 0o700 });
-  await writeFile(scriptPath, buildShutdownWatcherScript({ pathEntries: [dirname(process.execPath)], powerEventWatcherPath: powerWatcherPath }), { mode: 0o700 });
+  await writeFile(
+    scriptPath,
+    buildPowerWatcherScript({
+      pathEntries: [dirname(process.execPath)],
+      powerEventWatcherPath: powerWatcherPath,
+      logPath
+    }),
+    { mode: 0o700 }
+  );
   await chmod(scriptPath, 0o700);
-  await writeFile(powerWatcherPath, buildPowerEventWatcherSwift(), { mode: 0o700 });
+  await writeFile(powerWatcherPath, buildPowerEventWatcherSwift({ logPath }), { mode: 0o700 });
   await chmod(powerWatcherPath, 0o700);
 
   await mkdir(dirname(plistPath), { recursive: true, mode: 0o700 });
   await writeFile(
     plistPath,
-    buildShutdownWatcherPlist({
+    buildPowerWatcherPlist({
       label: LABEL,
       scriptPath,
       logPath,

@@ -1,6 +1,7 @@
-import { appendFile, mkdir } from 'node:fs/promises';
+import { mkdir } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { getLogPath } from './config.js';
+import { appendRetainedLogLine } from './log-retention.js';
 
 const LOG_TIME_ZONE = 'Asia/Shanghai';
 const CHINA_TIME_OFFSET = '+08:00';
@@ -20,9 +21,7 @@ export interface LogWriter {
 }
 
 export async function writeLog(message: string): Promise<void> {
-  const path = getLogPath();
-  await mkdir(dirname(path), { recursive: true, mode: 0o700 });
-  await appendFile(path, `${formatLogEvent({ time: formatLogTime(), level: 'error', app: 'agent-presence', pid: process.pid, message })}\n`, { mode: 0o600 });
+  await appendLogLine(formatLogEvent({ time: formatLogTime(), level: 'error', app: 'agent-presence', pid: process.pid, message }));
 }
 
 export async function writeLogEvent(event: Record<string, unknown>): Promise<void> {
@@ -40,9 +39,13 @@ export function createLogWriter(context: Record<string, unknown>): LogWriter {
 const defaultLogWriter = createLogWriter({});
 
 async function appendLogEvent(event: Record<string, unknown>): Promise<void> {
+  await appendLogLine(formatLogEvent({ time: formatLogTime(), level: 'info', ...event }));
+}
+
+async function appendLogLine(line: string): Promise<void> {
   const path = getLogPath();
   await mkdir(dirname(path), { recursive: true, mode: 0o700 });
-  await appendFile(path, `${formatLogEvent({ time: formatLogTime(), level: 'info', ...event })}\n`, { mode: 0o600 });
+  await appendRetainedLogLine(path, `${line}\n`);
 }
 
 function baseLogContext(): Record<string, unknown> {

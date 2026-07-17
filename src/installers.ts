@@ -42,18 +42,6 @@ export interface OpenCodeConfig {
   [key: string]: unknown;
 }
 
-export interface ShutdownWatcherPlistOptions {
-  label: string;
-  scriptPath: string;
-  logPath?: string;
-  errorLogPath?: string;
-}
-
-export interface ShutdownWatcherScriptOptions {
-  pathEntries?: string[];
-  powerEventWatcherPath?: string;
-}
-
 export function withClaudeAgentSignatureHooks(input: Partial<HookSettings>): HookSettings {
   const settings: HookSettings = {
     ...input,
@@ -495,125 +483,6 @@ function describeInstallerError(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-export function buildShutdownWatcherScript(options: ShutdownWatcherScriptOptions = {}): string {
-  const pathEntries = (options.pathEntries ?? []).filter((entry) => entry.length > 0);
-  const pathExport = pathEntries.length > 0 ? `export PATH="${escapeShellDoubleQuoted(pathEntries.join(':'))}:$PATH"\n\n` : '';
-  const powerWatcherLoop = options.powerEventWatcherPath
-    ? `while true; do
-  if [ -x /usr/bin/swift ] && [ -f "${escapeShellDoubleQuoted(options.powerEventWatcherPath)}" ]; then
-    /usr/bin/swift "${escapeShellDoubleQuoted(options.powerEventWatcherPath)}" &
-    watcher_pid=$!
-    wait "$watcher_pid" || true
-    watcher_pid=""
-  else
-    sleep 3600 &
-    watcher_pid=$!
-    wait "$watcher_pid" || true
-    watcher_pid=""
-  fi
-  sleep 2
-done`
-    : `while true; do
-  sleep 3600 &
-  watcher_pid=$!
-  wait "$watcher_pid" || true
-  watcher_pid=""
-done`;
-  return `#!/bin/zsh
-set -u
-
-${pathExport}\
-watcher_pid=""
-
-cleanup() {
-  if [ -n "\${watcher_pid:-}" ]; then
-    kill "$watcher_pid" >/dev/null 2>/dev/null || true
-  fi
-  ${buildAgentPresenceShellCommand(['reset', '--force', '--silent'])} >/dev/null 2>/dev/null || true
-}
-
-trap cleanup TERM HUP INT EXIT
-
-${powerWatcherLoop}
-`;
-}
-
-export function buildPowerEventWatcherSwift(): string {
-  return `#!/usr/bin/env swift
-import AppKit
-import Foundation
-
-func resetPresence(reason: String) {
-    let task = Process()
-    task.executableURL = URL(fileURLWithPath: "/bin/zsh")
-    task.arguments = ["-lc", "${escapeSwiftString(buildAgentPresenceShellCommand(['reset', '--force', '--silent']))} >/dev/null 2>/dev/null || true"]
-    task.environment = ProcessInfo.processInfo.environment
-    do {
-        try task.run()
-        task.waitUntilExit()
-    } catch {
-        // Never let the watcher crash because reset failed.
-    }
-}
-
-let center = NSWorkspace.shared.notificationCenter
-let notifications: [Notification.Name] = [
-    NSWorkspace.willSleepNotification,
-    NSWorkspace.screensDidSleepNotification,
-    NSWorkspace.didWakeNotification,
-    NSWorkspace.screensDidWakeNotification
-]
-
-for name in notifications {
-    center.addObserver(forName: name, object: nil, queue: .main) { notification in
-        resetPresence(reason: notification.name.rawValue)
-    }
-}
-
-RunLoop.main.run()
-`;
-}
-
-export function buildShutdownWatcherPlist(options: ShutdownWatcherPlistOptions): string {
-  const logPath = options.logPath ?? '/tmp/agent-presence-power-watch.log';
-  const errorLogPath = options.errorLogPath ?? logPath;
-  return `<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "https://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-  <key>Label</key>
-  <string>${escapePlist(options.label)}</string>
-  <key>ProgramArguments</key>
-  <array>
-    <string>/bin/zsh</string>
-    <string>${escapePlist(options.scriptPath)}</string>
-  </array>
-  <key>RunAtLoad</key>
-  <true/>
-  <key>KeepAlive</key>
-  <true/>
-  <key>StandardOutPath</key>
-  <string>${escapePlist(logPath)}</string>
-  <key>StandardErrorPath</key>
-  <string>${escapePlist(errorLogPath)}</string>
-</dict>
-</plist>
-`;
-}
-
-function escapePlist(value: string): string {
-  return value
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&apos;');
-}
-
-function escapeShellDoubleQuoted(value: string): string {
-  return value.replaceAll('\\', '\\\\').replaceAll('"', '\\"').replaceAll('$', '\\$').replaceAll('`', '\\`');
-}
-
 export function buildAgentPresenceShellCommand(args: string[]): string {
   return [...agentPresenceCommandParts(), ...args].map(shellQuote).join(' ');
 }
@@ -661,10 +530,6 @@ function shellQuote(value: string): string {
     return value;
   }
   return `'${value.replaceAll("'", "'\\''")}'`;
-}
-
-function escapeSwiftString(value: string): string {
-  return value.replaceAll('\\', '\\\\').replaceAll('"', '\\"');
 }
 
 const GEMINI_EVENTS = [

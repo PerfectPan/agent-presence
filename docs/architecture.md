@@ -494,7 +494,7 @@ Did the provider request happen, skip, rate-limit, or fail?
 
 ### Local Command Log
 
-`src/log.ts` writes a local append-only diagnostic log. The default path is:
+`src/log.ts` writes a local bounded diagnostic log. The default path is:
 
 ```text
 ~/.agent-presence/agent-presence.log
@@ -509,6 +509,8 @@ AGENT_SIGNATURE_LOG_FILE
 
 Current hook commands log notable failures such as missing session ids or hook exceptions. Timestamps are formatted in China time with an explicit `+08:00` offset so local traces are readable without mental UTC conversion. The log must not contain provider tokens, full Authorization headers, QR code tickets, or local prompt payloads.
 
+`src/log-retention.ts` owns the append-and-retain boundary. Each writer acquires a short-lived sibling lock file carrying an agent-presence owner token, appends the new event, and immediately compacts the file in place when it exceeds 5 MiB. This order also bounds a single oversized event without waiting for another write. Compaction keeps roughly the latest 1 MiB of bytes and preserves the file identity for processes that may already hold it open; the first retained line may therefore begin mid-line. A verified lock is reclaimable after 2 seconds only when its owner PID is no longer alive. Reclaimers first create a fixed hard link to the current lock inode, so exactly one process can remove that stale generation and none can delete a newer replacement. Foreign data at either coordination path is never removed. If the filesystem cannot create the lock or the path belongs to something else, the event is appended without maintenance; if another valid live owner remains contended, the diagnostic write is skipped rather than racing a truncate. Cleanup failures never break a hook or provider operation.
+
 ### Power Watcher Log
 
 The LaunchAgent redirects stdout and stderr to:
@@ -518,6 +520,8 @@ The LaunchAgent redirects stdout and stderr to:
 ```
 
 This log is for watcher startup/runtime failures. It should stay credential-free because the watcher only invokes `agent-presence reset --force --silent`.
+
+The generated watcher script applies the same 5 MiB / latest-1-MiB policy before starting the watcher and whenever the watcher restarts, which bounds repeated Swift compile/startup failures. The long-running Swift watcher also checks once every 86,400 seconds so runtime output is cleaned even when the process stays healthy. Both paths compact in place because launchd owns the stdout/stderr file descriptors. Existing macOS installations must run `agent-presence setup --skip-login` once after upgrading to regenerate these persistent watcher files. Full design: [`rfcs/log-retention.md`](../rfcs/log-retention.md).
 
 ### Provider Request Log
 

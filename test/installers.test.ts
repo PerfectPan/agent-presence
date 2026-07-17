@@ -4,9 +4,6 @@ import {
   PI_EXTENSION_MARKER,
   buildOpenCodePluginSource,
   buildPiExtensionSource,
-  buildPowerEventWatcherSwift,
-  buildShutdownWatcherPlist,
-  buildShutdownWatcherScript,
   isAgentSignatureCommand,
   withClaudeAgentSignatureHooks,
   withOpenCodeAgentSignaturePluginConfig,
@@ -100,47 +97,6 @@ describe('Claude hook installer helpers', () => {
       expect(command).toContain(`hook --source claude --event SessionStart --silent`);
       expect(command).not.toContain('npx');
       expect(command).toContain('/usr/local/lib/node_modules/@rivus/agent-presence/dist/src/cli.js');
-    });
-  });
-});
-
-describe('shutdown watcher installer helpers', () => {
-  it('generates a launch agent plist and a watcher script that reset presence on termination and sleep events', () => {
-    const plist = buildShutdownWatcherPlist({
-      label: 'work.rivus.agent-presence.power-watch',
-      scriptPath: '/Users/example/.agent-presence/power-watch.sh'
-    });
-    const script = buildShutdownWatcherScript({
-      pathEntries: ['/Users/example/.nvm/versions/node/v24.8.0/bin'],
-      powerEventWatcherPath: '/Users/example/.agent-presence/power-watch.swift'
-    });
-    const swift = buildPowerEventWatcherSwift();
-
-    expect(plist).toContain('<key>Label</key>');
-    expect(plist).toContain('work.rivus.agent-presence.power-watch');
-    expect(plist).toContain('/Users/example/.agent-presence/power-watch.sh');
-    expect(script).toContain('trap cleanup TERM HUP INT EXIT');
-    expect(script).toContain('export PATH="/Users/example/.nvm/versions/node/v24.8.0/bin:$PATH"');
-    expect(script).toContain('/usr/bin/swift "/Users/example/.agent-presence/power-watch.swift"');
-    expect(script).toContain('npx --yes --registry=https://registry.npmjs.org @rivus/agent-presence@');
-    expect(swift).toContain('NSWorkspace.willSleepNotification');
-    expect(swift).toContain('NSWorkspace.screensDidSleepNotification');
-    expect(swift).toContain('NSWorkspace.didWakeNotification');
-    expect(swift).toContain('npx --yes --registry=https://registry.npmjs.org @rivus/agent-presence@');
-  });
-
-  it('generates watcher scripts with absolute CLI path when AGENT_PRESENCE_HOOK_COMMAND=absolute', () => {
-    withAbsoluteCliPath(() => {
-      const script = buildShutdownWatcherScript({
-        pathEntries: ['/Users/example/.nvm/versions/node/v24.8.0/bin'],
-        powerEventWatcherPath: '/Users/example/.agent-presence/power-watch.swift'
-      });
-      const swift = buildPowerEventWatcherSwift();
-
-      expect(script).not.toContain('npx');
-      expect(script).toContain('/usr/local/lib/node_modules/@rivus/agent-presence/dist/src/cli.js');
-      expect(swift).not.toContain('npx');
-      expect(swift).toContain('/usr/local/lib/node_modules/@rivus/agent-presence/dist/src/cli.js');
     });
   });
 });
