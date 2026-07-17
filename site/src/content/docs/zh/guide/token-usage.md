@@ -22,12 +22,12 @@ Token 统计是驱动 presence 的同一张源表的一种能力：实现了 `sc
 | 源 | Token 统计 |
 | --- | --- |
 | Claude Code | 支持 — 按价目表计价、去重、排除 `<synthetic>` |
-| Codex | 支持 — 对会话累计总量做差分 |
+| Codex | 支持 — 对会话累计总量做差分，并跨 session 文件去重复制事件 |
 | Pi | 支持 — 用 Pi 自己记录的成本 |
 | opencode | 支持 — 读取本地 SQLite 存储；用 opencode 记录的成本 |
 | Gemini CLI | 支持 — 读取本地会话 transcript；按价目表计价 |
 
-无价目表的模型成本显示 `n/a`；token 数始终精确。Pi 与 opencode 会记录真实成本，直接采用。其余源优先使用内置的 LiteLLM 支持模型快照计价（例如 `gpt-5.5`、`claude-fable-5`、`deepseek-v4-pro`、`gemini-3-flash-preview`），再回退到少量旧别名价目表。若你的部署使用私有或未收录模型，可在 `~/.agent-presence/config.json` 按模型覆盖单价。
+无价目表的模型成本显示 `n/a`；token 数始终精确。Pi 与 opencode 会记录真实成本，直接采用。其余源优先使用内置的 LiteLLM 支持模型快照计价（例如 `gpt-5.5`、`gpt-5.6-sol`、`gpt-5.6-terra`、`claude-fable-5`、`deepseek-v4-pro`、`gemini-3-flash-preview`），再回退到少量旧别名价目表。Codex fast 模式使用各模型自己的倍率；GPT-5 长上下文请求在总 prompt 输入超过 272K 后整次请求切换到更高档价格，与 ccusage 一致。若你的部署使用私有或未收录模型，可在 `~/.agent-presence/config.json` 按模型覆盖单价。
 
 ## 放进签名
 

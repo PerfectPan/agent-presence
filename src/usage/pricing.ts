@@ -10,6 +10,14 @@ export interface ModelPricing {
   /** One-hour cache creation rate; falls back to cacheWrite when absent. */
   cacheWrite1h?: number;
   cacheRead: number;
+  /** Whole-request tier boundary for models with long-context pricing. */
+  longContextThreshold?: number;
+  longContextInput?: number;
+  longContextOutput?: number;
+  longContextCacheWrite?: number;
+  longContextCacheRead?: number;
+  /** Model-specific multiplier used when Codex runs on its fast/priority tier. */
+  fastMultiplier?: number;
 }
 
 /**
@@ -77,7 +85,15 @@ export function resolvePricing(model: string, overrides: PricingOverrides = {}):
     output: merged.output,
     cacheWrite: merged.cacheWrite,
     ...(merged.cacheWrite1h === undefined ? {} : { cacheWrite1h: merged.cacheWrite1h }),
-    cacheRead: merged.cacheRead
+    cacheRead: merged.cacheRead,
+    ...(merged.longContextThreshold === undefined ? {} : { longContextThreshold: merged.longContextThreshold }),
+    ...(merged.longContextInput === undefined ? {} : { longContextInput: merged.longContextInput }),
+    ...(merged.longContextOutput === undefined ? {} : { longContextOutput: merged.longContextOutput }),
+    ...(merged.longContextCacheWrite === undefined
+      ? {}
+      : { longContextCacheWrite: merged.longContextCacheWrite }),
+    ...(merged.longContextCacheRead === undefined ? {} : { longContextCacheRead: merged.longContextCacheRead }),
+    ...(merged.fastMultiplier === undefined ? {} : { fastMultiplier: merged.fastMultiplier })
   };
 }
 
@@ -131,12 +147,21 @@ export function resolveRecordCost(record: UsageRecord, overrides: PricingOverrid
     Math.max(0, record.cacheWrite1hTokens ?? 0)
   );
   const cacheWrite5mTokens = record.cacheWriteTokens - cacheWrite1hTokens;
+  const usesLongContext =
+    pricing.longContextThreshold !== undefined &&
+    record.inputTokens + record.cacheReadTokens > pricing.longContextThreshold;
+  const inputRate = usesLongContext ? (pricing.longContextInput ?? pricing.input) : pricing.input;
+  const outputRate = usesLongContext ? (pricing.longContextOutput ?? pricing.output) : pricing.output;
+  const cacheWriteRate = usesLongContext
+    ? (pricing.longContextCacheWrite ?? pricing.cacheWrite)
+    : pricing.cacheWrite;
+  const cacheReadRate = usesLongContext ? (pricing.longContextCacheRead ?? pricing.cacheRead) : pricing.cacheRead;
   const bucketCost =
-    (record.inputTokens * pricing.input +
-      record.outputTokens * pricing.output +
-      cacheWrite5mTokens * pricing.cacheWrite +
-      cacheWrite1hTokens * (pricing.cacheWrite1h ?? pricing.cacheWrite) +
-      record.cacheReadTokens * pricing.cacheRead) /
+    (record.inputTokens * inputRate +
+      record.outputTokens * outputRate +
+      cacheWrite5mTokens * cacheWriteRate +
+      cacheWrite1hTokens * (pricing.cacheWrite1h ?? cacheWriteRate) +
+      record.cacheReadTokens * cacheReadRate) /
     1_000_000;
   return bucketCost * Math.max(0, record.pricingMultiplier ?? 1);
 }

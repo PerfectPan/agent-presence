@@ -22,12 +22,12 @@ Usage is a capability of the same source table that drives presence: a source th
 | Source | Token tracking |
 | --- | --- |
 | Claude Code | yes — priced from the table, deduped, `<synthetic>` excluded |
-| Codex | yes — diffs the cumulative session total |
+| Codex | yes — diffs cumulative totals and de-duplicates copied events across session files |
 | Pi | yes — uses the cost Pi records |
 | opencode | yes — reads the local SQLite store; uses the cost opencode records |
 | Gemini CLI | yes — reads the local chat transcripts; priced from the table |
 
-Cost shows `n/a` for models with no pricing entry; token counts are always exact. Pi and opencode log a real cost, so those are used as-is. Other sources are priced from the bundled LiteLLM snapshot for supported models (for example `gpt-5.5`, `claude-fable-5`, `deepseek-v4-pro`, and `gemini-3-flash-preview`), with a small fallback table for older aliases. Override pricing per model in `~/.agent-presence/config.json` when your deployment uses a private or unlisted model.
+Cost shows `n/a` for models with no pricing entry; token counts are always exact. Pi and opencode log a real cost, so those are used as-is. Other sources are priced from the bundled LiteLLM snapshot for supported models (for example `gpt-5.5`, `gpt-5.6-sol`, `gpt-5.6-terra`, `claude-fable-5`, `deepseek-v4-pro`, and `gemini-3-flash-preview`), with a small fallback table for older aliases. Codex fast mode uses the model-specific multiplier, and GPT-5 long-context requests switch the whole request to the higher tier above 272K total prompt input, matching ccusage. Override pricing per model in `~/.agent-presence/config.json` when your deployment uses a private or unlisted model.
 
 ## In the signature
 

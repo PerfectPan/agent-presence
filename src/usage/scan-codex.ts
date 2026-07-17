@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { createInterface } from 'node:readline';
 
 import { forEachJsonl, listJsonlFiles, parseTimestamp } from './read-jsonl.js';
+import { resolvePricing } from './pricing.js';
 import type { ScanOptions } from './scan-claude.js';
 import type { UsageRecord } from './types.js';
 
@@ -32,6 +33,7 @@ interface Cumulative {
   input: number;
   cached: number;
   output: number;
+  reasoning: number;
   total: number;
 }
 
@@ -56,10 +58,11 @@ export async function scanCodex(options: CodexScanOptions): Promise<UsageRecord[
   // configured service tier for every record in the report.
   const pricingMultiplier =
     options.root && !options.configPath ? 1 : await readConfiguredPricingMultiplier(options.configPath);
+  const seenEvents = new Set<string>();
 
   for (const file of files) {
     let model = '';
-    let prev: Cumulative = { input: 0, cached: 0, output: 0, total: 0 };
+    let prev: Cumulative = { input: 0, cached: 0, output: 0, reasoning: 0, total: 0 };
     const replaySecond = await detectReplaySecond(file);
     let skipReplay = replaySecond !== null;
 
@@ -100,16 +103,31 @@ export async function scanCodex(options: CodexScanOptions): Promise<UsageRecord[
       }
 
       const cached = Math.min(usage.cached, usage.input);
+      const resolvedModel = model || 'unknown';
+      const eventKey = JSON.stringify([
+        timestamp,
+        resolvedModel,
+        usage.input,
+        cached,
+        usage.output,
+        usage.reasoning,
+        usage.total
+      ]);
+      if (seenEvents.has(eventKey)) {
+        return;
+      }
+      seenEvents.add(eventKey);
       records.push({
         source: 'codex',
-        model: model || 'unknown',
+        model: resolvedModel,
         timestamp,
         // `input` includes the cached portion; split it so cached reads bill cheaper.
         inputTokens: Math.max(0, usage.input - cached),
         outputTokens: usage.output,
         cacheWriteTokens: 0,
         cacheReadTokens: cached,
-        pricingMultiplier,
+        pricingMultiplier:
+          pricingMultiplier === 1 ? 1 : (resolvePricing(resolvedModel)?.fastMultiplier ?? pricingMultiplier),
         costUsd: null
       });
     });
@@ -154,6 +172,7 @@ function readUsageObject(value: unknown): Cumulative | null {
     input: asNumber(t.input_tokens),
     cached: asNumber(t.cached_input_tokens),
     output: asNumber(t.output_tokens),
+    reasoning: asNumber(t.reasoning_output_tokens),
     total: asNumber(t.total_tokens)
   };
 }
@@ -163,6 +182,7 @@ function subtractCumulative(current: Cumulative, previous: Cumulative): Cumulati
     input: Math.max(0, current.input - previous.input),
     cached: Math.max(0, current.cached - previous.cached),
     output: Math.max(0, current.output - previous.output),
+    reasoning: Math.max(0, current.reasoning - previous.reasoning),
     total: Math.max(0, current.total - previous.total)
   };
 }

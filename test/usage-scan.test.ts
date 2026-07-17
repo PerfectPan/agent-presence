@@ -205,6 +205,20 @@ describe('scanCodex', () => {
     expect(records[0]).toMatchObject({ model: 'gpt-5.6-sol', pricingMultiplier: 2 });
   });
 
+  it('uses the model-specific Codex fast-tier multiplier', async () => {
+    const root = await writeJsonl('priority-gpt-5.5.jsonl', [
+      { timestamp: iso(NOW - 6000), type: 'turn_context', payload: { model: 'gpt-5.5' } },
+      codexCount(NOW - 5000, 1000, 200, 50, 1050)
+    ]);
+    const configPath = join(dir, 'config.toml');
+    await writeFile(configPath, 'service_tier = "priority"\n', 'utf8');
+
+    const records = await scanCodex({ root, configPath, sinceMs: NOW - DAY, untilMs: NOW });
+
+    expect(records).toHaveLength(1);
+    expect(records[0]).toMatchObject({ model: 'gpt-5.5', pricingMultiplier: 2.5 });
+  });
+
   it('diffs the cumulative total (not summing overlapping deltas), splitting cached input', async () => {
     const root = await writeJsonl('rollout.jsonl', [
       { timestamp: iso(NOW - 6000), type: 'turn_context', payload: { model: 'gpt-5.5' } },
@@ -264,6 +278,31 @@ describe('scanCodex', () => {
       inputTokens: 30,
       cacheReadTokens: 10,
       outputTokens: 10
+    });
+  });
+
+  it('de-duplicates copied usage events across Codex session files', async () => {
+    const timestamp = NOW - 1000;
+    const copiedHistory = [
+      { timestamp: iso(timestamp - 1), type: 'turn_context', payload: { model: 'gpt-5.6-sol' } },
+      codexCount(timestamp, 1200, 900, 80, 1280, {
+        input: 1200,
+        cached: 900,
+        output: 80,
+        total: 1280
+      })
+    ];
+    await writeJsonl('branch-a.jsonl', copiedHistory);
+    await writeJsonl('branch-b.jsonl', copiedHistory);
+
+    const records = await scanCodex({ root: dir, sinceMs: NOW - DAY, untilMs: NOW });
+
+    expect(records).toHaveLength(1);
+    expect(records[0]).toMatchObject({
+      model: 'gpt-5.6-sol',
+      inputTokens: 300,
+      cacheReadTokens: 900,
+      outputTokens: 80
     });
   });
 

@@ -77,7 +77,9 @@ describe('ccusage cost parity (per-bucket formula)', () => {
   });
 
   it('prices supported snapshot models and returns null for an unsupported one', () => {
-    expect(resolveRecordCost(record({ model: 'gpt-5.5', inputTokens: 1_000_000 }))).toBeCloseTo(5, 6);
+    // A 1M-token request is above Codex's 272K boundary, so the whole request
+    // uses ccusage's $10/MTok long-context input rate.
+    expect(resolveRecordCost(record({ model: 'gpt-5.5', inputTokens: 1_000_000 }))).toBeCloseTo(10, 6);
     // openrouter-3o is not in the supported LiteLLM snapshot; keep tokens exact
     // and report unknown cost rather than inventing a number.
     expect(resolveRecordCost(record({ model: 'openrouter-3o', inputTokens: 1_000_000 }))).toBeNull();

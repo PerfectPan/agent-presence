@@ -27,6 +27,7 @@ const SUPPORTED_MODELS = [
   'gpt-5.4',
   'gpt-5.5',
   'gpt-5.6-sol',
+  'gpt-5.6-terra',
   // DeepSeek / Gemini ids seen in opencode and TraeX transcripts.
   'deepseek-v4-pro',
   'gemini-3-flash-preview',
@@ -34,6 +35,13 @@ const SUPPORTED_MODELS = [
   // Pi / Z.ai family.
   'glm-5.1'
 ];
+
+const FAST_MULTIPLIERS = {
+  'gpt-5.4': 2,
+  'gpt-5.5': 2.5,
+  'gpt-5.6-sol': 2,
+  'gpt-5.6-terra': 2
+};
 
 function perMillion(value) {
   if (typeof value !== 'number' || !Number.isFinite(value)) {
@@ -51,6 +59,10 @@ function toModelPricing(entry) {
   }
   const cacheWrite = perMillion(entry.cache_creation_input_token_cost) ?? input;
   const cacheWrite1h = perMillion(entry.cache_creation_input_token_cost_above_1hr);
+  const longContextInput = perMillion(entry.input_cost_per_token_above_272k_tokens);
+  const longContextOutput = perMillion(entry.output_cost_per_token_above_272k_tokens);
+  const longContextCacheWrite = perMillion(entry.cache_creation_input_token_cost_above_272k_tokens);
+  const longContextCacheRead = perMillion(entry.cache_read_input_token_cost_above_272k_tokens);
   return {
     input,
     output,
@@ -58,7 +70,19 @@ function toModelPricing(entry) {
     cacheWrite,
     ...(cacheWrite1h === undefined ? {} : { cacheWrite1h }),
     // Providers without a cache-read discount bill cached input as ordinary input.
-    cacheRead: perMillion(entry.cache_read_input_token_cost) ?? input
+    cacheRead: perMillion(entry.cache_read_input_token_cost) ?? input,
+    ...(longContextInput === undefined &&
+    longContextOutput === undefined &&
+    longContextCacheWrite === undefined &&
+    longContextCacheRead === undefined
+      ? {}
+      : {
+          longContextThreshold: 272_000,
+          ...(longContextInput === undefined ? {} : { longContextInput }),
+          ...(longContextOutput === undefined ? {} : { longContextOutput }),
+          ...(longContextCacheWrite === undefined ? {} : { longContextCacheWrite }),
+          ...(longContextCacheRead === undefined ? {} : { longContextCacheRead })
+        })
   };
 }
 
@@ -81,7 +105,12 @@ async function main() {
       missing.push(model);
       continue;
     }
-    prices[model.toLowerCase()] = pricing;
+    prices[model.toLowerCase()] = {
+      ...pricing,
+      ...(FAST_MULTIPLIERS[model.toLowerCase()] === undefined
+        ? {}
+        : { fastMultiplier: FAST_MULTIPLIERS[model.toLowerCase()] })
+    };
   }
 
   const output = {

@@ -40,6 +40,7 @@
 
 ### Patch Changes
 
+- Match ccusage for Codex branch copies and current pricing: de-duplicate identical usage events across session files, apply per-model fast-tier multipliers, and use whole-request long-context rates above 272K input tokens.
 - Bound diagnostic log growth by compacting logs larger than 5 MiB to their latest roughly 1 MiB, including the macOS power watcher log. Existing macOS users should rerun `agent-presence setup --skip-login` once after upgrading to refresh the persistent watcher files.
 - Match ccusage when Claude emits cache-creation TTL buckets by summing the five-minute and one-hour breakdown instead of trusting a stale or zero top-level total.
 - Refresh every built-in usage contribution at the first session boundary after midnight, or when initializing a cache without an aggregate timestamp, so sources that remain unused today contribute zero instead of leaving the signature stuck at `今日 —`. Failed scans keep the previous cache retryable, and overlapping refreshes cannot let older results overwrite newer usage.

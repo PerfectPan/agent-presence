@@ -39,7 +39,7 @@ describe('resolvePricing', () => {
 
   it('applies overrides over the LiteLLM snapshot', () => {
     const pricing = resolvePricing('gpt-5.5', { 'gpt-5.5': { input: 7 } });
-    expect(pricing).toEqual({ input: 7, output: 30, cacheWrite: 5, cacheRead: 0.5 });
+    expect(pricing).toMatchObject({ input: 7, output: 30, cacheWrite: 5, cacheRead: 0.5 });
   });
 
   it('prices supported LiteLLM snapshot models without per-machine overrides', () => {
@@ -59,7 +59,13 @@ describe('resolvePricing', () => {
       input: 5,
       output: 30,
       cacheWrite: 6.25,
-      cacheRead: 0.5
+      cacheRead: 0.5,
+      longContextThreshold: 272_000,
+      longContextInput: 10,
+      longContextOutput: 45,
+      longContextCacheWrite: 12.5,
+      longContextCacheRead: 1,
+      fastMultiplier: 2
     });
     expect(resolvePricing('claude-sonnet-5')).toMatchObject({
       input: 2,
@@ -97,14 +103,41 @@ describe('resolveRecordCost', () => {
     const cost = resolveRecordCost({
       ...record({
         model: 'gpt-5.6-sol',
-        inputTokens: 1_000_000,
-        outputTokens: 1_000_000,
-        cacheReadTokens: 1_000_000
+        inputTokens: 100_000,
+        outputTokens: 100_000,
+        cacheReadTokens: 100_000
       }),
       pricingMultiplier: 2
     });
 
-    expect(cost).toBeCloseTo((5 + 30 + 0.5) * 2, 6);
+    expect(cost).toBeCloseTo((0.5 + 3 + 0.05) * 2, 6);
+  });
+
+  it('uses the whole-request long-context tier above 272K Codex input tokens', () => {
+    const cost = resolveRecordCost({
+      ...record({
+        model: 'gpt-5.6-sol',
+        inputTokens: 200_001,
+        cacheReadTokens: 72_000,
+        outputTokens: 1_000
+      }),
+      pricingMultiplier: 2
+    });
+
+    // ccusage/OpenAI long-context rates are $10 input, $45 output, and $1 cached
+    // input per MTok before the configured fast-tier multiplier.
+    expect(cost).toBeCloseTo(4.23402, 8);
+
+    const boundaryCost = resolveRecordCost({
+      ...record({
+        model: 'gpt-5.6-sol',
+        inputTokens: 200_000,
+        cacheReadTokens: 72_000,
+        outputTokens: 1_000
+      }),
+      pricingMultiplier: 2
+    });
+    expect(boundaryCost).toBeCloseTo(2.132, 8);
   });
 
   it('returns null when the model is unpriced', () => {
