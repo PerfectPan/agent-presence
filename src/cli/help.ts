@@ -2,20 +2,20 @@ export function printHelp(): void {
   console.log(`agent-presence
 
 Usage:
-  agent-presence login [--provider feishu-signature]
-  agent-presence setup [--provider feishu-signature] [--login] [--skip-login] [--no-hooks] [--hook-command <npx|absolute>]
+  agent-presence login [--provider <magic-builder|feishu-signature>]
+  agent-presence setup [--provider <magic-builder|feishu-signature>] [--login] [--skip-login] [--no-hooks] [--hook-command <npx|absolute>]
   agent-presence uninstall [--credentials] [--all]
-  agent-presence url [--provider feishu-signature]
+  agent-presence url [--provider <magic-builder|feishu-signature>]
   agent-presence config show
   agent-presence config provider feishu-signature [--base-url <url>] [--preview-base-url <url>] [--image-key <key>] [--target-url <url>] [--reset]
   agent-presence config render [--zero <template>] [--one <template>] [--many <template>] [--reset]
   agent-presence source list
   agent-presence source add <npm-package> [--id <id>] [--registry <url>] [--yes]
   agent-presence source remove <id> [--keep-package]
-  agent-presence status [--provider feishu-signature] [--remote]
+  agent-presence status [--provider <magic-builder|feishu-signature>] [--remote]
   agent-presence usage [--days <n>] [--json]
-  agent-presence update [--provider feishu-signature] [--force] [--value <text>] [--silent]
-  agent-presence reset [--provider feishu-signature] [--force] [--silent]
+  agent-presence update [--provider <magic-builder|feishu-signature>] [--force] [--value <text>] [--silent]
+  agent-presence reset [--provider <magic-builder|feishu-signature>] [--force] [--silent]
   agent-presence hook --source codex --event <SessionStart|Heartbeat|UserPromptSubmit|PreToolUse|Stop>
   agent-presence hook --source claude --event <SessionStart|UserPromptSubmit|PreToolUse|PostToolUse|Stop|SessionEnd|SubagentStart|SubagentStop> --silent
   agent-presence hook --source gemini --event <SessionStart|UserPromptSubmit|PreToolUse|PostToolUse|Stop|SessionEnd> --silent
