@@ -25,7 +25,8 @@ vi.mock('../src/secret.js', () => ({
 vi.mock('../src/config.js', () => ({
   configSlotId: () => 'slot_config',
   loadConfig: vi.fn().mockResolvedValue({ provider: 'feishu-signature', slot_id: 'slot_config' }),
-  providerId: (_config: unknown, provider?: string) => provider ?? 'feishu-signature'
+  providerId: (_config: unknown, provider?: string) => provider ?? 'feishu-signature',
+  defaultCommandProviderId: (_config: unknown, provider?: string) => provider ?? 'magic-builder'
 }));
 
 vi.mock('../src/migration.js', () => ({

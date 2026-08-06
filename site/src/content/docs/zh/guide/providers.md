@@ -25,4 +25,4 @@ agent-presence setup --provider feishu-signature
 agent-presence url --provider feishu-signature
 ```
 
-已有安装不受默认变更影响:`login` 会把显式 provider 写进配置,默认只对全新安装生效。
+已有安装若保存了遗留 provider,显式指定 provider 的命令仍可继续使用。直接执行 `setup` 和 `url` 时现在默认走 `magic-builder`;确实需要直连预览时再传 `--provider feishu-signature`。

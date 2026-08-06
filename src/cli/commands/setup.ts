@@ -1,4 +1,4 @@
-import { configSlotId, loadConfig, providerId } from '../../config.js';
+import { configSlotId, defaultCommandProviderId, loadConfig } from '../../config.js';
 import { cleanupMigratedLegacyHome, hasLegacyHomeToMigrate, migrateLegacyHome } from '../../migration.js';
 import { isMacOS } from '../../platform.js';
 import { readCredential } from '../../secret.js';
@@ -37,7 +37,7 @@ export async function setup(args: string[]): Promise<void> {
   }
 
   const config = await loadConfig();
-  const activeProvider = providerId(config, optionValue(args, '--provider'));
+  const activeProvider = defaultCommandProviderId(config, optionValue(args, '--provider'));
 
   if (!skipLogin && (forceLogin || !(await hasCredential()))) {
     await login(['--provider', activeProvider]);

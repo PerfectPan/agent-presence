@@ -25,4 +25,4 @@ agent-presence setup --provider feishu-signature
 agent-presence url --provider feishu-signature
 ```
 
-Existing installs are unaffected by the default: `login` writes an explicit provider into your config, so the default only applies to fresh setups.
+Existing installs with a persisted legacy provider remain usable for explicit provider-aware commands. Bare `setup` and `url` now target `magic-builder`; pass `--provider feishu-signature` when you intentionally need the direct-preview alternative.

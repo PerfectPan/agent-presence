@@ -436,10 +436,10 @@ Idempotency is part of the installer contract, not a nice-to-have:
 | State | Preserve local session state during setup; only `reset` or `uninstall --all` clears it. |
 | Credentials | Preserve credentials during normal setup and uninstall; only `uninstall --credentials` or `uninstall --all` removes them. |
 
-This makes the supported repair command simple:
+This makes the supported repair command simple and keeps its default on magic-builder:
 
 ```bash
-npx --yes --registry=https://registry.npmjs.org @rivus/agent-presence@<version> setup --provider feishu-signature
+npx --yes --registry=https://registry.npmjs.org @rivus/agent-presence@<version> setup
 ```
 
 Users should be able to run that command repeatedly after package upgrades, hook corruption, path changes, or partial installs.
@@ -548,7 +548,7 @@ Logging rules:
 
 ### Status Readback
 
-`status --provider feishu-signature` reads local state and rendered value. `status --provider feishu-signature --remote` additionally reads the remote slot. Together they are the primary readback tools for debugging mismatches:
+`status` reads local state and rendered value using the configured provider. `status --remote` additionally reads the remote slot or the magic-builder FaaS preview. Together they are the primary readback tools for debugging mismatches:
 
 ```text
 local activeCount/value differs from remote value -> debounce, 429, network, or provider write failure

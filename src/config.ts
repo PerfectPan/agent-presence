@@ -166,6 +166,24 @@ export function providerId(config: AppConfig, explicitProvider?: string): Provid
   throw new Error(`unsupported provider: ${value}`);
 }
 
+/**
+ * Resolve the provider for commands whose documented default is magic-builder.
+ *
+ * A persisted legacy provider remains a valid explicit choice for operational
+ * commands, but it should not make bare `setup` or `url` silently fall back to
+ * the retired direct-preview provider. CLI flags and environment overrides
+ * still take precedence.
+ */
+export function defaultCommandProviderId(config: AppConfig, explicitProvider?: string): ProviderId {
+  if (explicitProvider !== undefined) {
+    return providerId(config, explicitProvider);
+  }
+  if (process.env.AGENT_PRESENCE_PROVIDER !== undefined || process.env.AGENT_SIGNATURE_PROVIDER !== undefined) {
+    return providerId(config);
+  }
+  return DEFAULT_PROVIDER_ID;
+}
+
 export function magicBuilderConfig(config: AppConfig): MagicBuilderProviderConfig {
   return config.providers?.['magic-builder'] ?? {};
 }

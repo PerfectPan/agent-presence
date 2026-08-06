@@ -1,6 +1,7 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   DEFAULT_MAGIC_BUILDER_BASE_URL,
+  defaultCommandProviderId,
   magicBuilderBaseUrl,
   magicBuilderConfig,
   magicBuilderFaasId,
@@ -29,6 +30,22 @@ describe('providerId', () => {
 
   it('rejects unknown providers', () => {
     expect(() => providerId({}, 'nope')).toThrow(/unsupported provider/);
+  });
+});
+
+describe('defaultCommandProviderId', () => {
+  it('keeps bare setup and url on magic-builder after a legacy config', () => {
+    expect(defaultCommandProviderId({ provider: 'feishu-signature' })).toBe('magic-builder');
+  });
+
+  it('still honors an explicit provider override', () => {
+    expect(defaultCommandProviderId({ provider: 'magic-builder' }, 'feishu-signature')).toBe('feishu-signature');
+  });
+
+  it('honors an environment provider override', () => {
+    vi.stubEnv('AGENT_PRESENCE_PROVIDER', 'feishu-signature');
+    expect(defaultCommandProviderId({ provider: 'magic-builder' })).toBe('feishu-signature');
+    vi.unstubAllEnvs();
   });
 });
 
