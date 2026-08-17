@@ -17,7 +17,7 @@ agent-presence usage --json     # 结构化输出
 
 ## 各数据源
 
-Token 统计是驱动 presence 的同一张源表的一种能力：实现了 `scanUsage` 的源即可计费。五个内置源全部支持，第三方源插件也可以实现。
+Token 统计是驱动 presence 的同一张源表的一种能力：实现了 `scanUsage` 的源即可计费。六个内置源全部支持，第三方源插件也可以实现。
 
 | 源 | Token 统计 |
 | --- | --- |
@@ -26,8 +26,11 @@ Token 统计是驱动 presence 的同一张源表的一种能力：实现了 `sc
 | Pi | 支持 — 用 Pi 自己记录的成本 |
 | opencode | 支持 — 读取本地 SQLite 存储；用 opencode 记录的成本 |
 | Gemini CLI | 支持 — 读取本地会话 transcript；按价目表计价 |
+| dsh | 支持 — 由 setup 安装的 dsh 插件实时上报每次模型调用用量；按价目表计价 |
 
 无价目表的模型成本显示 `n/a`；token 数始终精确。Pi 与 opencode 会记录真实成本，直接采用。其余源优先使用内置的 LiteLLM 支持模型快照计价（例如 `gpt-5.5`、`claude-fable-5`、`deepseek-v4-pro`、`gemini-3-flash-preview`），再回退到少量旧别名价目表。若你的部署使用私有或未收录模型，可在 `~/.agent-presence/config.json` 按模型覆盖单价。
+
+dsh 是唯一不扫 transcript 的源：`agent-presence setup` 会提示是否安装一个小型 Cordis 插件到 `~/.dsh/plugins/`（注册在对所有 profile 生效的 home 级 `~/.dsh/cordis.patch.yml`）。插件在每次模型调用后把 token 用量随 presence heartbeat 一起上报，`agent-presence` 追加到本地 usage 日志，`usage` 命令和签名徽标读回这份日志。随时可用 `pnpm run install:dsh-plugin` / `pnpm run uninstall:dsh-plugin`（或 `node dist/scripts/install-dsh-plugin.js`）安装或移除。
 
 ## 放进签名
 

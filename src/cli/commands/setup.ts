@@ -1,3 +1,7 @@
+import { existsSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
+
 import { configSlotId, defaultCommandProviderId, loadConfig } from '../../config.js';
 import { cleanupMigratedLegacyHome, hasLegacyHomeToMigrate, migrateLegacyHome } from '../../migration.js';
 import { isMacOS } from '../../platform.js';
@@ -58,6 +62,10 @@ export async function setup(args: string[]): Promise<void> {
       'Codex may require you to approve the updated Agent Presence hooks in Codex settings before they run.',
       'Codex hook trust'
     );
+
+    // dsh has no managed hook settings; its plugin is opt-in. Prompt when dsh
+    // is installed so the user can bridge dsh presence + token usage.
+    await maybeInstallDshPlugin();
   }
 
   const credential = await readCredential(configSlotId(config));
@@ -105,4 +113,27 @@ export async function setup(args: string[]): Promise<void> {
   }
 
   finishOutro('setup: ok');
+}
+
+/**
+ * dsh presence + usage is opt-in: prompt to install the dsh plugin when dsh
+ * is detected. Non-interactive terminals skip it (use the install script
+ * directly for automation).
+ */
+async function maybeInstallDshPlugin(): Promise<void> {
+  if (!isInteractiveTerminal()) {
+    return;
+  }
+  const dshHome = process.env.DSH_HOME?.trim() || join(homedir(), '.dsh');
+  if (!existsSync(dshHome)) {
+    return;
+  }
+  const install = await promptConfirm('Install the dsh plugin for presence + token usage reporting?');
+  if (!install) {
+    return;
+  }
+  const results = await runSetupScripts({ scriptNames: ['install-dsh-plugin.js'] });
+  for (const result of results) {
+    showInfo(`setup installed: ${result.scriptName}`);
+  }
 }

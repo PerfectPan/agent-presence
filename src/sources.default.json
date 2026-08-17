@@ -4,6 +4,7 @@
     "claude": { "handler": "builtin:claude" },
     "gemini": { "handler": "builtin:gemini" },
     "opencode": { "handler": "builtin:opencode" },
-    "pi": { "handler": "builtin:pi" }
+    "pi": { "handler": "builtin:pi" },
+    "dsh": { "handler": "builtin:dsh" }
   }
 }

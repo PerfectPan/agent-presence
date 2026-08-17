@@ -18,7 +18,9 @@ signature that already shows live presence.
   today and the last 7 days), per source, with an estimated USD cost.
 - Coverage of every source that records usage locally: Claude, Codex, Pi. (Since
   extended to opencode and Gemini, and generalised into a `scanUsage` capability
-  on the source table — see [`source-usage.md`](./source-usage.md).)
+  on the source table — see [`source-usage.md`](./source-usage.md). dsh is the
+  one source that reports usage in real time via a managed plugin rather than
+  scraping transcripts; see the Non-Goals note below.)
 - Optionally surface today's usage in the signature, reusing the existing render
   pipeline rather than a second update path.
 - Pricing that can be corrected per deployment without a code change.
@@ -33,6 +35,13 @@ signature that already shows live presence.
 - Real-time per-event metering. Usage is computed by scanning transcripts after
   the fact (the same approach as ccusage), not from hook payloads — hook events
   do not carry token counts.
+  **Partially superseded by dsh.** dsh has no transcript worth scraping (zstd,
+  and its plugin surface is the supported extension point), so the managed dsh
+  plugin reports each model call's usage in the hook payload and `agent-presence`
+  appends it to a local usage log (`~/.agent-presence/usage-events.log`). The
+  dsh `scanUsage` reads that log back, so dsh still flows through the same
+  window/cost pipeline as the transcript-scraping sources. The other sources
+  remain after-the-fact scans.
 - Cross-machine aggregation or historical charts.
 
 ## Proposed Design

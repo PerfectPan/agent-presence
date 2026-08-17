@@ -10,6 +10,7 @@ import { writeHookOutput } from '../hook-context.js';
 import { writeHookDiagnostic } from '../hook-diagnostics.js';
 import { readStdinJson, writeLog } from '../io.js';
 import { syncRenderedSlotWithDeferredFlush } from '../rendered-slot-sync.js';
+import { appendUsageEvent, usageEventFromPayload } from '../../usage-events.js';
 import { refreshSignatureUsageBadges, usageRenderPlan } from '../usage-badge.js';
 
 export async function hook(args: string[]): Promise<void> {
@@ -36,6 +37,14 @@ export async function hook(args: string[]): Promise<void> {
 
     const statePath = getStatePath();
     const now = Date.now();
+
+    // Ingest real-time usage reported by a source plugin (dsh) before the
+    // boundary refresh below, so a Stop carrying usage is counted in the same
+    // boundary's scan. Best-effort: a failed append must never break the hook.
+    const usageEvent = usageEventFromPayload(source, payload, now);
+    if (usageEvent) {
+      await appendUsageEvent(usageEvent).catch(() => {});
+    }
 
     // Refresh cached usage badges only at session boundaries. Same-day events
     // scan their owning source; the first boundary after midnight scans all
