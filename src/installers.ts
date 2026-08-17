@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
-import { dirname } from 'node:path';
+import { homedir } from 'node:os';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { hasNodeErrorCode, readJsonFile, writeJsonAtomic } from './json-file.js';
 
@@ -467,10 +468,13 @@ export async function uninstallPiExtension(paths: PiExtensionPaths): Promise<PiU
   };
 }
 
-async function readManagedExtension(path: string): Promise<{ status: 'missing' | 'managed' | 'unmanaged' }> {
+async function readManagedExtension(
+  path: string,
+  marker: string = PI_EXTENSION_MARKER
+): Promise<{ status: 'missing' | 'managed' | 'unmanaged' }> {
   try {
     const contents = await readFile(path, 'utf8');
-    return { status: contents.includes(PI_EXTENSION_MARKER) ? 'managed' : 'unmanaged' };
+    return { status: contents.includes(marker) ? 'managed' : 'unmanaged' };
   } catch (error) {
     if (hasNodeErrorCode(error, 'ENOENT')) {
       return { status: 'missing' };
@@ -505,6 +509,15 @@ export interface DshPluginPaths {
   pluginPath: string;
   /** The home-level cordis patch that registers it (e.g. `~/.dsh/cordis.patch.yml`). */
   patchPath: string;
+}
+
+/** Resolve the dsh plugin + patch paths, honouring `DSH_HOME` and test overrides. */
+export function resolveDshPluginPaths(): DshPluginPaths {
+  const dshHome = process.env.DSH_HOME?.trim() || join(homedir(), '.dsh');
+  return {
+    pluginPath: process.env.DSH_AGENT_PRESENCE_PLUGIN_FILE ?? join(dshHome, 'plugins', DSH_PLUGIN_FILE_NAME),
+    patchPath: process.env.DSH_AGENT_PRESENCE_PATCH_FILE ?? join(dshHome, 'cordis.patch.yml')
+  };
 }
 
 export interface DshInstallResult {
@@ -604,12 +617,8 @@ export function apply(ctx) {
     return next()
   })
 
-  // waterfall: must delegate to next() so the tool proceeds.
-  ctx.on("tools/pre-execute", async (_exec, next) => {
-    if (lastSession) emit("Heartbeat", lastSession, false)
-    return next()
-  })
-
+  // One heartbeat per tool call (on completion) is enough to prove the
+  // session is active; agent/pre-step already covers step starts.
   ctx.on("tools/result", () => {
     if (lastSession) emit("Heartbeat", lastSession, false)
   })
@@ -654,11 +663,11 @@ export function withDshAgentPresencePatch(input: string, pluginPath: string): st
     const trimmed = input.trimEnd();
     return trimmed ? `${trimmed}\n${block}\n` : `${block}\n`;
   }
+  // Replace from the start marker to the end marker (or EOF if the end marker
+  // is missing — a crash mid-write left an orphaned start).
   const endIdx = input.indexOf(DSH_PATCH_END, startIdx);
-  if (endIdx === -1) {
-    return `${input.trimEnd()}\n${block}\n`;
-  }
-  return `${input.slice(0, startIdx)}${block}${input.slice(endIdx + DSH_PATCH_END.length)}`;
+  const endSlice = endIdx === -1 ? input.length : endIdx + DSH_PATCH_END.length;
+  return `${input.slice(0, startIdx)}${block}${input.slice(endSlice)}`;
 }
 
 /** Remove the agent-presence entry from a cordis.patch.yml body. */
@@ -673,7 +682,8 @@ export function withoutDshAgentPresencePatch(input: string): string {
   }
   const before = input.slice(0, startIdx);
   const after = input.slice(endIdx + DSH_PATCH_END.length);
-  const result = `${before}${after}`.replace(/\n{3,}/g, '\n\n').trim();
+  // Only normalize the gap left by the removed block, not the file's own spacing.
+  const result = `${before.replace(/\n+$/, '')}\n\n${after.replace(/^\n+/, '')}`.trim();
   return result ? `${result}\n` : '';
 }
 
@@ -687,8 +697,8 @@ ${DSH_PATCH_END}`;
 
 export async function installDshPlugin(paths: DshPluginPaths): Promise<DshInstallResult> {
   await mkdir(dirname(paths.pluginPath), { recursive: true, mode: 0o700 });
-  const existing = await readManagedFile(paths.pluginPath, DSH_PLUGIN_MARKER);
-  if (existing === 'unmanaged') {
+  const existing = await readManagedExtension(paths.pluginPath, DSH_PLUGIN_MARKER);
+  if (existing.status === 'unmanaged') {
     throw new Error(
       `refusing to overwrite ${paths.pluginPath}: it is not managed by @rivus/agent-presence. ` +
         'Delete or rename that file, then rerun setup.'
@@ -710,9 +720,9 @@ export async function installDshPlugin(paths: DshPluginPaths): Promise<DshInstal
 }
 
 export async function uninstallDshPlugin(paths: DshPluginPaths): Promise<DshUninstallResult> {
-  const existing = await readManagedFile(paths.pluginPath, DSH_PLUGIN_MARKER);
+  const existing = await readManagedExtension(paths.pluginPath, DSH_PLUGIN_MARKER);
   let status: DshUninstallResult['status'] = 'skipped';
-  if (existing === 'managed') {
+  if (existing.status === 'managed') {
     await rm(paths.pluginPath, { force: true });
     status = 'removed';
   }
@@ -733,18 +743,6 @@ export async function uninstallDshPlugin(paths: DshPluginPaths): Promise<DshUnin
   }
 
   return { status, pluginPath: paths.pluginPath, patchPath: paths.patchPath, patchUpdated, patchError };
-}
-
-async function readManagedFile(path: string, marker: string): Promise<'missing' | 'managed' | 'unmanaged'> {
-  try {
-    const contents = await readFile(path, 'utf8');
-    return contents.includes(marker) ? 'managed' : 'unmanaged';
-  } catch (error) {
-    if (hasNodeErrorCode(error, 'ENOENT')) {
-      return 'missing';
-    }
-    throw error;
-  }
 }
 
 async function readTextFile(path: string, fallback: string): Promise<string> {

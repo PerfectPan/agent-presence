@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -54,7 +54,6 @@ describe('installDshPlugin', () => {
   });
 
   it('preserves unrelated entries in an existing patch', async () => {
-    const { mkdir } = await import('node:fs/promises');
     await mkdir(join(homeDir, '.dsh'), { recursive: true });
     await writeFile(
       patchPath,
@@ -71,7 +70,6 @@ describe('installDshPlugin', () => {
   });
 
   it('refuses to overwrite a non-managed file at the plugin path', async () => {
-    const { mkdir } = await import('node:fs/promises');
     await mkdir(join(homeDir, '.dsh', 'plugins'), { recursive: true });
     await writeFile(pluginPath, '// hand-rolled user plugin');
 
@@ -97,7 +95,6 @@ describe('uninstallDshPlugin', () => {
   });
 
   it('removes the managed plugin and strips the entry from the patch', async () => {
-    const { mkdir } = await import('node:fs/promises');
     await mkdir(join(homeDir, '.dsh'), { recursive: true });
     await writeFile(
       patchPath,
@@ -126,7 +123,6 @@ describe('uninstallDshPlugin', () => {
   });
 
   it('does not delete a user-owned file at the plugin path', async () => {
-    const { mkdir } = await import('node:fs/promises');
     await mkdir(join(homeDir, '.dsh', 'plugins'), { recursive: true });
     await writeFile(pluginPath, '// user wrote this themselves');
 

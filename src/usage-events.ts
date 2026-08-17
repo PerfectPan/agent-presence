@@ -1,8 +1,9 @@
-import { readFile } from 'node:fs/promises';
+import { stat } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import { getHomeDir } from './config.js';
 import { appendRetainedLogLine } from './log-retention.js';
+import { forEachJsonl } from './usage/read-jsonl.js';
 
 /**
  * One usage report ingested from a source plugin's hook payload. Sources that
@@ -33,34 +34,24 @@ export async function appendUsageEvent(event: UsageEvent): Promise<void> {
 
 /** Read a source's events in `[sinceMs, untilMs)`. Missing/corrupt lines are skipped. */
 export async function readUsageEvents(source: string, sinceMs: number, untilMs: number): Promise<UsageEvent[]> {
-  let text: string;
+  const path = getUsageEventsPath();
+  // The log is append-only with ingestion timestamps, so an mtime older than
+  // the window means zero events in range — skip the read entirely.
   try {
-    text = await readFile(getUsageEventsPath(), 'utf8');
+    const info = await stat(path);
+    if (info.mtimeMs < sinceMs) {
+      return [];
+    }
   } catch {
     return [];
   }
   const events: UsageEvent[] = [];
-  for (const line of text.split('\n')) {
-    const trimmed = line.trim();
-    if (!trimmed) {
-      continue;
-    }
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(trimmed);
-    } catch {
-      continue; // compacted log may start mid-line; skip it
-    }
-    const event = asUsageEvent(parsed);
-    if (
-      event &&
-      event.source === source &&
-      event.timestamp >= sinceMs &&
-      event.timestamp < untilMs
-    ) {
+  await forEachJsonl(path, (record) => {
+    const event = asUsageEvent(record);
+    if (event && event.source === source && event.timestamp >= sinceMs && event.timestamp < untilMs) {
       events.push(event);
     }
-  }
+  });
   return events;
 }
 
@@ -122,5 +113,7 @@ function asUsageEvent(value: unknown): UsageEvent | null {
 }
 
 function asNumber(value: unknown): number {
+  // Ingestion boundary: coerce non-finite and negative values to zero so a
+  // malformed plugin payload can't write nonsense into the log.
   return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : 0;
 }

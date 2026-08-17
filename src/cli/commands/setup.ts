@@ -3,6 +3,7 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 
 import { configSlotId, defaultCommandProviderId, loadConfig } from '../../config.js';
+import { installDshPlugin, resolveDshPluginPaths } from '../../installers.js';
 import { cleanupMigratedLegacyHome, hasLegacyHomeToMigrate, migrateLegacyHome } from '../../migration.js';
 import { isMacOS } from '../../platform.js';
 import { readCredential } from '../../secret.js';
@@ -117,8 +118,8 @@ export async function setup(args: string[]): Promise<void> {
 
 /**
  * dsh presence + usage is opt-in: prompt to install the dsh plugin when dsh
- * is detected. Non-interactive terminals skip it (use the install script
- * directly for automation).
+ * is detected. Non-interactive terminals skip it (use `pnpm run
+ * install:dsh-plugin` for automation).
  */
 async function maybeInstallDshPlugin(): Promise<void> {
   if (!isInteractiveTerminal()) {
@@ -132,8 +133,9 @@ async function maybeInstallDshPlugin(): Promise<void> {
   if (!install) {
     return;
   }
-  const results = await runSetupScripts({ scriptNames: ['install-dsh-plugin.js'] });
-  for (const result of results) {
-    showInfo(`setup installed: ${result.scriptName}`);
+  const result = await installDshPlugin(resolveDshPluginPaths());
+  showInfo(`setup installed: dsh plugin (${result.pluginPath})`);
+  if (result.patchError) {
+    showNote(`could not update dsh patch at ${result.patchPath}: ${result.patchError}`, 'dsh plugin');
   }
 }

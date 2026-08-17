@@ -23,6 +23,7 @@ export const DEFAULT_UNINSTALL_SCRIPT_NAMES = [
   'uninstall-opencode-plugin.js',
   'uninstall-gemini-hook.js',
   'uninstall-pi-extension.js',
+  'uninstall-dsh-plugin.js',
   WATCHER_UNINSTALL_SCRIPT
 ] as const;
 
