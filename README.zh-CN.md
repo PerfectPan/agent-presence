@@ -5,7 +5,7 @@
 Agent Presence 会把本机编码智能体的「在线/工作状态」和 token 用量同步到飞书个性签名的链接预览里。
 
 ```text
-Codex / Claude Code / Gemini CLI / opencode / Pi hooks
+Codex / Claude Code / Gemini CLI / opencode / Pi / dsh
   -> 本地 presence 状态
   -> 防抖渲染
   -> 托管 slot（值存储）
@@ -76,6 +76,8 @@ N -> N 个 AI 牛马正在搬砖 | codex W · claude X · gemini Y · opencode Z
 
 `agent-presence usage` 在事后扫描各智能体的本地 transcript（不 hook 它们），思路类似 [`ccusage`](https://github.com/ryoppippi/ccusage)，按**自然日**窗口统计 —— `今日` 从本地零点算起，而不是像滚动 24h 窗口那样随时间滑动。
 
+dsh 是个例外：不扫它的 transcript，而是由 setup 时可选安装的 dsh 插件在每次模型调用后把 token 用量通过 hook payload 实时上报，`agent-presence` 追加到本地 usage 日志。`usage` 命令和签名徽标读回这份日志，所以 dsh 和其他扫 transcript 的来源一样参与窗口统计和总计。
+
 ```bash
 agent-presence usage            # 今日和近 7 天并排
 agent-presence usage --days 7   # 单个自然日窗口
@@ -112,7 +114,7 @@ hook 由 `setup` 自动安装，也可直接调用，如 `agent-presence hook --
 
 ## Sources
 
-被统计的智能体（`codex`、`claude`、`gemini`、`opencode`、`pi`）是一张**源表**，你的配置可以扩展、覆盖或禁用它。新增一个源可用纯配置的 `match` 规则、本地 `handler` 模块，或直接安装一个包：
+被统计的智能体（`codex`、`claude`、`gemini`、`opencode`、`pi`、`dsh`）是一张**源表**，你的配置可以扩展、覆盖或禁用它。新增一个源可用纯配置的 `match` 规则、本地 `handler` 模块，或直接安装一个包：
 
 ```bash
 agent-presence source add @your-scope/agent-presence-youragent --yes   # 内网源加 --registry <url>

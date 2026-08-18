@@ -197,13 +197,16 @@ Claude Code SessionStart, UserPromptSubmit, PreToolUse, PostToolUse, Stop, StopF
 Gemini CLI  SessionStart, UserPromptSubmit, PreToolUse, PostToolUse, Stop, SessionEnd
 opencode    session.created, command.executed, file.edited, message.*, permission.*, session.*, todo.updated, tool.execute.*
 Pi          before_agent_start, turn_start, tool_execution_start, tool_execution_end, agent_end, session_shutdown
+dsh         agent/session-start, agent/pre-step, tools/pre-execute, tools/result, agent/turn-stopping (via managed dsh plugin)
 ```
 
 Codex hooks always print `{}` so they remain valid pass-through hooks. Claude Code, Gemini CLI, opencode, and Pi hooks run with `--silent`.
 
-The five sources above are built in. They live in a source table that a user's config can extend, override, or disable without a core change; see [Source Table](#source-table).
+The six sources above are built in. They live in a source table that a user's config can extend, override, or disable without a core change; see [Source Table](#source-table).
 
 For Pi specifically, the extension intentionally does **not** treat the Pi `session_start` event as an active-session signal — that event fires whenever the Pi TUI opens, including when the user has not yet submitted a task. Activation is gated on `before_agent_start`, which only fires after the user submits a prompt. Heartbeats come from `turn_start` and `tool_execution_*`. Finishes come from `agent_end` (turn done) and `session_shutdown` (Pi quit, reload, or session switch).
+
+For dsh, there is no managed hook installer: `setup` prompts to install a single-file Cordis plugin into `~/.dsh/plugins/` and registers it in the home-level `~/.dsh/cordis.patch.yml` (which applies to every profile). The plugin bridges dsh lifecycle events to `agent-presence hook --source dsh` and reports each model call's token usage in the hook payload, which the hook command appends to a local usage log (`~/.agent-presence/usage-events.log`). The dsh `scanUsage` reads that log back, so dsh contributes to the same usage windows and totals as the transcript-scraping sources without scraping dsh's zstd transcripts.
 
 Hook commands are managed entries. Installers identify them by the `agent-presence hook` or legacy `agent-signature hook` command shape, remove the old managed entries, and then add the current managed entry. This keeps reruns from accumulating duplicate hooks.
 

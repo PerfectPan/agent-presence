@@ -5,7 +5,7 @@ Sync local coding-agent presence (and token usage) to a Feishu signature link pr
 [简体中文](README.zh-CN.md) · [Documentation](https://agent-presence.vercel.app)
 
 ```text
-Codex / Claude Code / Gemini CLI / opencode / Pi hooks
+Codex / Claude Code / Gemini CLI / opencode / Pi / dsh
   -> local presence state
   -> debounced renderer
   -> hosted slot store (value storage)
@@ -76,6 +76,8 @@ Full event mapping: [Presence semantics](https://agent-presence.vercel.app/guide
 
 `agent-presence usage` scans the agents' local transcripts after the fact (it does not hook them), in the spirit of [`ccusage`](https://github.com/ryoppippi/ccusage), over **calendar-day** windows — `今日` counts from local midnight rather than sliding as a rolling 24h window.
 
+dsh is the exception: instead of scraping its transcripts, a managed dsh plugin (installed by `setup`, opt-in) reports each model call's token usage in real time via the hook payload, which `agent-presence` appends to a local usage log. The `usage` command and signature badge read that log back, so dsh contributes to the same windows and totals as the transcript-scraping sources.
+
 ```bash
 agent-presence usage            # today and the last 7 days side by side
 agent-presence usage --days 7   # a single calendar-day window
@@ -112,7 +114,7 @@ Hooks are installed by `setup` but can be invoked directly, e.g. `agent-presence
 
 ## Sources
 
-The counted agents (`codex`, `claude`, `gemini`, `opencode`, `pi`) are a **source table** your config can extend, override, or disable. Add one with a config-only `match` spec, a local `handler` module, or by installing a package:
+The counted agents (`codex`, `claude`, `gemini`, `opencode`, `pi`, `dsh`) are a **source table** your config can extend, override, or disable. Add one with a config-only `match` spec, a local `handler` module, or by installing a package:
 
 ```bash
 agent-presence source add @your-scope/agent-presence-youragent --yes   # --registry <url> for an internal registry

@@ -3,6 +3,7 @@ import { resolveClaudeHookContext } from '../src/hooks/claude.js';
 import { resolveCodexHookContext } from '../src/hooks/codex.js';
 import { mapOpenCodeEvent, resolveOpenCodeHookContext } from '../src/hooks/opencode.js';
 import { resolvePiHookContext } from '../src/hooks/pi.js';
+import { resolveDshHookContext } from '../src/hooks/dsh.js';
 import { resolveHookContext } from '../src/cli/hook-context.js';
 import {
   applyAgentEvent,
@@ -245,6 +246,49 @@ describe('Pi hook context', () => {
       event: 'Stop',
       project: '/repo',
       sessionId: 'pi-session-2'
+    });
+  });
+});
+
+describe('dsh hook context', () => {
+  it('reads the claude-code dialect payload from dsh-hooks-claude-code', () => {
+    expect(
+      resolveDshHookContext({
+        hook_event_name: 'UserPromptSubmit',
+        session_id: 'dsh-session-1',
+        cwd: '/repo'
+      })
+    ).toEqual({
+      event: 'UserPromptSubmit',
+      project: '/repo',
+      sessionId: 'dsh-session-1'
+    });
+  });
+
+  it('falls back to env when the payload is empty', () => {
+    expect(
+      resolveDshHookContext(
+        {},
+        {
+          DSH_SESSION_ID: 'env-session',
+          DSH_PROJECT: '/env-repo',
+          DSH_HOOK_EVENT: 'SessionStart'
+        }
+      )
+    ).toEqual({
+      event: 'SessionStart',
+      project: '/env-repo',
+      sessionId: 'env-session'
+    });
+  });
+
+  it('routes through resolveHookContext when source is dsh', () => {
+    expect(
+      resolveHookContext('dsh', { session_id: 'dsh-session-2', cwd: '/repo', hook_event_name: 'Stop' })
+    ).toEqual({
+      event: 'Stop',
+      project: '/repo',
+      sessionId: 'dsh-session-2'
     });
   });
 });

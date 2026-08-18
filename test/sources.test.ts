@@ -65,7 +65,7 @@ describe('resolveHookContextForSource — built-ins from the default table', () 
     const context = await resolveHookContextForSource('codex', { session_id: 'codex-1', cwd: '/repo' }, {});
     expect(context.sessionId).toBe('codex-1');
     expect(context.project).toBe('/repo');
-    expect(BUILTIN_SOURCE_IDS).toEqual(['codex', 'claude', 'gemini', 'opencode', 'pi']);
+    expect(BUILTIN_SOURCE_IDS).toEqual(['codex', 'claude', 'gemini', 'opencode', 'pi', 'dsh']);
   });
 
   it('lets a same-id config entry override a built-in default', async () => {
@@ -266,7 +266,8 @@ describe('mergedSources', () => {
       claude: { handler: 'builtin:claude' },
       gemini: { handler: 'builtin:gemini' },
       opencode: { handler: 'builtin:opencode' },
-      pi: { handler: 'builtin:pi' }
+      pi: { handler: 'builtin:pi' },
+      dsh: { handler: 'builtin:dsh' }
     });
   });
 
@@ -304,6 +305,7 @@ describe('describeSources', () => {
       { id: 'claude', origin: 'default', kind: 'builtin', overridesDefault: false },
       { id: 'gemini', origin: 'default', kind: 'builtin', overridesDefault: false },
       { id: 'opencode', origin: 'default', kind: 'builtin', overridesDefault: false },
+      { id: 'dsh', origin: 'default', kind: 'builtin', overridesDefault: false },
       { id: 'myagent', origin: 'config', kind: 'handler', overridesDefault: false }
     ]);
   });
@@ -314,7 +316,8 @@ describe('describeSources', () => {
       { id: 'claude', origin: 'default', kind: 'builtin', overridesDefault: false },
       { id: 'gemini', origin: 'default', kind: 'builtin', overridesDefault: false },
       { id: 'opencode', origin: 'default', kind: 'builtin', overridesDefault: false },
-      { id: 'pi', origin: 'default', kind: 'builtin', overridesDefault: false }
+      { id: 'pi', origin: 'default', kind: 'builtin', overridesDefault: false },
+      { id: 'dsh', origin: 'default', kind: 'builtin', overridesDefault: false }
     ]);
   });
 });
@@ -322,7 +325,7 @@ describe('describeSources', () => {
 describe('billableSources', () => {
   it('exposes every built-in as billable, in merged-table order', async () => {
     const sources = await billableSources({});
-    expect(sources.map((s) => s.id)).toEqual(['codex', 'claude', 'gemini', 'opencode', 'pi']);
+    expect(sources.map((s) => s.id)).toEqual(['codex', 'claude', 'gemini', 'opencode', 'pi', 'dsh']);
     expect(sources.every((s) => typeof s.scanUsage === 'function')).toBe(true);
   });
 
@@ -338,7 +341,7 @@ describe('billableSources', () => {
     const sources = await billableSources(config);
     expect(sources.map((s) => s.id)).not.toContain('otheragent');
     // the built-ins are still billable
-    expect(sources.map((s) => s.id)).toEqual(['codex', 'claude', 'gemini', 'opencode', 'pi']);
+    expect(sources.map((s) => s.id)).toEqual(['codex', 'claude', 'gemini', 'opencode', 'pi', 'dsh']);
   });
 
   it('includes a JS handler that implements scanUsage', async () => {
@@ -371,6 +374,6 @@ describe('billableSources', () => {
     const config: AppConfig = { plugins: { sources: { myagent: { handler: handlerPath } } } };
 
     const sources = await billableSources(config, { includeHandlers: false });
-    expect(sources.map((s) => s.id)).toEqual(['codex', 'claude', 'gemini', 'opencode', 'pi']);
+    expect(sources.map((s) => s.id)).toEqual(['codex', 'claude', 'gemini', 'opencode', 'pi', 'dsh']);
   });
 });

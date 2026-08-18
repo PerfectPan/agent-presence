@@ -26,8 +26,11 @@ Usage is a capability of the same source table that drives presence: a source th
 | Pi | yes — uses the cost Pi records |
 | opencode | yes — reads the local SQLite store; uses the cost opencode records |
 | Gemini CLI | yes — reads the local chat transcripts; priced from the table |
+| dsh | yes — the managed dsh plugin reports each model call's usage in real time; priced from the table |
 
 Cost shows `n/a` for models with no pricing entry; token counts are always exact. Pi and opencode log a real cost, so those are used as-is. Other sources are priced from the bundled LiteLLM snapshot for supported models (for example `gpt-5.5`, `claude-fable-5`, `deepseek-v4-pro`, and `gemini-3-flash-preview`), with a small fallback table for older aliases. Override pricing per model in `~/.agent-presence/config.json` when your deployment uses a private or unlisted model.
+
+dsh is the one source that does not scrape transcripts: `agent-presence setup` prompts to install a small Cordis plugin into `~/.dsh/plugins/` (registered in the home-level `~/.dsh/cordis.patch.yml`, which applies to every profile). The plugin reports each model call's token usage alongside the presence heartbeat, and `agent-presence` appends it to a local usage log that the `usage` command and signature badge read back. Install or remove it any time with `pnpm run install:dsh-plugin` / `pnpm run uninstall:dsh-plugin` (or `node dist/scripts/install-dsh-plugin.js`).
 
 ## In the signature
 

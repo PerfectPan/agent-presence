@@ -48,18 +48,21 @@ describe('runSetupScripts', () => {
       'uninstall-opencode-plugin.js',
       'uninstall-gemini-hook.js',
       'uninstall-pi-extension.js',
+      'uninstall-dsh-plugin.js',
       'uninstall-shutdown-watcher.js'
     ]);
-    expect(runner).toHaveBeenCalledTimes(6);
+    expect(runner).toHaveBeenCalledTimes(7);
     expect(runner).toHaveBeenNthCalledWith(1, '/dist/scripts/uninstall-codex-hook.js');
     expect(runner).toHaveBeenNthCalledWith(5, '/dist/scripts/uninstall-pi-extension.js');
-    expect(runner).toHaveBeenNthCalledWith(6, '/dist/scripts/uninstall-shutdown-watcher.js');
+    expect(runner).toHaveBeenNthCalledWith(6, '/dist/scripts/uninstall-dsh-plugin.js');
+    expect(runner).toHaveBeenNthCalledWith(7, '/dist/scripts/uninstall-shutdown-watcher.js');
     expect(results).toEqual([
       { scriptName: 'uninstall-codex-hook.js', scriptPath: '/dist/scripts/uninstall-codex-hook.js' },
       { scriptName: 'uninstall-claude-hook.js', scriptPath: '/dist/scripts/uninstall-claude-hook.js' },
       { scriptName: 'uninstall-opencode-plugin.js', scriptPath: '/dist/scripts/uninstall-opencode-plugin.js' },
       { scriptName: 'uninstall-gemini-hook.js', scriptPath: '/dist/scripts/uninstall-gemini-hook.js' },
       { scriptName: 'uninstall-pi-extension.js', scriptPath: '/dist/scripts/uninstall-pi-extension.js' },
+      { scriptName: 'uninstall-dsh-plugin.js', scriptPath: '/dist/scripts/uninstall-dsh-plugin.js' },
       { scriptName: 'uninstall-shutdown-watcher.js', scriptPath: '/dist/scripts/uninstall-shutdown-watcher.js' }
     ]);
   });
@@ -86,6 +89,7 @@ describe('platform-aware script filtering', () => {
       'uninstall-opencode-plugin.js',
       'uninstall-gemini-hook.js',
       'uninstall-pi-extension.js',
+      'uninstall-dsh-plugin.js',
       'uninstall-shutdown-watcher.js'
     ]);
   });
@@ -110,7 +114,8 @@ describe('platform-aware script filtering', () => {
       'uninstall-claude-hook.js',
       'uninstall-opencode-plugin.js',
       'uninstall-gemini-hook.js',
-      'uninstall-pi-extension.js'
+      'uninstall-pi-extension.js',
+      'uninstall-dsh-plugin.js'
     ]);
   });
 

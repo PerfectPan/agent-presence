@@ -4,8 +4,10 @@ import { resolveClaudeHookContext } from '../hooks/claude.js';
 import { resolveCodexHookContext } from '../hooks/codex.js';
 import { resolveOpenCodeHookContext } from '../hooks/opencode.js';
 import { resolvePiHookContext } from '../hooks/pi.js';
+import { resolveDshHookContext } from '../hooks/dsh.js';
 import { scanClaude } from '../usage/scan-claude.js';
 import { scanCodex } from '../usage/scan-codex.js';
+import { scanDsh } from '../usage/scan-dsh.js';
 import { scanGemini } from '../usage/scan-gemini.js';
 import { scanOpenCode } from '../usage/scan-opencode.js';
 import { scanPi } from '../usage/scan-pi.js';
@@ -55,7 +57,11 @@ export const BUILTIN_SOURCE_PLUGINS: Record<string, SourcePlugin> = {
   claude: { id: 'claude', resolveHookContext: resolveClaudeHookContext, scanUsage: scanClaude },
   gemini: { id: 'gemini', resolveHookContext: resolveGeminiHookContext, scanUsage: scanGemini },
   opencode: { id: 'opencode', resolveHookContext: resolveOpenCodeHookContext, scanUsage: scanOpenCode },
-  pi: { id: 'pi', resolveHookContext: resolvePiHookContext, scanUsage: scanPi }
+  pi: { id: 'pi', resolveHookContext: resolvePiHookContext, scanUsage: scanPi },
+  // dsh has no managed hook installer; presence is opt-in via dsh's own
+  // `dsh-hooks-claude-code` bridge (see src/hooks/dsh.ts). Usage scanning is
+  // independent and always active.
+  dsh: { id: 'dsh', resolveHookContext: resolveDshHookContext, scanUsage: scanDsh }
 };
 
 export const BUILTIN_SOURCE_IDS = Object.keys(BUILTIN_SOURCE_PLUGINS);
