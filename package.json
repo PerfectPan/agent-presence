@@ -44,7 +44,7 @@
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "update-pricing": "node scripts/update-pricing.mjs",
-    "version": "changeset version"
+    "version-packages": "changeset version"
   },
   "publishConfig": {
     "registry": "https://registry.npmjs.org",

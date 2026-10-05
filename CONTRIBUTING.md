@@ -84,10 +84,9 @@ Only the published package gets changesets. The private docs site package (`site
 
 The package is published as `@rivus/agent-presence` through Changesets and npm Trusted Publishing (OIDC); the release workflow carries no long-lived npm write token.
 
-1. Merge feature PRs that include `.changeset/*.md` files.
-2. `.github/workflows/publish.yml` opens or updates a `chore: release package` PR.
-3. Review and merge that release PR.
-4. `changesets/action` publishes to npm via Trusted Publishing and then creates the matching GitHub Release.
+1. When changesets land on `main`, `.github/workflows/publish.yml` opens or updates the release PR `chore(release): version packages` on the branch `changeset-release/main` by running `pnpm version-packages` (`changeset version`). Later changesets fold into the same PR.
+2. The release PR is opened with the workflow's `GITHUB_TOKEN`, and GitHub does not start workflows for events that token causes, so CI does not run on it by itself. Before merging, a person closes and reopens it (`gh pr close <n> && gh pr reopen <n>`) or pushes an empty commit to its branch. `gh workflow run ci.yml` does not count: a dispatched run is not attached to the PR and does not satisfy required checks.
+3. Merging the release PR runs `publish.yml` again: gates, then `pnpm release` (`changeset publish`) publishes the unpublished version to npm through OIDC trusted publishing with provenance, and `changesets/action` pushes the tag and creates the matching GitHub Release.
 
 Two settings surfaces must stay in sync:
 
@@ -98,7 +97,7 @@ Trusted Publishing cannot be configured until the package exists on npm. To boot
 
 ### Pricing Snapshot
 
-`src/usage/litellm-pricing.json` is generated, not hand-edited. `pnpm run update-pricing` regenerates it from LiteLLM for the supported model allowlist in `scripts/update-pricing.mjs`; add a model id to that allowlist when a source starts recording it. `.github/workflows/update-pricing.yml` runs the same script weekly and opens the PR `chore(usage): update LiteLLM pricing snapshot` when prices drift.
+`src/usage/litellm-pricing.json` is generated, not hand-edited. `pnpm run update-pricing` regenerates it from LiteLLM for the supported model allowlist in `scripts/update-pricing.mjs`; add a model id to that allowlist when a source starts recording it. `.github/workflows/update-pricing.yml` runs the same script weekly and opens the PR `chore(usage): update LiteLLM pricing snapshot` when prices drift. Like the release PR, it is opened with `GITHUB_TOKEN`, so close and reopen it before merging to get CI. The snapshot is generated output, so `oxfmt` skips it.
 
 ## SDD Workflow And Document Lifecycle
 
@@ -162,7 +161,7 @@ type(scope): summary
 
 Allowed types: `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `build`, `ci`, `chore`, `revert`.
 
-Titles are English; `gh repo-checks pr-title` rejects CJK characters. Bot-generated PRs follow the same rule: the pricing snapshot PR uses `chore(usage): update LiteLLM pricing snapshot`, and dependency bots should emit titles such as `chore(deps): bump <package> to <version>`.
+Titles are English; `gh repo-checks pr-title` rejects CJK characters. Bot-generated PRs follow the same rule: the Changesets release PR uses `chore(release): version packages`, the pricing snapshot PR `chore(usage): update LiteLLM pricing snapshot`, and dependency bots should emit titles such as `chore(deps): bump <package> to <version>`.
 
 Summary and Validation from the [PR template](.github/pull_request_template.md) must be present and contain real content, not template placeholders; other sections are optional. Do not include agent attribution lines such as "Generated with <tool>"; the author is accountable for the content. `gh repo-checks pr-body` enforces these rules, and the `PR description` job runs it on every pull request event, including description edits. PRs opened by bot accounts skip the description check, because dependency and release bots write their own bodies; they still must pass the title check. A skipped job still satisfies the required status check.
 
