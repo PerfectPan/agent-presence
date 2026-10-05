@@ -64,6 +64,8 @@ pnpm run changeset
 
 Choose `patch`, `minor`, or `major` according to the impact on users of the published CLI. Documentation-only changes, repository metadata changes, tests, and internal maintenance that do not affect the published package can skip a changeset.
 
+Only the published package gets changesets. The private docs site package (`site/`) is not versioned or tagged (`privatePackages` in [`.changeset/config.json`](.changeset/config.json)). Changelog entries link the pull request and author through `@changesets/changelog-github`, which reads them from the GitHub API, so `changeset version` needs a `GITHUB_TOKEN`.
+
 ### Releasing
 
 The package is published as `@rivus/agent-presence` through Changesets and npm Trusted Publishing (OIDC); the release workflow carries no long-lived npm write token.
