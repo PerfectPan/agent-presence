@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.10.0
+
+### Minor Changes
+
+- [#87](https://github.com/PerfectPan/agent-presence/pull/87) [`fdfee49`](https://github.com/PerfectPan/agent-presence/commit/fdfee490c6247fc85ba5080630383266cb83a2c0) Thanks [@PerfectPan](https://github.com/PerfectPan)! - Require Node.js 22 or newer; Node.js 20 is end of life and no longer supported. The package also stops declaring a pnpm version in `engines`, which only applied to developing the repository.
+
+### Patch Changes
+
+- [#87](https://github.com/PerfectPan/agent-presence/pull/87) [`fdfee49`](https://github.com/PerfectPan/agent-presence/commit/fdfee490c6247fc85ba5080630383266cb83a2c0) Thanks [@PerfectPan](https://github.com/PerfectPan)! - Update the interactive prompt library `@clack/prompts` from 1.3.0 to 1.8.1, which `login`, `setup`, `config` and `source add` use. Since clack 1.6, `note()` no longer dims its content, so the boxed hints in an interactive terminal (the login QR code, the signature URL and Magic-Builder token help in `setup`, the `source add` trust notice) render at full brightness instead of dimmed.
+
 ## 0.9.0
 
 ### Minor Changes
