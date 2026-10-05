@@ -5,8 +5,8 @@ Rationale behind the docs site + landing page, so future changes stay coherent.
 ## Concept
 
 agent-presence is a terminal tool that shows a **live count of working AI agents**
-and their **token spend** in a Feishu signature. The site is framed as a *live
-presence monitor*: the hero is the product itself, animating.
+and their **token spend** in a Feishu signature. The site is framed as a _live
+presence monitor_: the hero is the product itself, animating.
 
 **Deliberately avoided** the two clichés AI design tends to default to:
 
@@ -15,7 +15,7 @@ presence monitor*: the hero is the product itself, animating.
 - warm-cream + serif + terracotta.
 
 Instead: a **light, airy canvas** with a **dark terminal floating in the hero** as
-the high-contrast centerpiece. The terminal is dark because terminals *are* dark —
+the high-contrast centerpiece. The terminal is dark because terminals _are_ dark —
 on a light page it reads as intentional, not as a theme default.
 
 ## Signature element
@@ -31,14 +31,14 @@ animated moment. Pure CSS/JS, no deps (`components/live-terminal.astro`).
 Defined once in `src/styles/global.css` (`--ap-*`), and mapped onto Starlight's
 `--sl-*` variables so docs and landing share one system.
 
-| Token | Value | Use |
-| --- | --- | --- |
-| `--ap-blue` | `#2563eb` | primary accent |
-| `--ap-sky` | `#38bdf8` | gradient end |
-| `--ap-grad` | blue→sky | headline, buttons, accents |
-| `--ap-emerald` | `#10b981` | the "live" dot only |
-| `--ap-ink` (`--ap-text`) | `#15171f` | text |
-| `--ap-bg` | `#f7f8fb` | canvas |
+| Token                    | Value     | Use                        |
+| ------------------------ | --------- | -------------------------- |
+| `--ap-blue`              | `#2563eb` | primary accent             |
+| `--ap-sky`               | `#38bdf8` | gradient end               |
+| `--ap-grad`              | blue→sky  | headline, buttons, accents |
+| `--ap-emerald`           | `#10b981` | the "live" dot only        |
+| `--ap-ink` (`--ap-text`) | `#15171f` | text                       |
+| `--ap-bg`                | `#f7f8fb` | canvas                     |
 
 The accent is **blue→sky** — not purple, not neon green (both were tried and
 rejected during review). Emerald is reserved for the live/online dot.

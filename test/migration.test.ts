@@ -29,7 +29,9 @@ describe('legacy home migration', () => {
     expect(result.status).toBe('migrated');
     expect(result.copied).toEqual(['config.json', 'state.json']);
     expect(result.removed).toEqual(['config.json', 'state.json']);
-    await expect(readFile(join(home, '.agent-presence', 'config.json'), 'utf8')).resolves.toBe('{"slot_id":"slot_legacy"}');
+    await expect(readFile(join(home, '.agent-presence', 'config.json'), 'utf8')).resolves.toBe(
+      '{"slot_id":"slot_legacy"}'
+    );
     await expect(stat(join(legacyHome, 'config.json'))).rejects.toThrow(/ENOENT/);
   });
 

@@ -4,7 +4,12 @@ import { mkdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { AppConfig } from '../src/config.js';
-import { installPluginPackage, isSupportedPackageSpec, packageNameFromSpec, uninstallPluginPackage } from '../src/plugin-install.js';
+import {
+  installPluginPackage,
+  isSupportedPackageSpec,
+  packageNameFromSpec,
+  uninstallPluginPackage
+} from '../src/plugin-install.js';
 import {
   loadSourcePluginForValidation,
   resetSourcePluginCacheForTests,

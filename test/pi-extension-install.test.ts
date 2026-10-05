@@ -98,10 +98,7 @@ describe('uninstallPiExtension', () => {
     await installPiExtension({ extensionPath, settingsPath });
     const { mkdir } = await import('node:fs/promises');
     await mkdir(join(homeDir, '.pi', 'agent'), { recursive: true });
-    await writeFile(
-      settingsPath,
-      JSON.stringify({ extensions: [extensionPath, '/fake-home/keep.ts'] }, null, 2)
-    );
+    await writeFile(settingsPath, JSON.stringify({ extensions: [extensionPath, '/fake-home/keep.ts'] }, null, 2));
 
     const result = await uninstallPiExtension({ extensionPath, settingsPath });
 

@@ -44,8 +44,8 @@ agent-presence source add @your-scope/agent-presence-youragent \
       "youragent": {
         "match": {
           "sessionId": { "payloadKeys": ["session_id"], "payloadFirst": true },
-          "project":   { "payloadKeys": ["cwd"], "payloadFirst": true },
-          "event":     { "payloadKeys": ["hook_event_name"], "payloadFirst": true }
+          "project": { "payloadKeys": ["cwd"], "payloadFirst": true },
+          "event": { "payloadKeys": ["hook_event_name"], "payloadFirst": true }
         }
       }
     }
@@ -94,7 +94,11 @@ agent-presence hook --source youragent --event SessionStart --silent
 用内置 id 配上你自己的 `match` 或 `handler`。比如改 `codex` 读取会话 id 的方式:
 
 ```jsonc
-{ "plugins": { "sources": { "codex": { "match": { "sessionId": { "payloadKeys": ["my_id"], "payloadFirst": true } } } } } }
+{
+  "plugins": {
+    "sources": { "codex": { "match": { "sessionId": { "payloadKeys": ["my_id"], "payloadFirst": true } } } }
+  }
+}
 ```
 
 ## 禁用内置源

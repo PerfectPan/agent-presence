@@ -10,7 +10,7 @@ const fontHead = [
   {
     tag: 'script',
     content:
-      "if(!localStorage.getItem('starlight-theme')){localStorage.setItem('starlight-theme','light');document.documentElement.dataset.theme='light';}",
+      "if(!localStorage.getItem('starlight-theme')){localStorage.setItem('starlight-theme','light');document.documentElement.dataset.theme='light';}"
   },
   { tag: 'link', attrs: { rel: 'preconnect', href: 'https://fonts.googleapis.com' } },
   { tag: 'link', attrs: { rel: 'preconnect', href: 'https://fonts.gstatic.com', crossorigin: true } },
@@ -18,9 +18,9 @@ const fontHead = [
     tag: 'link',
     attrs: {
       rel: 'stylesheet',
-      href: 'https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap',
-    },
-  },
+      href: 'https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap'
+    }
+  }
 ];
 
 // dev-only element grabber (inert in production builds)
@@ -40,7 +40,7 @@ export default defineConfig({
       head,
       components: {
         ThemeSelect: './src/components/theme-select.astro',
-        LanguageSelect: './src/components/language-select.astro',
+        LanguageSelect: './src/components/language-select.astro'
       },
       expressiveCode: {
         themes: ['github-light', 'github-dark'],
@@ -60,17 +60,15 @@ export default defineConfig({
           frames: {
             editorActiveTabIndicatorTopColor: 'transparent',
             editorTabBarBackground: 'transparent',
-            shadowColor: 'transparent',
-          },
-        },
+            shadowColor: 'transparent'
+          }
+        }
       },
-      social: [
-        { icon: 'github', label: 'GitHub', href: 'https://github.com/PerfectPan/agent-presence' },
-      ],
+      social: [{ icon: 'github', label: 'GitHub', href: 'https://github.com/PerfectPan/agent-presence' }],
       defaultLocale: 'root',
       locales: {
         root: { label: 'English', lang: 'en' },
-        zh: { label: '简体中文', lang: 'zh-CN' },
+        zh: { label: '简体中文', lang: 'zh-CN' }
       },
       sidebar: [
         {
@@ -82,23 +80,23 @@ export default defineConfig({
             { label: 'Providers', translations: { 'zh-CN': 'Provider' }, slug: 'guide/providers' },
             { label: 'Sources', translations: { 'zh-CN': 'Sources' }, slug: 'guide/sources' },
             { label: 'Token usage', translations: { 'zh-CN': 'Token 统计' }, slug: 'guide/token-usage' },
-            { label: 'Presence semantics', translations: { 'zh-CN': 'Presence 语义' }, slug: 'guide/presence' },
-          ],
+            { label: 'Presence semantics', translations: { 'zh-CN': 'Presence 语义' }, slug: 'guide/presence' }
+          ]
         },
         {
           label: 'Reference',
           translations: { 'zh-CN': '参考' },
-          items: [{ label: 'Commands', translations: { 'zh-CN': '命令' }, slug: 'reference/commands' }],
+          items: [{ label: 'Commands', translations: { 'zh-CN': '命令' }, slug: 'reference/commands' }]
         },
         {
           label: 'Project',
           translations: { 'zh-CN': '项目' },
           items: [
             { label: 'Architecture', translations: { 'zh-CN': '架构' }, slug: 'project/architecture' },
-            { label: 'Brand', translations: { 'zh-CN': '品牌' }, slug: 'project/brand' },
-          ],
-        },
-      ],
-    }),
-  ],
+            { label: 'Brand', translations: { 'zh-CN': '品牌' }, slug: 'project/brand' }
+          ]
+        }
+      ]
+    })
+  ]
 });

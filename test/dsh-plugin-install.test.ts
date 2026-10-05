@@ -55,11 +55,7 @@ describe('installDshPlugin', () => {
 
   it('preserves unrelated entries in an existing patch', async () => {
     await mkdir(join(homeDir, '.dsh'), { recursive: true });
-    await writeFile(
-      patchPath,
-      '- id: some-plugin\n  config:\n    foo: bar\n',
-      'utf8'
-    );
+    await writeFile(patchPath, '- id: some-plugin\n  config:\n    foo: bar\n', 'utf8');
 
     await installDshPlugin({ pluginPath, patchPath });
 
@@ -96,11 +92,7 @@ describe('uninstallDshPlugin', () => {
 
   it('removes the managed plugin and strips the entry from the patch', async () => {
     await mkdir(join(homeDir, '.dsh'), { recursive: true });
-    await writeFile(
-      patchPath,
-      '- id: some-plugin\n  config:\n    foo: bar\n',
-      'utf8'
-    );
+    await writeFile(patchPath, '- id: some-plugin\n  config:\n    foo: bar\n', 'utf8');
     await installDshPlugin({ pluginPath, patchPath });
 
     const result = await uninstallDshPlugin({ pluginPath, patchPath });

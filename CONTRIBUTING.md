@@ -113,11 +113,11 @@ Trusted Publishing cannot be configured until the package exists on npm. To boot
 
 Every change needs a requirement record. Use the smallest set of artifacts that makes behavior and implementation reviewable.
 
-| Change type | Required artifact |
-| --- | --- |
-| Product behavior | One Spec plus one detailed Plan for the same deliverable |
-| Technical refactor without changed user behavior | Detailed Plan with compatibility and acceptance conditions |
-| Narrow maintenance, tests, or documentation | Requirement and PR checklist; a separate Plan only when useful |
+| Change type                                      | Required artifact                                              |
+| ------------------------------------------------ | -------------------------------------------------------------- |
+| Product behavior                                 | One Spec plus one detailed Plan for the same deliverable       |
+| Technical refactor without changed user behavior | Detailed Plan with compatibility and acceptance conditions     |
+| Narrow maintenance, tests, or documentation      | Requirement and PR checklist; a separate Plan only when useful |
 
 In this repository, changes to public CLI behavior, hook or installer behavior, install, deploy, or rollback safety, trust boundaries, configuration shape, the release process, repository structure, and long-term integration strategy count as product behavior or technical refactors, not narrow maintenance.
 

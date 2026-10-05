@@ -3,7 +3,13 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createEmptyState, applyAgentEvent } from '../src/state.js';
-import { markSlotSyncSuccess, prepareSlotSync, rollbackSlotSyncClaim, SlotRateLimitError, syncSlot } from '../src/render.js';
+import {
+  markSlotSyncSuccess,
+  prepareSlotSync,
+  rollbackSlotSyncClaim,
+  SlotRateLimitError,
+  syncSlot
+} from '../src/render.js';
 import { syncExplicitSlotValueWithStateLock, syncRenderedSlotWithStateLock } from '../src/cli/slot-sync.js';
 
 let tempDir: string | undefined;
@@ -157,7 +163,9 @@ describe('slot sync debounce', () => {
 
   it('logs rate limited slot updates', async () => {
     const { logPath, statePath } = await useTempFiles();
-    const updateSlot = vi.fn<(value: string) => Promise<void>>().mockRejectedValue(new SlotRateLimitError('slot provider returned 429', 60_000));
+    const updateSlot = vi
+      .fn<(value: string) => Promise<void>>()
+      .mockRejectedValue(new SlotRateLimitError('slot provider returned 429', 60_000));
 
     await expect(
       syncExplicitSlotValueWithStateLock(
@@ -240,10 +248,7 @@ async function waitForLogEvents(path: string, count: number): Promise<Array<Reco
       }
     })
     .toBe(count);
-  return (await readFile(path, 'utf8'))
-    .trim()
-    .split('\n')
-    .map(parseLogLine);
+  return (await readFile(path, 'utf8')).trim().split('\n').map(parseLogLine);
 }
 
 function parseLogLine(line: string): Record<string, unknown> {

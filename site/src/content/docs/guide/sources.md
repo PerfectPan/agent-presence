@@ -44,8 +44,8 @@ If the agent's hook payload is straightforward, map its fields directly in confi
       "youragent": {
         "match": {
           "sessionId": { "payloadKeys": ["session_id"], "payloadFirst": true },
-          "project":   { "payloadKeys": ["cwd"], "payloadFirst": true },
-          "event":     { "payloadKeys": ["hook_event_name"], "payloadFirst": true }
+          "project": { "payloadKeys": ["cwd"], "payloadFirst": true },
+          "event": { "payloadKeys": ["hook_event_name"], "payloadFirst": true }
         }
       }
     }
@@ -94,7 +94,11 @@ Wire that into your agent's own lifecycle hooks (payload on stdin).
 Use the built-in id with your own `match` or `handler`. For example, change how `codex` reads its session id:
 
 ```jsonc
-{ "plugins": { "sources": { "codex": { "match": { "sessionId": { "payloadKeys": ["my_id"], "payloadFirst": true } } } } } }
+{
+  "plugins": {
+    "sources": { "codex": { "match": { "sessionId": { "payloadKeys": ["my_id"], "payloadFirst": true } } } }
+  }
+}
 ```
 
 ## Disable a built-in

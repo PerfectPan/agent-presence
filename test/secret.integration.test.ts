@@ -29,11 +29,21 @@ async function hasSecretTool(): Promise<boolean> {
 }
 
 async function secretToolFunctional(): Promise<boolean> {
-  if (!(await hasSecretTool())) return false;
+  if (!(await hasSecretTool())) {
+    return false;
+  }
   const probeValue = 'ap-probe-' + Date.now();
   try {
-    await execFileAsync('secret-tool', ['store', '--label', 'agent-presence', 'service', 'agent-presence-ci', 'account', 'probe'], { input: probeValue } as any);
-    const { stdout } = await execFileAsync('secret-tool', ['lookup', 'service', 'agent-presence-ci', 'account', 'probe'], { encoding: 'utf8' });
+    await execFileAsync(
+      'secret-tool',
+      ['store', '--label', 'agent-presence', 'service', 'agent-presence-ci', 'account', 'probe'],
+      { input: probeValue } as any
+    );
+    const { stdout } = await execFileAsync(
+      'secret-tool',
+      ['lookup', 'service', 'agent-presence-ci', 'account', 'probe'],
+      { encoding: 'utf8' }
+    );
     await execFileAsync('secret-tool', ['clear', 'service', 'agent-presence-ci', 'account', 'probe']);
     return stdout.trim() === probeValue;
   } catch {
@@ -63,7 +73,9 @@ describe('credential storage integration', () => {
 
   describe('Linux libsecret backend', () => {
     it('writes, reads, and deletes credentials from secret-tool', async () => {
-      if (!linux) return;
+      if (!linux) {
+        return;
+      }
       if (process.env.CI && !(await secretToolFunctional())) {
         console.warn('secret-tool is not functional (no keyring daemon in CI); skipping integration test');
         return;
@@ -95,10 +107,16 @@ describe('credential storage integration', () => {
         const cred = await readCredential();
         expect(cred).toEqual({ token: 'env-override-tok', slotId: 'env-override-sid' });
       } finally {
-        if (savedToken !== undefined) process.env.AGENT_PRESENCE_TOKEN = savedToken;
-        else delete process.env.AGENT_PRESENCE_TOKEN;
-        if (savedSlotId !== undefined) process.env.AGENT_PRESENCE_SLOT_ID = savedSlotId;
-        else delete process.env.AGENT_PRESENCE_SLOT_ID;
+        if (savedToken !== undefined) {
+          process.env.AGENT_PRESENCE_TOKEN = savedToken;
+        } else {
+          delete process.env.AGENT_PRESENCE_TOKEN;
+        }
+        if (savedSlotId !== undefined) {
+          process.env.AGENT_PRESENCE_SLOT_ID = savedSlotId;
+        } else {
+          delete process.env.AGENT_PRESENCE_SLOT_ID;
+        }
       }
     });
   });

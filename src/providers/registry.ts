@@ -43,7 +43,9 @@ export function registeredProviderIds(): ProviderId[] {
 }
 
 /** Capabilities every slot-backed provider shares, mapped onto the backend. */
-function slotCapabilities(slot: SlotBackend): Pick<PresenceProvider, 'createQrCode' | 'getLoginStatus' | 'publishValue' | 'getInfo'> {
+function slotCapabilities(
+  slot: SlotBackend
+): Pick<PresenceProvider, 'createQrCode' | 'getLoginStatus' | 'publishValue' | 'getInfo'> {
   return {
     createQrCode: () => slot.createQrCode(),
     getLoginStatus: (sceneId) => slot.getLoginStatus(sceneId),

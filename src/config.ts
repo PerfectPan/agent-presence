@@ -115,15 +115,25 @@ export function getHomeDir(): string {
 }
 
 export function getConfigPath(): string {
-  return process.env.AGENT_PRESENCE_CONFIG_FILE ?? process.env.AGENT_SIGNATURE_CONFIG_FILE ?? join(getHomeDir(), 'config.json');
+  return (
+    process.env.AGENT_PRESENCE_CONFIG_FILE ??
+    process.env.AGENT_SIGNATURE_CONFIG_FILE ??
+    join(getHomeDir(), 'config.json')
+  );
 }
 
 export function getStatePath(): string {
-  return process.env.AGENT_PRESENCE_STATE_FILE ?? process.env.AGENT_SIGNATURE_STATE_FILE ?? join(getHomeDir(), 'state.json');
+  return (
+    process.env.AGENT_PRESENCE_STATE_FILE ?? process.env.AGENT_SIGNATURE_STATE_FILE ?? join(getHomeDir(), 'state.json')
+  );
 }
 
 export function getLogPath(): string {
-  return process.env.AGENT_PRESENCE_LOG_FILE ?? process.env.AGENT_SIGNATURE_LOG_FILE ?? join(getHomeDir(), 'agent-presence.log');
+  return (
+    process.env.AGENT_PRESENCE_LOG_FILE ??
+    process.env.AGENT_SIGNATURE_LOG_FILE ??
+    join(getHomeDir(), 'agent-presence.log')
+  );
 }
 
 /**
@@ -276,18 +286,40 @@ export function previewTargetUrl(config: AppConfig): string | undefined {
 }
 
 export function ttlMs(config: AppConfig): number {
-  return readPositiveInt(process.env.AGENT_PRESENCE_TTL_MS) ?? readPositiveInt(process.env.AGENT_SIGNATURE_TTL_MS) ?? config.ttlMs ?? DEFAULT_TTL_MS;
+  return (
+    readPositiveInt(process.env.AGENT_PRESENCE_TTL_MS) ??
+    readPositiveInt(process.env.AGENT_SIGNATURE_TTL_MS) ??
+    config.ttlMs ??
+    DEFAULT_TTL_MS
+  );
 }
 
 export function debounceMs(config: AppConfig): number {
-  return readPositiveInt(process.env.AGENT_PRESENCE_DEBOUNCE_MS) ?? readPositiveInt(process.env.AGENT_SIGNATURE_DEBOUNCE_MS) ?? config.debounceMs ?? DEFAULT_DEBOUNCE_MS;
+  return (
+    readPositiveInt(process.env.AGENT_PRESENCE_DEBOUNCE_MS) ??
+    readPositiveInt(process.env.AGENT_SIGNATURE_DEBOUNCE_MS) ??
+    config.debounceMs ??
+    DEFAULT_DEBOUNCE_MS
+  );
 }
 
 export function renderTemplates(config: AppConfig): RenderTemplates {
   const templates: RenderTemplates = {};
-  setDefinedTemplate(templates, 'zero', process.env.AGENT_PRESENCE_RENDER_ZERO ?? process.env.AGENT_SIGNATURE_RENDER_ZERO ?? config.render?.zero);
-  setDefinedTemplate(templates, 'one', process.env.AGENT_PRESENCE_RENDER_ONE ?? process.env.AGENT_SIGNATURE_RENDER_ONE ?? config.render?.one);
-  setDefinedTemplate(templates, 'many', process.env.AGENT_PRESENCE_RENDER_MANY ?? process.env.AGENT_SIGNATURE_RENDER_MANY ?? config.render?.many);
+  setDefinedTemplate(
+    templates,
+    'zero',
+    process.env.AGENT_PRESENCE_RENDER_ZERO ?? process.env.AGENT_SIGNATURE_RENDER_ZERO ?? config.render?.zero
+  );
+  setDefinedTemplate(
+    templates,
+    'one',
+    process.env.AGENT_PRESENCE_RENDER_ONE ?? process.env.AGENT_SIGNATURE_RENDER_ONE ?? config.render?.one
+  );
+  setDefinedTemplate(
+    templates,
+    'many',
+    process.env.AGENT_PRESENCE_RENDER_MANY ?? process.env.AGENT_SIGNATURE_RENDER_MANY ?? config.render?.many
+  );
   return templates;
 }
 

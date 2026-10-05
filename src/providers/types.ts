@@ -52,7 +52,9 @@ export function assertSupportsPublish(provider: PresenceProvider): asserts provi
   }
 }
 
-export function assertSupportsSignatureUrl(provider: PresenceProvider): asserts provider is SignatureUrlCapableProvider {
+export function assertSupportsSignatureUrl(
+  provider: PresenceProvider
+): asserts provider is SignatureUrlCapableProvider {
   if (!provider.buildSignatureUrl) {
     throw new Error(`provider "${provider.id}" does not build signature urls`);
   }

@@ -185,14 +185,20 @@
       let visible = false;
       let running = false;
       const loop = async () => {
-        if (running) return;
+        if (running) {
+          return;
+        }
         running = true;
-        while (visible) await run();
+        while (visible) {
+          await run();
+        }
         running = false;
       };
       new IntersectionObserver((entries) => {
         visible = entries[0].isIntersecting;
-        if (visible) loop();
+        if (visible) {
+          loop();
+        }
       }, { threshold: 0 }).observe(root);
     }
   }

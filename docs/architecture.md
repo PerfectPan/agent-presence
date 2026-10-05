@@ -300,7 +300,7 @@ Capabilities are optional because not every provider supports every operation:
 
 #### Slot backend vs. provider
 
-The two shipped providers are not independent backends: they read and write the **same** slot. That shared storage is modelled explicitly as a `SlotBackend` (`src/providers/slot-backend.ts`), implemented by `LGaryYangSlotBackend`. Both `feishu-signature` and `magic-builder` *compose* the same `SlotBackend` for login/publish/info and differ only in the signature URL (and, for magic-builder, the `getRemotePreview` FaaS read). Neither provider depends on the other.
+The two shipped providers are not independent backends: they read and write the **same** slot. That shared storage is modelled explicitly as a `SlotBackend` (`src/providers/slot-backend.ts`), implemented by `LGaryYangSlotBackend`. Both `feishu-signature` and `magic-builder` _compose_ the same `SlotBackend` for login/publish/info and differ only in the signature URL (and, for magic-builder, the `getRemotePreview` FaaS read). Neither provider depends on the other.
 
 The capability layer is deliberately generic (`publishValue`, not `updateSlot`) so a future provider with its own, slot-unrelated storage can implement `PresenceProvider` directly and never touch `SlotBackend`. Its own credential model and login flow would be added alongside at that point; the registry seam itself does not change.
 
@@ -453,19 +453,19 @@ Each installer is idempotent. Existing unrelated user configuration is preserved
 
 Idempotency is part of the installer contract, not a nice-to-have:
 
-| Area | Idempotency rule |
-| --- | --- |
-| Provider login | Reuse existing Keychain credential and configured slot. Normal setup starts QR login only when credentials are missing; `--skip-login` refreshes hooks without login checks, and `--login` forces fresh authentication. |
-| Config | Merge provider/render settings without deleting unrelated keys. |
-| Codex hooks | Remove prior managed Agent Presence hooks, add exactly one current managed group per event, then remind the user to approve changed hooks in Codex settings. |
-| Claude Code hooks | Remove prior managed Agent Presence hooks, add exactly one current managed group per event. |
-| opencode plugin | Rewrite the managed plugin file from the current package; do not append duplicate plugin registrations. |
-| Pi extension | Rewrite the managed `~/.pi/agent/extensions/agent-presence.ts` from the current package; refuse to overwrite a non-managed file with the same name. Pi auto-discovers the file, so settings.json is not modified by default. Uninstall removes only the managed file and only its own entry from `settings.json#/extensions`. |
-| Power watcher | On macOS: replace the managed LaunchAgent plist and script, then reload the same label. On Linux: skipped with a message; TTL pruning covers expired sessions. |
-| Managed runtime | Install into a staging directory first, then atomically switch the active runtime or shim target. |
-| Legacy home migration | During interactive setup, ask before copying known files from `~/.codex/agent-signature` to `~/.agent-presence`; never overwrite existing destination files; remove known legacy files after the new home has them; keep unknown files. |
-| State | Preserve local session state during setup; only `reset` or `uninstall --all` clears it. |
-| Credentials | Preserve credentials during normal setup and uninstall; only `uninstall --credentials` or `uninstall --all` removes them. |
+| Area                  | Idempotency rule                                                                                                                                                                                                                                                                                                              |
+| --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Provider login        | Reuse existing Keychain credential and configured slot. Normal setup starts QR login only when credentials are missing; `--skip-login` refreshes hooks without login checks, and `--login` forces fresh authentication.                                                                                                       |
+| Config                | Merge provider/render settings without deleting unrelated keys.                                                                                                                                                                                                                                                               |
+| Codex hooks           | Remove prior managed Agent Presence hooks, add exactly one current managed group per event, then remind the user to approve changed hooks in Codex settings.                                                                                                                                                                  |
+| Claude Code hooks     | Remove prior managed Agent Presence hooks, add exactly one current managed group per event.                                                                                                                                                                                                                                   |
+| opencode plugin       | Rewrite the managed plugin file from the current package; do not append duplicate plugin registrations.                                                                                                                                                                                                                       |
+| Pi extension          | Rewrite the managed `~/.pi/agent/extensions/agent-presence.ts` from the current package; refuse to overwrite a non-managed file with the same name. Pi auto-discovers the file, so settings.json is not modified by default. Uninstall removes only the managed file and only its own entry from `settings.json#/extensions`. |
+| Power watcher         | On macOS: replace the managed LaunchAgent plist and script, then reload the same label. On Linux: skipped with a message; TTL pruning covers expired sessions.                                                                                                                                                                |
+| Managed runtime       | Install into a staging directory first, then atomically switch the active runtime or shim target.                                                                                                                                                                                                                             |
+| Legacy home migration | During interactive setup, ask before copying known files from `~/.codex/agent-signature` to `~/.agent-presence`; never overwrite existing destination files; remove known legacy files after the new home has them; keep unknown files.                                                                                       |
+| State                 | Preserve local session state during setup; only `reset` or `uninstall --all` clears it.                                                                                                                                                                                                                                       |
+| Credentials           | Preserve credentials during normal setup and uninstall; only `uninstall --credentials` or `uninstall --all` removes them.                                                                                                                                                                                                     |
 
 This makes the supported repair command simple and keeps its default on magic-builder:
 
@@ -596,18 +596,18 @@ remote value is wrong but local is correct      -> provider sync path bug or del
 
 ## Failure Model
 
-| Failure | Expected behavior |
-| --- | --- |
-| Agent exits without a finish hook | Session expires after TTL. |
-| Hook command fails | Coding agent continues; Codex receives `{}`. |
-| Provider returns 429 | Local state remains correct; next non-debounced update can sync. |
-| Laptop sleeps or lid closes | On macOS, power watcher resets local and remote state to 0 when possible. On Linux, TTL pruning clears sessions after expiry. |
-| Sudden power loss | Wake reset (macOS) and TTL clear stale sessions. |
-| Keychain is unavailable | Explicit environment variables can supply token and slot id. |
-| Linux has no secret-tool | Credential operations bail with a clear install instruction; env vars still work. |
-| `npx` cache disappears after setup | Managed hooks keep working because they target the stable runtime or shim. |
-| Setup is interrupted halfway | The previous runtime/config remains usable; the next setup run can repair managed files. |
-| Codex hooks are present but not trusted | Setup prints a reminder; approve the managed hooks in Codex settings. |
+| Failure                                 | Expected behavior                                                                                                             |
+| --------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| Agent exits without a finish hook       | Session expires after TTL.                                                                                                    |
+| Hook command fails                      | Coding agent continues; Codex receives `{}`.                                                                                  |
+| Provider returns 429                    | Local state remains correct; next non-debounced update can sync.                                                              |
+| Laptop sleeps or lid closes             | On macOS, power watcher resets local and remote state to 0 when possible. On Linux, TTL pruning clears sessions after expiry. |
+| Sudden power loss                       | Wake reset (macOS) and TTL clear stale sessions.                                                                              |
+| Keychain is unavailable                 | Explicit environment variables can supply token and slot id.                                                                  |
+| Linux has no secret-tool                | Credential operations bail with a clear install instruction; env vars still work.                                             |
+| `npx` cache disappears after setup      | Managed hooks keep working because they target the stable runtime or shim.                                                    |
+| Setup is interrupted halfway            | The previous runtime/config remains usable; the next setup run can repair managed files.                                      |
+| Codex hooks are present but not trusted | Setup prints a reminder; approve the managed hooks in Codex settings.                                                         |
 
 ## Security Boundaries
 

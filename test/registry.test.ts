@@ -37,9 +37,7 @@ describe('provider registry', () => {
     });
 
     it('refuses to build a signature url without a slot id', () => {
-      expect(() => createProvider('feishu-signature', { config: {} }).buildSignatureUrl!()).toThrow(
-        'missing slot_id'
-      );
+      expect(() => createProvider('feishu-signature', { config: {} }).buildSignatureUrl!()).toThrow('missing slot_id');
     });
   });
 
@@ -74,11 +72,15 @@ describe('provider registry', () => {
     });
 
     it('reports a missing publish capability', () => {
-      expect(() => assertSupportsPublish(bare)).toThrow('provider "feishu-signature" does not support publishing values');
+      expect(() => assertSupportsPublish(bare)).toThrow(
+        'provider "feishu-signature" does not support publishing values'
+      );
     });
 
     it('reports a missing signature-url capability', () => {
-      expect(() => assertSupportsSignatureUrl(bare)).toThrow('provider "feishu-signature" does not build signature urls');
+      expect(() => assertSupportsSignatureUrl(bare)).toThrow(
+        'provider "feishu-signature" does not build signature urls'
+      );
     });
 
     it('passes through a provider that has the capability', () => {

@@ -3,7 +3,13 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { appendUsageEvent, getUsageEventsPath, readUsageEvents, usageEventFromPayload, type UsageEvent } from '../src/usage-events.js';
+import {
+  appendUsageEvent,
+  getUsageEventsPath,
+  readUsageEvents,
+  usageEventFromPayload,
+  type UsageEvent
+} from '../src/usage-events.js';
 
 const NOW = Date.now();
 const HOUR = 60 * 60 * 1000;

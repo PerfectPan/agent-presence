@@ -44,12 +44,12 @@ The renderer already knows each badge's window and compute time, so it computes 
 
 ### 2.2 Design decisions
 
-| Decision | Options | Choice |
-| --- | --- | --- |
-| Which clock decides midnight | Fixed Asia/Shanghai vs host local time | Host local time, the same rule as the calendar-day windows and the local stale guard |
-| Who computes the deadline | Preview function vs writer | Writer, as an absolute epoch, because only the writer knows the windows and compute times |
-| What the preview shows after the deadline | A hard-coded idle line vs `fallbackTitle` | `fallbackTitle`, which already follows the user's `zero` template |
-| Where the deadline travels | A second metadata slot / a marker inside the slot value / a scheduled writer | **Unresolved**, see section 4 |
+| Decision                                  | Options                                                                      | Choice                                                                                    |
+| ----------------------------------------- | ---------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| Which clock decides midnight              | Fixed Asia/Shanghai vs host local time                                       | Host local time, the same rule as the calendar-day windows and the local stale guard      |
+| Who computes the deadline                 | Preview function vs writer                                                   | Writer, as an absolute epoch, because only the writer knows the windows and compute times |
+| What the preview shows after the deadline | A hard-coded idle line vs `fallbackTitle`                                    | `fallbackTitle`, which already follows the user's `zero` template                         |
+| Where the deadline travels                | A second metadata slot / a marker inside the slot value / a scheduled writer | **Unresolved**, see section 4                                                             |
 
 ## 3. Execution plan
 
@@ -85,11 +85,11 @@ Blocked until the transport decision in section 4 is made.
 
 ### 3.4 Validation ledger
 
-| Batch | Command or evidence | Expected result |
-| --- | --- | --- |
-| 1 | `pnpm test` | pass |
-| 1 | `pnpm run typecheck` | pass |
-| 1 | A republished preview function fetched after local midnight on an idle machine | idle title |
+| Batch | Command or evidence                                                            | Expected result |
+| ----- | ------------------------------------------------------------------------------ | --------------- |
+| 1     | `pnpm test`                                                                    | pass            |
+| 1     | `pnpm run typecheck`                                                           | pass            |
+| 1     | A republished preview function fetched after local midnight on an idle machine | idle title      |
 
 ### 3.5 Rollback per batch
 
@@ -97,8 +97,8 @@ One PR; revert it and rerun `setup --skip-login` to republish the previous previ
 
 ## 4. Risks, open questions, and follow-up
 
-| Item | Type | Impact | Owner | Next step or deadline |
-| --- | --- | --- | --- | --- |
-| Where the deadline travels: a second slot on the same l.garyyang account (unconfirmed whether an account can hold and write more than one slot), a marker inside the slot value (the `feishu-signature` page would render the marker, breaking S4), or a scheduled writer (a FaaS timer, unconfirmed on magic-builder, or an external cron that would copy the slot bearer off the machine) | open question | Blocks the plan | unconfirmed | Confirm the slot service and FaaS platform capabilities |
-| A `zero` template that contains `{usage*}` tokens becomes a `fallbackTitle` with unrendered tokens | risk | The idle title shows a raw `{usage_1d}` | unconfirmed | Decide whether setup renders the fallback title without usage tokens |
-| Preview function and writer disagree on the clock | risk | The reset shows up early or late by the clock skew | unconfirmed | Accept: the bound is the 60-second cache interval plus skew |
+| Item                                                                                                                                                                                                                                                                                                                                                                                        | Type          | Impact                                             | Owner       | Next step or deadline                                                |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------- | -------------------------------------------------- | ----------- | -------------------------------------------------------------------- |
+| Where the deadline travels: a second slot on the same l.garyyang account (unconfirmed whether an account can hold and write more than one slot), a marker inside the slot value (the `feishu-signature` page would render the marker, breaking S4), or a scheduled writer (a FaaS timer, unconfirmed on magic-builder, or an external cron that would copy the slot bearer off the machine) | open question | Blocks the plan                                    | unconfirmed | Confirm the slot service and FaaS platform capabilities              |
+| A `zero` template that contains `{usage*}` tokens becomes a `fallbackTitle` with unrendered tokens                                                                                                                                                                                                                                                                                          | risk          | The idle title shows a raw `{usage_1d}`            | unconfirmed | Decide whether setup renders the fallback title without usage tokens |
+| Preview function and writer disagree on the clock                                                                                                                                                                                                                                                                                                                                           | risk          | The reset shows up early or late by the clock skew | unconfirmed | Accept: the bound is the 60-second cache interval plus skew          |

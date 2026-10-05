@@ -11,8 +11,7 @@ export interface SlotCredential {
 const KEYCHAIN_SERVICE = 'agent-signature:l-garyyang';
 const KEYCHAIN_LEGACY_SERVICE = 'agent-signature-slot-credential';
 const LIBSECRET_SERVICE = 'agent-presence';
-const LIBSECRET_ERROR =
-  'agent-presence requires libsecret on linux (install gnome-keyring or libsecret-tools)';
+const LIBSECRET_ERROR = 'agent-presence requires libsecret on linux (install gnome-keyring or libsecret-tools)';
 
 export interface CredentialStore {
   readCredential(configSlotId?: string): Promise<SlotCredential | undefined>;
@@ -251,7 +250,9 @@ async function readSecretTool(service: string, account: string): Promise<string 
 
 async function writeSecretTool(service: string, account: string, value: string): Promise<void> {
   // execFile supports `input` at runtime but @types/node excludes it from overloads.
-  await execFileAsync('secret-tool', ['store', '--label', service, 'service', service, 'account', account], { input: value } as any);
+  await execFileAsync('secret-tool', ['store', '--label', service, 'service', service, 'account', account], {
+    input: value
+  } as any);
 }
 
 async function deleteSecretTool(service: string, account: string): Promise<void> {

@@ -58,9 +58,7 @@ function assistantData(message: AssistantMessage): string {
 /** Build a minimal opencode SQLite store with a `message` table. */
 function writeDb(rows: Array<{ id: string; createdMs: number; data: string }>): string {
   const db = new DatabaseSync(join(dir, 'opencode.db'));
-  db.exec(
-    'CREATE TABLE message (id TEXT, session_id TEXT, time_created INTEGER, time_updated INTEGER, data TEXT)'
-  );
+  db.exec('CREATE TABLE message (id TEXT, session_id TEXT, time_created INTEGER, time_updated INTEGER, data TEXT)');
   const insert = db.prepare(
     'INSERT INTO message (id, session_id, time_created, time_updated, data) VALUES (?, ?, ?, ?, ?)'
   );
@@ -120,7 +118,11 @@ describe('scanOpenCode (SQLite)', () => {
   it('filters by the message completion time against the window', async () => {
     const root = writeDb([
       // completed inside the window
-      { id: 'in', createdMs: NOW - 2000, data: assistantData({ createdMs: NOW - 2000, completedMs: NOW - 1000, input: 5 }) },
+      {
+        id: 'in',
+        createdMs: NOW - 2000,
+        data: assistantData({ createdMs: NOW - 2000, completedMs: NOW - 1000, input: 5 })
+      },
       // completed before the window (but created recently) — dropped
       {
         id: 'old',

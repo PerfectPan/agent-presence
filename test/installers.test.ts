@@ -59,9 +59,13 @@ describe('Claude hook installer helpers', () => {
 
     expect(next.hooks.Stop).toHaveLength(2);
     expect(next.hooks.Stop?.[0]?.hooks?.[0]?.command).toBe('echo existing');
-    expect(next.hooks.Stop?.[1]?.hooks?.[0]?.command).toContain('npx --yes --registry=https://registry.npmjs.org @rivus/agent-presence@');
+    expect(next.hooks.Stop?.[1]?.hooks?.[0]?.command).toContain(
+      'npx --yes --registry=https://registry.npmjs.org @rivus/agent-presence@'
+    );
     expect(next.hooks.Stop?.[1]?.hooks?.[0]?.command).toContain('hook --source claude --event Stop --silent');
-    expect(next.hooks.SessionStart?.at(-1)?.hooks?.[0]?.command).toContain('hook --source claude --event SessionStart --silent');
+    expect(next.hooks.SessionStart?.at(-1)?.hooks?.[0]?.command).toContain(
+      'hook --source claude --event SessionStart --silent'
+    );
   });
 
   it('recognizes current and legacy managed hook commands', () => {
@@ -105,7 +109,9 @@ describe('opencode plugin installer helpers', () => {
   it('generates an opencode plugin that feeds lifecycle events into the CLI silently', () => {
     const source = buildOpenCodePluginSource();
 
-    expect(source).toContain('const CLI_COMMAND = ["npx","--yes","--registry=https://registry.npmjs.org","@rivus/agent-presence@');
+    expect(source).toContain(
+      'const CLI_COMMAND = ["npx","--yes","--registry=https://registry.npmjs.org","@rivus/agent-presence@'
+    );
     expect(source).toContain('--source');
     expect(source).toContain('opencode');
     expect(source).toContain('session.created');
@@ -118,9 +124,14 @@ describe('opencode plugin installer helpers', () => {
   });
 
   it('generates an opencode plugin with absolute CLI command', () => {
-    const source = buildOpenCodePluginSource(['/usr/local/bin/node', '/usr/local/lib/node_modules/@rivus/agent-presence/dist/src/cli.js']);
+    const source = buildOpenCodePluginSource([
+      '/usr/local/bin/node',
+      '/usr/local/lib/node_modules/@rivus/agent-presence/dist/src/cli.js'
+    ]);
 
-    expect(source).toContain('const CLI_COMMAND = ["/usr/local/bin/node","/usr/local/lib/node_modules/@rivus/agent-presence/dist/src/cli.js"]');
+    expect(source).toContain(
+      'const CLI_COMMAND = ["/usr/local/bin/node","/usr/local/lib/node_modules/@rivus/agent-presence/dist/src/cli.js"]'
+    );
     expect(source).toContain('--source');
     expect(source).toContain('opencode');
     expect(source).toContain('session.created');
@@ -149,7 +160,9 @@ describe('pi extension installer helpers', () => {
 
     expect(source).toContain(PI_EXTENSION_MARKER);
     expect(source).toContain('import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent"');
-    expect(source).toContain('const CLI_COMMAND = ["npx","--yes","--registry=https://registry.npmjs.org","@rivus/agent-presence@');
+    expect(source).toContain(
+      'const CLI_COMMAND = ["npx","--yes","--registry=https://registry.npmjs.org","@rivus/agent-presence@'
+    );
     expect(source).toContain('--source');
     expect(source).toContain('"pi"');
     // We must NOT subscribe to session_start as a SessionStart trigger; opening pi

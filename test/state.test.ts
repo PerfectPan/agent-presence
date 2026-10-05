@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { applyAgentEvent, createEmptyState, expireStaleSessions, finishAllSessions, getActiveSessions } from '../src/state.js';
+import {
+  applyAgentEvent,
+  createEmptyState,
+  expireStaleSessions,
+  finishAllSessions,
+  getActiveSessions
+} from '../src/state.js';
 
 describe('agent state lifecycle', () => {
   it('maps codex start, heartbeat, and finish events into local state', () => {

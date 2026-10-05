@@ -2,7 +2,11 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { homedir } from 'node:os';
-import { buildOpenCodePluginSource, withOpenCodeAgentSignaturePluginConfig, type OpenCodeConfig } from '../src/installers.js';
+import {
+  buildOpenCodePluginSource,
+  withOpenCodeAgentSignaturePluginConfig,
+  type OpenCodeConfig
+} from '../src/installers.js';
 import { readJsonFile, writeJsonAtomic } from '../src/json-file.js';
 import { assertSupportedPlatform } from '../src/platform.js';
 

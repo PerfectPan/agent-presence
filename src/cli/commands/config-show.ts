@@ -1,4 +1,13 @@
-import { configSlotId, debounceMs, feishuSignatureConfig, getConfigPath, loadConfig, providerId, renderTemplates, ttlMs } from '../../config.js';
+import {
+  configSlotId,
+  debounceMs,
+  feishuSignatureConfig,
+  getConfigPath,
+  loadConfig,
+  providerId,
+  renderTemplates,
+  ttlMs
+} from '../../config.js';
 import { describeSources } from '../../sources.js';
 
 export async function printConfig(): Promise<void> {

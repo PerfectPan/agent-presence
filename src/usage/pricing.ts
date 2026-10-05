@@ -127,10 +127,7 @@ export function resolveRecordCost(record: UsageRecord, overrides: PricingOverrid
   if (pricing === null) {
     return null;
   }
-  const cacheWrite1hTokens = Math.min(
-    record.cacheWriteTokens,
-    Math.max(0, record.cacheWrite1hTokens ?? 0)
-  );
+  const cacheWrite1hTokens = Math.min(record.cacheWriteTokens, Math.max(0, record.cacheWrite1hTokens ?? 0));
   const cacheWrite5mTokens = record.cacheWriteTokens - cacheWrite1hTokens;
   const bucketCost =
     (record.inputTokens * pricing.input +

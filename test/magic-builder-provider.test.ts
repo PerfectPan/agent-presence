@@ -133,9 +133,7 @@ describe('MagicBuilderProvider.publishFaas', () => {
   });
 
   it('surfaces application errors from magic.solutionsuite.cn', async () => {
-    fetchMock.mockResolvedValue(
-      new Response(JSON.stringify({ code: 401, msg: 'invalid token' }), { status: 200 })
-    );
+    fetchMock.mockResolvedValue(new Response(JSON.stringify({ code: 401, msg: 'invalid token' }), { status: 200 }));
     const provider = new MagicBuilderProvider('https://magic.solutionsuite.cn', 'bad');
     await expect(provider.publishFaas({ code: 'x' })).rejects.toThrow(/invalid token/);
   });

@@ -805,14 +805,7 @@ function shellQuote(value: string): string {
   return `'${value.replaceAll("'", "'\\''")}'`;
 }
 
-const GEMINI_EVENTS = [
-  'SessionStart',
-  'UserPromptSubmit',
-  'PreToolUse',
-  'PostToolUse',
-  'Stop',
-  'SessionEnd'
-];
+const GEMINI_EVENTS = ['SessionStart', 'UserPromptSubmit', 'PreToolUse', 'PostToolUse', 'Stop', 'SessionEnd'];
 
 export function withGeminiAgentSignatureHooks(input: Partial<HookSettings>): HookSettings {
   const settings: HookSettings = {

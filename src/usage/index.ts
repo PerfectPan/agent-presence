@@ -1,14 +1,7 @@
 import { DAY_MS, startOfLocalDayMs } from '../time.js';
 import { writeLog } from '../log.js';
 import { resolveRecordCost, type PricingOverrides } from './pricing.js';
-import type {
-  BillableSource,
-  SourceUsage,
-  UsageRecord,
-  UsageSource,
-  UsageTotals,
-  WindowUsage
-} from './types.js';
+import type { BillableSource, SourceUsage, UsageRecord, UsageSource, UsageTotals, WindowUsage } from './types.js';
 
 export type { ModelPricing, PricingOverrides } from './pricing.js';
 export type {
@@ -105,8 +98,7 @@ function summarise(source: UsageSource, records: UsageRecord[], pricing?: Pricin
     }
   }
 
-  totals.totalTokens =
-    totals.inputTokens + totals.outputTokens + totals.cacheWriteTokens + totals.cacheReadTokens;
+  totals.totalTokens = totals.inputTokens + totals.outputTokens + totals.cacheWriteTokens + totals.cacheReadTokens;
   if (!sawCost) {
     totals.costUsd = null;
   }

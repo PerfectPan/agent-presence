@@ -20,7 +20,8 @@ export interface PowerEventWatcherOptions {
 
 export function buildPowerWatcherScript(options: PowerWatcherScriptOptions = {}): string {
   const pathEntries = (options.pathEntries ?? []).filter((entry) => entry.length > 0);
-  const pathExport = pathEntries.length > 0 ? `export PATH="${escapeShellDoubleQuoted(pathEntries.join(':'))}:$PATH"\n\n` : '';
+  const pathExport =
+    pathEntries.length > 0 ? `export PATH="${escapeShellDoubleQuoted(pathEntries.join(':'))}:$PATH"\n\n` : '';
   const logMaintenance = options.logPath
     ? `prune_log() {
   log_path="${escapeShellDoubleQuoted(options.logPath)}"

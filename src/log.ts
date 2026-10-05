@@ -21,7 +21,9 @@ export interface LogWriter {
 }
 
 export async function writeLog(message: string): Promise<void> {
-  await appendLogLine(formatLogEvent({ time: formatLogTime(), level: 'error', app: 'agent-presence', pid: process.pid, message }));
+  await appendLogLine(
+    formatLogEvent({ time: formatLogTime(), level: 'error', app: 'agent-presence', pid: process.pid, message })
+  );
 }
 
 export async function writeLogEvent(event: Record<string, unknown>): Promise<void> {

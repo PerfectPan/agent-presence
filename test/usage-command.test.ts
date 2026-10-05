@@ -78,10 +78,7 @@ describe('renderUsageTable', () => {
   });
 
   it('shows a per-window tokens/cost column pair for each window', () => {
-    const windows = [
-      window([sourceUsage('codex', 10, 1)]),
-      window([sourceUsage('codex', 70, 7)])
-    ];
+    const windows = [window([sourceUsage('codex', 10, 1)]), window([sourceUsage('codex', 70, 7)])];
     const table = renderUsageTable([1, 7], windows);
     const header = table.split('\n').find((l) => l.startsWith('source'));
     expect(header).toContain('last 1d tokens');

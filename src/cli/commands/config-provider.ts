@@ -14,7 +14,9 @@ const PROVIDER_OPTIONS = ['--base-url', '--preview-base-url', '--image-key', '--
 
 export async function configureProvider(args: string[]): Promise<void> {
   const config = await loadConfig();
-  const explicitProvider = args[0]?.startsWith('--') ? optionValue(args, '--provider') : (args[0] ?? optionValue(args, '--provider'));
+  const explicitProvider = args[0]?.startsWith('--')
+    ? optionValue(args, '--provider')
+    : (args[0] ?? optionValue(args, '--provider'));
   const targetProvider = providerId(config, explicitProvider);
   const reset = hasFlag(args, '--reset');
   const providers = { ...config.providers };
@@ -53,7 +55,10 @@ export async function configureProvider(args: string[]): Promise<void> {
   );
 }
 
-async function promptProviderConfig(target: Record<string, string>, current: FeishuSignatureProviderConfig): Promise<void> {
+async function promptProviderConfig(
+  target: Record<string, string>,
+  current: FeishuSignatureProviderConfig
+): Promise<void> {
   setOptionalValue(
     target,
     'baseUrl',
@@ -65,7 +70,11 @@ async function promptProviderConfig(target: Record<string, string>, current: Fei
     await promptOptionalText('Signature preview base URL', current.previewBaseUrl ?? 'https://l.garyyang.work/')
   );
   setOptionalValue(target, 'previewImageKey', await promptOptionalText('Preview image key', current.previewImageKey));
-  setOptionalValue(target, 'previewTargetUrl', await promptOptionalText('Preview target URL', current.previewTargetUrl));
+  setOptionalValue(
+    target,
+    'previewTargetUrl',
+    await promptOptionalText('Preview target URL', current.previewTargetUrl)
+  );
 }
 
 async function promptOptionalText(message: string, initialValue?: string): Promise<string | undefined> {

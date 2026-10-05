@@ -36,8 +36,7 @@ function geminiMessage(id: string, tsMs: number, tokens: GeminiTokens | null, mo
       cached: tokens.cached ?? 0,
       thoughts: tokens.thoughts ?? 0,
       tool: tokens.tool ?? 0,
-      total:
-        (tokens.input ?? 0) + (tokens.output ?? 0) + (tokens.thoughts ?? 0) + (tokens.tool ?? 0)
+      total: (tokens.input ?? 0) + (tokens.output ?? 0) + (tokens.thoughts ?? 0) + (tokens.tool ?? 0)
     };
   }
   return record;

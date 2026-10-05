@@ -1,5 +1,13 @@
 import { describe, expect, it, vi } from 'vitest';
-import { DEFAULT_SETUP_SCRIPT_NAMES, DEFAULT_UNINSTALL_SCRIPT_NAMES, LINUX_WATCHER_SKIP_MESSAGE, platformSetupScriptNames, platformUninstallScriptNames, runSetupScripts, runUninstallScripts } from '../src/setup.js';
+import {
+  DEFAULT_SETUP_SCRIPT_NAMES,
+  DEFAULT_UNINSTALL_SCRIPT_NAMES,
+  LINUX_WATCHER_SKIP_MESSAGE,
+  platformSetupScriptNames,
+  platformUninstallScriptNames,
+  runSetupScripts,
+  runUninstallScripts
+} from '../src/setup.js';
 
 describe('runSetupScripts', () => {
   it('runs every local installer script in setup order', async () => {
