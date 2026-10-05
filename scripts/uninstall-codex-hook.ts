@@ -23,13 +23,15 @@ async function main(): Promise<void> {
   const doc = await loadHooks(hooksPath);
   doc.hooks ??= {};
 
-  for (const event of Object.keys(doc.hooks)) {
-    doc.hooks[event] = doc.hooks[event].flatMap((group) => {
+  for (const [event, groups] of Object.entries(doc.hooks)) {
+    const kept = groups.flatMap((group) => {
       const hooks = (group.hooks ?? []).filter((hook) => !isAgentSignatureCommand(hook.command));
       return hooks.length > 0 ? [{ ...group, hooks }] : [];
     });
-    if (doc.hooks[event].length === 0) {
+    if (kept.length === 0) {
       delete doc.hooks[event];
+    } else {
+      doc.hooks[event] = kept;
     }
   }
 

@@ -46,9 +46,7 @@ describe('credential storage integration', () => {
   const testSlotId = 'integration-test-slot-' + Date.now();
 
   describe('macOS Keychain backend', () => {
-    const test = macOs ? it : it.skip;
-
-    test('writes, reads, and deletes credentials from Keychain', async () => {
+    it.skipIf(!macOs)('writes, reads, and deletes credentials from Keychain', async () => {
       await withIsolatedCredentialStore(async (store) => {
         await store.writeCredential({ token: testToken, slotId: testSlotId });
 
@@ -86,12 +84,10 @@ describe('credential storage integration', () => {
   });
 
   describe('environment variable priority', () => {
-    const test = macOs || linux ? it : it.skip;
-
     const savedToken = process.env.AGENT_PRESENCE_TOKEN;
     const savedSlotId = process.env.AGENT_PRESENCE_SLOT_ID;
 
-    test('env vars override backend storage', async () => {
+    it.skipIf(!macOs && !linux)('env vars override backend storage', async () => {
       process.env.AGENT_PRESENCE_TOKEN = 'env-override-tok';
       process.env.AGENT_PRESENCE_SLOT_ID = 'env-override-sid';
 

@@ -46,7 +46,7 @@ export interface OpenCodeConfig {
 export function withClaudeAgentSignatureHooks(input: Partial<HookSettings>): HookSettings {
   const settings: HookSettings = {
     ...input,
-    hooks: { ...(input.hooks ?? {}) }
+    hooks: { ...input.hooks }
   };
 
   for (const event of CLAUDE_EVENTS) {
@@ -817,7 +817,7 @@ const GEMINI_EVENTS = [
 export function withGeminiAgentSignatureHooks(input: Partial<HookSettings>): HookSettings {
   const settings: HookSettings = {
     ...input,
-    hooks: { ...(input.hooks ?? {}) }
+    hooks: { ...input.hooks }
   };
 
   for (const event of GEMINI_EVENTS) {

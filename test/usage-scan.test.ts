@@ -107,7 +107,7 @@ describe('scanClaude', () => {
 
     const records = await scanClaude({ root, sinceMs: NOW - DAY, untilMs: NOW });
     expect(records).toHaveLength(1);
-    expect(records[0].outputTokens).toBe(1810);
+    expect(records[0]?.outputTokens).toBe(1810);
   });
 
   it('uses the cache creation breakdown when present (matches ccusage)', async () => {
@@ -139,7 +139,7 @@ describe('scanClaude', () => {
       cacheWriteTokens: 2103,
       cacheWrite1hTokens: 2103
     });
-    expect(resolveRecordCost(records[0])).toBeCloseTo(0.02103, 8);
+    expect(resolveRecordCost(records[0]!)).toBeCloseTo(0.02103, 8);
   });
 
   it('excludes synthetic turns (matches ccusage)', async () => {

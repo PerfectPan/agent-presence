@@ -104,7 +104,7 @@ describe('scanOpenCode (SQLite)', () => {
       costUsd: 0.02104008
     });
     // Four buckets reproduce opencode's own total.
-    const r = records[0];
+    const r = records[0]!;
     expect(r.inputTokens + r.outputTokens + r.cacheReadTokens + r.cacheWriteTokens).toBe(82462);
   });
 
@@ -114,7 +114,7 @@ describe('scanOpenCode (SQLite)', () => {
     ]);
     const records = await scanOpenCode({ root, sinceMs: NOW - DAY, untilMs: NOW });
     expect(records).toHaveLength(1);
-    expect(records[0].costUsd).toBe(0);
+    expect(records[0]?.costUsd).toBe(0);
   });
 
   it('filters by the message completion time against the window', async () => {
@@ -130,7 +130,7 @@ describe('scanOpenCode (SQLite)', () => {
     ]);
     const records = await scanOpenCode({ root, sinceMs: NOW - DAY, untilMs: NOW });
     expect(records).toHaveLength(1);
-    expect(records[0].inputTokens).toBe(5);
+    expect(records[0]?.inputTokens).toBe(5);
   });
 
   it('returns [] for a missing store', async () => {

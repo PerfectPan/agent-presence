@@ -10,6 +10,7 @@ This repository is public and publishes `@rivus/agent-presence` to npm. Treat ev
 - Do not add private tokens, internal hostnames, private repository names, or personal filesystem paths.
 - Use `rg` for searches when available.
 - Update tests and documentation when behavior changes.
+- Lint, format, and TypeScript rules come from `@perfectpan/lint-config` (a git dependency pinned to a tag). Keep only repository-specific settings in `.oxlintrc.json`, `oxfmt.config.ts`, and `tsconfig.json`; extend the shared configs instead of copying them.
 - Never run `agent-presence setup`, the `install:*` / `uninstall:*` scripts, or a hook command against your real home directory. Run them with `HOME="$(mktemp -d)"` so the real `~/.agent-presence`, agent configs, Keychain entries, and LaunchAgents stay untouched.
 
 ## Collaboration Rules
@@ -37,8 +38,11 @@ gh repo-checks pr-body pr-body.md
 
 # Install, then the CI gates:
 pnpm install --frozen-lockfile
+pnpm format:check   # `pnpm format` rewrites files
 pnpm test
 pnpm run typecheck
+pnpm -C site run docs:sync   # generates the astro:content types lint needs
+pnpm lint
 pnpm run build
 pnpm pack --dry-run
 

@@ -65,6 +65,7 @@ export function resolvePricing(model: string, overrides: PricingOverrides = {}):
 
   const merged = overrideKey ? normalizedOverrides[bestKey] : table[bestKey];
   if (
+    merged === undefined ||
     merged.input === undefined ||
     merged.output === undefined ||
     merged.cacheWrite === undefined ||

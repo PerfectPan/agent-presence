@@ -216,7 +216,7 @@ export function magicBuilderFallbackTitle(config: AppConfig): string {
 
 export function setMagicBuilderConfig(config: AppConfig, patch: Partial<MagicBuilderProviderConfig>): AppConfig {
   const next: AppConfig = { ...config };
-  const providers = { ...(next.providers ?? {}) };
+  const providers = { ...next.providers };
   const existing = providers['magic-builder'] ?? {};
   providers['magic-builder'] = { ...existing, ...patch };
   next.providers = providers;
@@ -314,8 +314,8 @@ export function pluginSourcesConfig(config: AppConfig): Record<string, SourcePlu
 /** Return a copy of `config` with the source `id` set to `entry`. */
 export function setPluginSource(config: AppConfig, id: string, entry: SourcePluginConfig): AppConfig {
   const next: AppConfig = { ...config };
-  const plugins = { ...(next.plugins ?? {}) };
-  plugins.sources = { ...(plugins.sources ?? {}), [id]: entry };
+  const plugins = { ...next.plugins };
+  plugins.sources = { ...plugins.sources, [id]: entry };
   next.plugins = plugins;
   return next;
 }

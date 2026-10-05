@@ -15,8 +15,10 @@ Allowed types: `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `buil
 - [ ] Repository checks: `gh repo-checks repository`
 - [ ] PR title and description: `gh repo-checks pr-title "<title>"`, `gh repo-checks pr-body <body-file>`
 - [ ] Install: `pnpm install --frozen-lockfile`
+- [ ] Format: `pnpm format:check`
 - [ ] Test: `pnpm test`
 - [ ] Typecheck: `pnpm run typecheck`
+- [ ] Lint: `pnpm lint` (after `pnpm -C site run docs:sync` in a fresh checkout)
 - [ ] Build: `pnpm run build`
 - [ ] Docs site, when `site/` changes: `pnpm -C site run docs:build`
 - [ ] Changeset: `pnpm changeset status` (user-facing package changes add a changeset)

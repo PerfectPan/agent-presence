@@ -363,7 +363,7 @@ describe('billableSources', () => {
     expect(myagent).toBeDefined();
     const records = await myagent!.scanUsage({ sinceMs: 0, untilMs: 1 });
     expect(records).toHaveLength(1);
-    expect(records[0].source).toBe('myagent');
+    expect(records[0]?.source).toBe('myagent');
   });
 
   it('never loads a JS handler when includeHandlers is false (hook/badge path)', async () => {

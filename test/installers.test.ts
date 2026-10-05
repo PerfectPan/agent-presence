@@ -58,10 +58,10 @@ describe('Claude hook installer helpers', () => {
     const next = withClaudeAgentSignatureHooks(settings);
 
     expect(next.hooks.Stop).toHaveLength(2);
-    expect(next.hooks.Stop[0]?.hooks?.[0]?.command).toBe('echo existing');
-    expect(next.hooks.Stop[1]?.hooks?.[0]?.command).toContain('npx --yes --registry=https://registry.npmjs.org @rivus/agent-presence@');
-    expect(next.hooks.Stop[1]?.hooks?.[0]?.command).toContain('hook --source claude --event Stop --silent');
-    expect(next.hooks.SessionStart.at(-1)?.hooks?.[0]?.command).toContain('hook --source claude --event SessionStart --silent');
+    expect(next.hooks.Stop?.[0]?.hooks?.[0]?.command).toBe('echo existing');
+    expect(next.hooks.Stop?.[1]?.hooks?.[0]?.command).toContain('npx --yes --registry=https://registry.npmjs.org @rivus/agent-presence@');
+    expect(next.hooks.Stop?.[1]?.hooks?.[0]?.command).toContain('hook --source claude --event Stop --silent');
+    expect(next.hooks.SessionStart?.at(-1)?.hooks?.[0]?.command).toContain('hook --source claude --event SessionStart --silent');
   });
 
   it('recognizes current and legacy managed hook commands', () => {
@@ -93,7 +93,7 @@ describe('Claude hook installer helpers', () => {
       const settings: Partial<HookSettings> = { hooks: {} };
       const next = withClaudeAgentSignatureHooks(settings);
 
-      const command = next.hooks.SessionStart[0]?.hooks?.[0]?.command ?? '';
+      const command = next.hooks.SessionStart?.[0]?.hooks?.[0]?.command ?? '';
       expect(command).toContain(`hook --source claude --event SessionStart --silent`);
       expect(command).not.toContain('npx');
       expect(command).toContain('/usr/local/lib/node_modules/@rivus/agent-presence/dist/src/cli.js');
@@ -212,6 +212,6 @@ describe('pi extension installer helpers', () => {
       extensions: ['/fake-home/.pi/agent/extensions/agent-presence.ts']
     };
 
-    expect(withoutPiAgentPresenceExtension(settings, settings.extensions![0])).toEqual({});
+    expect(withoutPiAgentPresenceExtension(settings, settings.extensions![0]!)).toEqual({});
   });
 });

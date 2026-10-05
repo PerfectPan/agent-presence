@@ -5,6 +5,7 @@
   "scripts": {
     "docs:dev": "astro dev",
     "docs:build": "astro build",
+    "docs:sync": "astro sync",
     "docs:preview": "astro preview"
   },
   "dependencies": {

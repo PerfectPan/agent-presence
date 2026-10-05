@@ -107,7 +107,7 @@ describe('uninstallDshPlugin', () => {
 
     expect(result.status).toBe('removed');
     expect(result.patchUpdated).toBe(true);
-    await expect(readFile(pluginPath, 'utf8')).rejects.toThrow();
+    await expect(readFile(pluginPath, 'utf8')).rejects.toThrow(/ENOENT/);
 
     const patch = await readFile(patchPath, 'utf8');
     expect(patch).toContain('some-plugin');
@@ -119,7 +119,7 @@ describe('uninstallDshPlugin', () => {
 
     await uninstallDshPlugin({ pluginPath, patchPath });
 
-    await expect(readFile(patchPath, 'utf8')).rejects.toThrow();
+    await expect(readFile(patchPath, 'utf8')).rejects.toThrow(/ENOENT/);
   });
 
   it('does not delete a user-owned file at the plugin path', async () => {

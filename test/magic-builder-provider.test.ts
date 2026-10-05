@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { MagicBuilderProvider } from '../src/providers/magic-builder.js';
 
 const originalFetch = globalThis.fetch;
@@ -74,15 +74,15 @@ describe('MagicBuilderProvider.buildFaasCode', () => {
 });
 
 describe('MagicBuilderProvider.publishFaas', () => {
-  let fetchMock: ReturnType<typeof vi.fn>;
+  let fetchMock: Mock<typeof fetch>;
 
   beforeEach(() => {
-    fetchMock = vi.fn();
-    (globalThis as unknown as { fetch: typeof fetch }).fetch = fetchMock as unknown as typeof fetch;
+    fetchMock = vi.fn<typeof fetch>();
+    globalThis.fetch = fetchMock;
   });
 
   afterEach(() => {
-    (globalThis as unknown as { fetch: typeof fetch }).fetch = originalFetch;
+    globalThis.fetch = originalFetch;
   });
 
   it('POSTs CommonJS code to /api/faas with bearer auth and returns the record id', async () => {
@@ -97,13 +97,13 @@ describe('MagicBuilderProvider.publishFaas', () => {
     const result = await provider.publishFaas({ code: 'module.exports = ...', name: 'agent_presence_preview' });
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    const [url, init] = fetchMock.mock.calls[0];
-    expect(String(url)).toBe('https://magic.solutionsuite.cn/api/faas');
-    expect((init as RequestInit).method).toBe('POST');
-    const headers = new Headers((init as RequestInit).headers);
+    const [url, init] = fetchMock.mock.calls[0]!;
+    expect((url as URL).href).toBe('https://magic.solutionsuite.cn/api/faas');
+    expect(init?.method).toBe('POST');
+    const headers = new Headers(init?.headers);
     expect(headers.get('Authorization')).toBe('Bearer tok_secret');
     expect(headers.get('Content-Type')).toBe('application/json');
-    const body = JSON.parse(String((init as RequestInit).body));
+    const body = JSON.parse(init?.body as string);
     expect(body).toEqual({ code: 'module.exports = ...', name: 'agent_presence_preview' });
     expect(result).toEqual({
       id: 'rec_xyz',
@@ -122,7 +122,8 @@ describe('MagicBuilderProvider.publishFaas', () => {
 
     const provider = new MagicBuilderProvider('https://magic.solutionsuite.cn', 'tok');
     await provider.publishFaas({ code: 'x', name: 'n', recordId: 'rec_old' });
-    const body = JSON.parse(String((fetchMock.mock.calls[0][1] as RequestInit).body));
+    const [, init] = fetchMock.mock.calls[0]!;
+    const body = JSON.parse(init?.body as string);
     expect(body.id).toBe('rec_old');
   });
 
@@ -147,15 +148,15 @@ describe('MagicBuilderProvider.publishFaas', () => {
 });
 
 describe('MagicBuilderProvider.invokeFaas', () => {
-  let fetchMock: ReturnType<typeof vi.fn>;
+  let fetchMock: Mock<typeof fetch>;
 
   beforeEach(() => {
-    fetchMock = vi.fn();
-    (globalThis as unknown as { fetch: typeof fetch }).fetch = fetchMock as unknown as typeof fetch;
+    fetchMock = vi.fn<typeof fetch>();
+    globalThis.fetch = fetchMock;
   });
 
   afterEach(() => {
-    (globalThis as unknown as { fetch: typeof fetch }).fetch = originalFetch;
+    globalThis.fetch = originalFetch;
   });
 
   it('parses i18n_title.zh_cn and expire_strategy out of the response', async () => {

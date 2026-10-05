@@ -183,10 +183,9 @@ export async function billableSources(
 ): Promise<BillableSource[]> {
   const billable: BillableSource[] = [];
   for (const [id, entry] of Object.entries(mergedSources(config))) {
-    const resolved = await resolveSourcePlugin(id, entry, options);
-    const scanUsage = resolved?.plugin.scanUsage;
-    if (scanUsage) {
-      billable.push({ id, scanUsage: scanUsage.bind(resolved.plugin) });
+    const plugin = (await resolveSourcePlugin(id, entry, options))?.plugin;
+    if (plugin?.scanUsage) {
+      billable.push({ id, scanUsage: plugin.scanUsage.bind(plugin) });
     }
   }
   return billable;

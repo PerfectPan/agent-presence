@@ -1,13 +1,19 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const readMagicToken = vi.hoisted(() => vi.fn());
-const writeMagicToken = vi.hoisted(() => vi.fn());
-const readCredential = vi.hoisted(() => vi.fn());
-const loadConfig = vi.hoisted(() => vi.fn());
-const saveConfig = vi.hoisted(() => vi.fn());
-const publishFaas = vi.hoisted(() => vi.fn());
-const buildFaasCode = vi.hoisted(() => vi.fn(() => 'module.exports = ...'));
-const buildSignatureUrl = vi.hoisted(() => vi.fn((id: string) => `https://magic.solutionsuite.cn/r?fid=${id}`));
+import type { MagicBuilderProvider } from '../src/providers/magic-builder.js';
+
+type AcquireToken = () => Promise<string | undefined>;
+
+const readMagicToken = vi.hoisted(() => vi.fn<typeof import('../src/magic-token.js').readMagicToken>());
+const writeMagicToken = vi.hoisted(() => vi.fn<typeof import('../src/magic-token.js').writeMagicToken>());
+const readCredential = vi.hoisted(() => vi.fn<typeof import('../src/secret.js').readCredential>());
+const loadConfig = vi.hoisted(() => vi.fn<typeof import('../src/config.js').loadConfig>());
+const saveConfig = vi.hoisted(() => vi.fn<typeof import('../src/config.js').saveConfig>());
+const publishFaas = vi.hoisted(() => vi.fn<MagicBuilderProvider['publishFaas']>());
+const buildFaasCode = vi.hoisted(() => vi.fn<MagicBuilderProvider['buildFaasCode']>(() => 'module.exports = ...'));
+const buildSignatureUrl = vi.hoisted(() =>
+  vi.fn<MagicBuilderProvider['buildSignatureUrl']>((id: string) => `https://magic.solutionsuite.cn/r?fid=${id}`)
+);
 
 vi.mock('../src/magic-token.js', () => ({
   readMagicToken,
@@ -65,7 +71,7 @@ describe('publishMagicBuilderFaas', () => {
 
   it('publishes with an existing keyring token without prompting', async () => {
     readMagicToken.mockResolvedValue({ token: 'tok', source: 'keychain' });
-    const acquireToken = vi.fn();
+    const acquireToken = vi.fn<AcquireToken>();
 
     const result = await publishMagicBuilderFaas({ acquireToken });
 
@@ -79,7 +85,7 @@ describe('publishMagicBuilderFaas', () => {
 
   it('prompts via acquireToken when no token is found and persists it to the keyring', async () => {
     readMagicToken.mockResolvedValue({});
-    const acquireToken = vi.fn().mockResolvedValue('pasted-token');
+    const acquireToken = vi.fn<AcquireToken>().mockResolvedValue('pasted-token');
 
     const result = await publishMagicBuilderFaas({ acquireToken });
 
@@ -96,7 +102,7 @@ describe('publishMagicBuilderFaas', () => {
 
   it('throws the onboarding help when the prompt is cancelled (returns empty)', async () => {
     readMagicToken.mockResolvedValue({});
-    const acquireToken = vi.fn().mockResolvedValue(undefined);
+    const acquireToken = vi.fn<AcquireToken>().mockResolvedValue(undefined);
     await expect(publishMagicBuilderFaas({ acquireToken })).rejects.toThrow(/missing magic-builder token/);
     expect(writeMagicToken).not.toHaveBeenCalled();
   });

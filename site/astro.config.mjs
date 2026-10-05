@@ -2,6 +2,9 @@
 import { defineConfig } from 'astro/config';
 import starlight from '@astrojs/starlight';
 
+/** @typedef {NonNullable<import('@astrojs/starlight/types').StarlightUserConfig['head']>} HeadConfig */
+
+/** @type {HeadConfig} */
 const fontHead = [
   // Default to the light theme unless the visitor has explicitly chosen one.
   {
@@ -22,6 +25,7 @@ const fontHead = [
 
 // dev-only element grabber (inert in production builds)
 const isDev = process.env.NODE_ENV !== 'production';
+/** @type {HeadConfig} */
 const head = isDev ? [{ tag: 'script', attrs: { src: '/dev-grab.js' } }, ...fontHead] : fontHead;
 
 export default defineConfig({

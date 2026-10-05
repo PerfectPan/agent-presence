@@ -60,7 +60,7 @@
     if (!el || ignore(el)) return;
     e.preventDefault();
     e.stopPropagation();
-    copy(el);
+    void copy(el);
   }, true);
 
   function cssPath(el) {

@@ -46,11 +46,25 @@ gh repo-checks pr-body pr-body.md
 
 # Install and CI gates:
 pnpm install --frozen-lockfile
+pnpm format:check
 pnpm test
 pnpm run typecheck
+pnpm lint
 pnpm run build
 pnpm pack --dry-run
 ```
+
+`pnpm format` applies the formatting. `pnpm lint` is type-aware and also checks the docs site, whose modules import `astro:content`; in a fresh checkout, generate those types first with `pnpm -C site run docs:sync` (a site build also does it).
+
+### Lint, Format, And TypeScript Config
+
+Shared rules come from [`@perfectpan/lint-config`](https://github.com/PerfectPan/lint-config), installed as a git dependency pinned to a tag. This repository keeps only its own settings:
+
+- `.oxlintrc.json` extends the shared oxlint config (type-aware, warnings fail, `curly: all`, kebab-case file names, at most 1000 lines per non-test file) and ignores build output. It lints the docs site's scripts and `.astro` frontmatter too.
+- `oxfmt.config.ts` spreads the shared oxfmt options and keeps single quotes, the style the existing code used. It skips the files copied verbatim from the project template and the generated `CHANGELOG.md` and `src/usage/litellm-pricing.json`.
+- `tsconfig.json` extends the shared `node` tsconfig (strict, `noUncheckedIndexedAccess`, `verbatimModuleSyntax`) and adds only `types`, the output settings, and `include`; `tsconfig.build.json` narrows `include` for the build.
+
+Upgrade the shared rules by bumping the tag in `package.json`, then fix or explicitly override what the new release reports.
 
 When a change touches `site/`, also build the docs site with `pnpm -C site run docs:build`. For package-facing changes, run `pnpm changeset status` and inspect the `pnpm pack --dry-run` file list.
 

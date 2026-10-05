@@ -110,7 +110,7 @@ function columnWidths(rows: string[][]): number[] {
 }
 
 function formatRow(row: string[], widths: number[]): string {
-  return row.map((cell, index) => cell.padEnd(widths[index])).join('  ').trimEnd();
+  return row.map((cell, index) => cell.padEnd(widths[index] ?? 0)).join('  ').trimEnd();
 }
 
 function divider(widths: number[]): string {

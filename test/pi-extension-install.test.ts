@@ -107,7 +107,7 @@ describe('uninstallPiExtension', () => {
 
     expect(result.status).toBe('removed');
     expect(result.settingsUpdated).toBe(true);
-    await expect(readFile(extensionPath, 'utf8')).rejects.toThrow();
+    await expect(readFile(extensionPath, 'utf8')).rejects.toThrow(/ENOENT/);
 
     const settings = JSON.parse(await readFile(settingsPath, 'utf8')) as { extensions?: string[] };
     expect(settings.extensions).toEqual(['/fake-home/keep.ts']);

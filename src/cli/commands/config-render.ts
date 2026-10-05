@@ -8,7 +8,7 @@ export async function configureRender(args: string[]): Promise<void> {
   const config = await loadConfig();
   const reset = hasFlag(args, '--reset');
   const nextConfig = { ...config };
-  const nextRender = reset ? {} : { ...(config.render ?? {}) };
+  const nextRender = reset ? {} : { ...config.render };
 
   if (!reset && isInteractiveTerminal() && !hasAnyOption(args, RENDER_OPTIONS)) {
     const current = renderTemplates(config);

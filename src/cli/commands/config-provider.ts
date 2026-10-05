@@ -17,9 +17,9 @@ export async function configureProvider(args: string[]): Promise<void> {
   const explicitProvider = args[0]?.startsWith('--') ? optionValue(args, '--provider') : (args[0] ?? optionValue(args, '--provider'));
   const targetProvider = providerId(config, explicitProvider);
   const reset = hasFlag(args, '--reset');
-  const providers = { ...(config.providers ?? {}) };
+  const providers = { ...config.providers };
   const nextConfig: AppConfig = { ...config, provider: targetProvider, providers };
-  const nextProviderConfig = reset ? {} : { ...(config.providers?.[targetProvider] ?? {}) };
+  const nextProviderConfig = reset ? {} : { ...config.providers?.[targetProvider] };
 
   if (!reset && isInteractiveTerminal() && !hasAnyOption(args, PROVIDER_OPTIONS)) {
     await promptProviderConfig(nextProviderConfig, feishuSignatureConfig(config));

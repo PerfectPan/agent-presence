@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const hasCredentialMock = vi.hoisted(() => vi.fn());
-const loginMock = vi.hoisted(() => vi.fn());
-const runSetupScriptsMock = vi.hoisted(() => vi.fn());
-const readCredentialMock = vi.hoisted(() => vi.fn());
+const hasCredentialMock = vi.hoisted(() => vi.fn<typeof import('../src/cli/credential.js').hasCredential>());
+const loginMock = vi.hoisted(() => vi.fn<typeof import('../src/cli/commands/login.js').login>());
+const runSetupScriptsMock = vi.hoisted(() => vi.fn<typeof import('../src/setup.js').runSetupScripts>());
+const readCredentialMock = vi.hoisted(() => vi.fn<typeof import('../src/secret.js').readCredential>());
 
 vi.mock('../src/cli/credential.js', () => ({
   hasCredential: hasCredentialMock
@@ -24,36 +24,42 @@ vi.mock('../src/secret.js', () => ({
 
 vi.mock('../src/config.js', () => ({
   configSlotId: () => 'slot_config',
-  loadConfig: vi.fn().mockResolvedValue({ provider: 'feishu-signature', slot_id: 'slot_config' }),
+  loadConfig: vi
+    .fn<typeof import('../src/config.js').loadConfig>()
+    .mockResolvedValue({ provider: 'feishu-signature', slot_id: 'slot_config' }),
   providerId: (_config: unknown, provider?: string) => provider ?? 'feishu-signature',
   defaultCommandProviderId: (_config: unknown, provider?: string) => provider ?? 'magic-builder'
 }));
 
 vi.mock('../src/migration.js', () => ({
-  cleanupMigratedLegacyHome: vi.fn().mockResolvedValue(undefined),
-  hasLegacyHomeToMigrate: vi.fn().mockResolvedValue(false),
-  migrateLegacyHome: vi.fn()
+  cleanupMigratedLegacyHome: vi
+    .fn<typeof import('../src/migration.js').cleanupMigratedLegacyHome>()
+    .mockResolvedValue({ from: '', to: '', removed: [] }),
+  hasLegacyHomeToMigrate: vi.fn<typeof import('../src/migration.js').hasLegacyHomeToMigrate>().mockResolvedValue(false),
+  migrateLegacyHome: vi.fn<typeof import('../src/migration.js').migrateLegacyHome>()
 }));
 
 vi.mock('../src/platform.js', () => ({
-  isMacOS: vi.fn().mockReturnValue(true)
+  isMacOS: vi.fn<typeof import('../src/platform.js').isMacOS>().mockReturnValue(true)
 }));
 
 vi.mock('../src/cli/ui.js', () => ({
   createSpinner: () => ({
-    start: vi.fn(),
-    stop: vi.fn(),
-    error: vi.fn()
+    start: vi.fn<(message?: string) => void>(),
+    stop: vi.fn<(message?: string) => void>(),
+    error: vi.fn<(message?: string) => void>()
   }),
-  finishOutro: vi.fn(),
-  promptConfirm: vi.fn(),
-  showInfo: vi.fn(),
-  showNote: vi.fn(),
-  startIntro: vi.fn()
+  finishOutro: vi.fn<typeof import('../src/cli/ui.js').finishOutro>(),
+  promptConfirm: vi.fn<typeof import('../src/cli/ui.js').promptConfirm>(),
+  showInfo: vi.fn<typeof import('../src/cli/ui.js').showInfo>(),
+  showNote: vi.fn<typeof import('../src/cli/ui.js').showNote>(),
+  startIntro: vi.fn<typeof import('../src/cli/ui.js').startIntro>()
 }));
 
 vi.mock('../src/cli/commands/url.js', () => ({
-  resolveSignatureUrl: vi.fn().mockResolvedValue('https://l.garyyang.work/?t2=test')
+  resolveSignatureUrl: vi
+    .fn<typeof import('../src/cli/commands/url.js').resolveSignatureUrl>()
+    .mockResolvedValue('https://l.garyyang.work/?t2=test')
 }));
 
 describe('setup command login behavior', () => {

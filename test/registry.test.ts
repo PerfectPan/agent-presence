@@ -22,12 +22,12 @@ describe('provider registry', () => {
     it('exposes login, slot update, info, and signature-url capabilities but no remote preview', () => {
       const provider = createProvider('feishu-signature', { config: {} });
       expect(provider.id).toBe('feishu-signature');
-      expect(provider.createQrCode).toBeTypeOf('function');
-      expect(provider.getLoginStatus).toBeTypeOf('function');
-      expect(provider.publishValue).toBeTypeOf('function');
-      expect(provider.getInfo).toBeTypeOf('function');
-      expect(provider.buildSignatureUrl).toBeTypeOf('function');
-      expect(provider.getRemotePreview).toBeUndefined();
+      expect(typeof provider.createQrCode).toBe('function');
+      expect(typeof provider.getLoginStatus).toBe('function');
+      expect(typeof provider.publishValue).toBe('function');
+      expect(typeof provider.getInfo).toBe('function');
+      expect(typeof provider.buildSignatureUrl).toBe('function');
+      expect(typeof provider.getRemotePreview).toBe('undefined');
     });
 
     it('builds a direct preview url from the configured slot id', () => {
@@ -48,9 +48,9 @@ describe('provider registry', () => {
       const config: AppConfig = { providers: { 'magic-builder': { faasId: 'rec_1' } } };
       const provider = createProvider('magic-builder', { config });
       expect(provider.id).toBe('magic-builder');
-      expect(provider.publishValue).toBeTypeOf('function');
-      expect(provider.getInfo).toBeTypeOf('function');
-      expect(provider.getRemotePreview).toBeTypeOf('function');
+      expect(typeof provider.publishValue).toBe('function');
+      expect(typeof provider.getInfo).toBe('function');
+      expect(typeof provider.getRemotePreview).toBe('function');
     });
 
     it('builds the FaaS preview url from the stored record id', () => {
