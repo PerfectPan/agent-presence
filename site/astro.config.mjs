@@ -35,8 +35,8 @@ export default defineConfig({
       customCss: ['./src/styles/global.css'],
       head,
       components: {
-        ThemeSelect: './src/components/ThemeSelect.astro',
-        LanguageSelect: './src/components/LanguageSelect.astro',
+        ThemeSelect: './src/components/theme-select.astro',
+        LanguageSelect: './src/components/language-select.astro',
       },
       expressiveCode: {
         themes: ['github-light', 'github-dark'],
