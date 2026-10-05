@@ -25,37 +25,37 @@ describe('power watcher artifacts', () => {
   it('generates the launch agent, reset hooks, and daily log retention policy', () => {
     const plist = buildPowerWatcherPlist({
       label: 'work.rivus.agent-presence.power-watch',
-      scriptPath: '/Users/example/.agent-presence/power-watch.sh'
+      scriptPath: '/fake-home/.agent-presence/power-watch.sh'
     });
     const script = buildPowerWatcherScript({
-      pathEntries: ['/Users/example/.nvm/versions/node/v24.8.0/bin'],
-      powerEventWatcherPath: '/Users/example/.agent-presence/power-watch.swift',
-      logPath: '/Users/example/.agent-presence/power-watch.log'
+      pathEntries: ['/fake-home/.nvm/versions/node/v24.8.0/bin'],
+      powerEventWatcherPath: '/fake-home/.agent-presence/power-watch.swift',
+      logPath: '/fake-home/.agent-presence/power-watch.log'
     });
     const swift = buildPowerEventWatcherSwift({
-      logPath: '/Users/example/.agent-presence/power-watch.log'
+      logPath: '/fake-home/.agent-presence/power-watch.log'
     });
 
     expect(plist).toContain('<key>Label</key>');
     expect(plist).toContain('work.rivus.agent-presence.power-watch');
-    expect(plist).toContain('/Users/example/.agent-presence/power-watch.sh');
+    expect(plist).toContain('/fake-home/.agent-presence/power-watch.sh');
     expect(script).toContain('trap cleanup TERM HUP INT EXIT');
-    expect(script).toContain('export PATH="/Users/example/.nvm/versions/node/v24.8.0/bin:$PATH"');
-    expect(script).toContain('/usr/bin/swift "/Users/example/.agent-presence/power-watch.swift"');
+    expect(script).toContain('export PATH="/fake-home/.nvm/versions/node/v24.8.0/bin:$PATH"');
+    expect(script).toContain('/usr/bin/swift "/fake-home/.agent-presence/power-watch.swift"');
     expect(script).toContain('5242880');
     expect(script).toContain('tail -c 1048576');
     expect(swift).toContain('NSWorkspace.willSleepNotification');
     expect(swift).toContain('NSWorkspace.screensDidSleepNotification');
     expect(swift).toContain('NSWorkspace.didWakeNotification');
-    expect(swift).toContain('/Users/example/.agent-presence/power-watch.log');
+    expect(swift).toContain('/fake-home/.agent-presence/power-watch.log');
     expect(swift).toContain('86_400');
   });
 
   it('generates watcher artifacts with an absolute CLI path', () => {
     withAbsoluteCliPath(() => {
       const script = buildPowerWatcherScript({
-        pathEntries: ['/Users/example/.nvm/versions/node/v24.8.0/bin'],
-        powerEventWatcherPath: '/Users/example/.agent-presence/power-watch.swift'
+        pathEntries: ['/fake-home/.nvm/versions/node/v24.8.0/bin'],
+        powerEventWatcherPath: '/fake-home/.agent-presence/power-watch.swift'
       });
       const swift = buildPowerEventWatcherSwift();
 

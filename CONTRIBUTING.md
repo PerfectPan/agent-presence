@@ -5,6 +5,8 @@
 ```bash
 corepack enable
 pnpm install --frozen-lockfile --ignore-scripts
+gh extension install PerfectPan/gh-repo-checks
+./scripts/install-git-hooks.sh
 pnpm test
 pnpm run typecheck
 pnpm run build
@@ -18,20 +20,29 @@ The installer scripts (`pnpm run install:*` / `uninstall:*`) and `agent-presence
 1. Open an issue or discussion for ambiguous work.
 2. Choose Spec and Plan artifacts using the [Change Design Gate](#change-design-gate) before substantial work, and review the behavior and technical design before implementing that scope.
 3. Create a focused branch.
-4. Add or update tests for behavior changes.
-5. Add a changeset for user-facing package changes.
-6. Run the [Required Checks](#required-checks).
-7. Update `README.md`, `README.zh-CN.md`, `docs/`, `site/`, or the active Spec and Plan when user-facing behavior, architecture, workflow, or operations change.
-8. Open a pull request with motivation, implementation notes, validation, and follow-up risks.
-9. Keep the PR description current after review feedback, rebases, validation reruns, or scope changes.
+4. Install local Git hooks with `./scripts/install-git-hooks.sh` if this checkout has not already done so.
+5. Add or update tests for behavior changes.
+6. Add a changeset for user-facing package changes.
+7. Run the [Required Checks](#required-checks).
+8. Update `README.md`, `README.zh-CN.md`, `docs/`, `site/`, or the active Spec and Plan when user-facing behavior, architecture, workflow, or operations change.
+9. Open a pull request with a conventional title, a summary of what changed and why, validation with skipped gates, and any risks.
+10. Keep the PR description current after review feedback, rebases, validation reruns, or scope changes.
 
 Small fixes, typo corrections, dependency metadata updates, and narrow documentation improvements do not need a separate Spec and Plan.
 
 ## Required Checks
 
-CI (`.github/workflows/ci.yml`) runs these on every pull request; run them locally before opening review:
+CI (`.github/workflows/ci.yml` and `.github/workflows/review.yml`) runs these on every pull request; run them locally before opening review:
 
 ```bash
+# Repository checks:
+gh repo-checks repository
+
+# PR title and description:
+gh repo-checks pr-title "docs: update contributing guide"
+gh repo-checks pr-body pr-body.md
+
+# Install and CI gates:
 pnpm install --frozen-lockfile --ignore-scripts
 pnpm test
 pnpm run typecheck
@@ -119,20 +130,72 @@ Follow [`docs/README.md`](docs/README.md) when adding or reorganizing documentat
 
 ## Pull Request Expectations
 
-Every PR should answer:
+The PR template has three sections:
 
-- What changed?
-- Why is this change needed?
-- How was this tested?
-- Are there follow-up tasks or risks?
+- **Summary**: what changed and why, with links to the issue, Spec, or Plan.
+- **Validation**: the commands you ran and their results, evidence for behavior or packaging claims, and skipped gates with reasons.
+- **Risks** (optional): compatibility, rollout, rollback, or follow-up risks. Delete it when there are none.
 
-## Repository Hygiene
+Use a conventional title:
 
-Do not commit private tokens, local config, generated workspaces, internal hostnames, or personal filesystem paths.
+```text
+type(scope): summary
+```
 
-Keep package or deploy contents intentional. If a file should ship, verify it appears in the package or deployment dry-run.
+Allowed types: `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `build`, `ci`, `chore`, `revert`.
+
+Titles are English; `gh repo-checks pr-title` rejects CJK characters. Bot-generated PRs follow the same rule: the pricing snapshot PR uses `chore(usage): update LiteLLM pricing snapshot`, and dependency bots should emit titles such as `chore(deps): bump <package> to <version>`.
+
+Summary and Validation from the [PR template](.github/pull_request_template.md) must be present and contain real content, not template placeholders; other sections are optional. Do not include agent attribution lines such as "Generated with <tool>"; the author is accountable for the content. `gh repo-checks pr-body` enforces these rules, and the `PR description` job runs it on every pull request event, including description edits. PRs opened by bot accounts skip the description check, because dependency and release bots write their own bodies; they still must pass the title check. A skipped job still satisfies the required status check.
+
+Update the description when review feedback, rebases, or follow-up commits change the scope or validation result. Reviewers should be able to understand the final state from the PR without reconstructing it from comments.
+
+## License
+
+Tools and libraries use MIT; applications use GPL-3.0-only. `@rivus/agent-presence` is a CLI, so the repository and the package are MIT (`LICENSE`, `license` in `package.json`). Change it only as a deliberate project decision, and keep third-party notices for code or data copied from other projects.
+
+## Repository Checks
+
+Do not commit private tokens, local config, generated workspaces, internal hostnames, or personal filesystem paths. Test fixtures use neutral paths such as `/fake-home/...` or `/work/...`, and fixture files avoid ignored extensions such as `.log`.
+
+Keep package and deploy contents intentional. If a file should ship to npm, it must be included through `package.json#files`; verify it appears in the `pnpm pack --dry-run` output.
 
 Use the pinned pnpm version from `packageManager`. Do not commit `package-lock.json`, local `.npmrc` credentials, generated `dist/`, or `node_modules/`.
+
+The review checks come from [`PerfectPan/gh-repo-checks`](https://github.com/PerfectPan/gh-repo-checks): CI runs them through its GitHub Action (`uses: PerfectPan/gh-repo-checks@v1`), and locally they run as a GitHub CLI extension (`gh extension install PerfectPan/gh-repo-checks`). Do not copy the check scripts into this repository; change them upstream. Repository-specific additions, such as extra required files or forbidden patterns, go in [`.github/repo-checks.conf`](.github/repo-checks.conf), and repository-specific scripts run as extra steps after the shared check. `.github/workflows/review.yml`, `.githooks/pre-commit`, `.github/repo-checks.conf`, the issue templates and `scripts/install-git-hooks.sh` are copied verbatim from the shared project template; change them upstream so later syncs stay a plain diff.
+
+Run `gh repo-checks repository` locally before opening review. It does not replace the pnpm gates, but it catches missing template files, tracked local artifacts, obvious secrets, private paths, and drift between the GitHub PR and GitLab MR templates.
+
+Workflows reference actions by their latest major version tag, such as `actions/checkout@v7`, not by commit SHA. Workflow files copied from the project template take action upgrades from the template rather than local edits.
+
+## Local Git Hooks
+
+Install local hooks after cloning:
+
+```bash
+gh extension install PerfectPan/gh-repo-checks
+./scripts/install-git-hooks.sh
+```
+
+The pre-commit hook runs `git diff --cached --check` and `gh repo-checks repository --staged` before a commit is created; without the extension it warns and skips the repository check. Hooks are a local guardrail; CI and branch protection remain the authoritative enforcement because hooks can be missing or bypassed.
+
+If `core.hooksPath` is already set to another path, `scripts/install-git-hooks.sh` fails instead of overwriting it. Re-run with `--force` only after confirming the existing hooks can be replaced or moved into `.githooks`.
+
+## Repository Setup
+
+`main` is covered by the repository ruleset `Default`, which blocks deletion and force pushes. Required review checks are not configured yet. Preview the template's protection payload for this repository with:
+
+```bash
+gh repo-checks protect --repo PerfectPan/agent-presence --approvals 0 --check "test (ubuntu-latest)" --check "test (macos-latest)"
+```
+
+It requires pull requests, linear history, resolved conversations, and the `Review` workflow checks `repository checks`, `conventional PR title`, and `PR description`, plus the CI test jobs. `--approvals 0` fits a single maintainer, who cannot approve their own pull requests. Because the repository already uses a ruleset, add these checks to the `Default` ruleset in the repository settings instead of applying classic branch protection with `--apply`.
+
+The Task issue template applies the `task` label, which GitHub does not create by default. Create it once:
+
+```bash
+gh label create task --repo PerfectPan/agent-presence --color 0E8A16 --description "Maintenance, refactoring, dependency, or tooling work"
+```
 
 ## Security Reports
 

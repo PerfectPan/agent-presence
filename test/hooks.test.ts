@@ -111,7 +111,7 @@ describe('Claude hook context', () => {
     expect(
       resolveClaudeHookContext({
         transcript_path:
-          '/Users/example/.claude/projects/-Users-example-repo/41ef8ec9-cb80-489b-aa69-d328b662814e.jsonl',
+          '/fake-home/.claude/projects/-work-repo/41ef8ec9-cb80-489b-aa69-d328b662814e.jsonl',
         cwd: '/repo',
         hook_event_name: 'UserPromptSubmit'
       })

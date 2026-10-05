@@ -100,7 +100,7 @@ describe('uninstallPiExtension', () => {
     await mkdir(join(homeDir, '.pi', 'agent'), { recursive: true });
     await writeFile(
       settingsPath,
-      JSON.stringify({ extensions: [extensionPath, '/Users/example/keep.ts'] }, null, 2)
+      JSON.stringify({ extensions: [extensionPath, '/fake-home/keep.ts'] }, null, 2)
     );
 
     const result = await uninstallPiExtension({ extensionPath, settingsPath });
@@ -110,7 +110,7 @@ describe('uninstallPiExtension', () => {
     await expect(readFile(extensionPath, 'utf8')).rejects.toThrow();
 
     const settings = JSON.parse(await readFile(settingsPath, 'utf8')) as { extensions?: string[] };
-    expect(settings.extensions).toEqual(['/Users/example/keep.ts']);
+    expect(settings.extensions).toEqual(['/fake-home/keep.ts']);
   });
 
   it('does not delete a user-owned file at the extension path', async () => {

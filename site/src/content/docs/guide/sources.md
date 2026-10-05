@@ -63,7 +63,7 @@ For payloads with quirks (nested ids, event remapping), point at an ES module wh
 {
   "plugins": {
     "sources": {
-      "youragent": { "handler": "/Users/me/.agent-presence/sources/youragent.mjs" }
+      "youragent": { "handler": "/path/to/home/.agent-presence/sources/youragent.mjs" }
     }
   }
 }

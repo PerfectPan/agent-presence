@@ -16,14 +16,26 @@ This repository is public and publishes `@rivus/agent-presence` to npm. Treat ev
 
 - Treat user corrections as required scope changes, not as optional follow-up notes. Update the code, docs, workflow files, and pull request description in the same thread when the correction changes the intended behavior or delivery story.
 - When continuing an existing branch or pull request, fetch latest refs and rebase onto the current `origin/main` before adding new commits unless the user explicitly asks for a different base.
-- After a rebase or force-push, verify the remote branch head, commit signature status, pull request issue links, and CI status before reporting completion.
-- Keep the PR body current after every meaningful change. Its summary, validation, and risks should match the branch that is actually pushed.
 - If a user says the implementation target is a UI surface, workflow behavior, release artifact, or published package state, update the executable configuration that drives that surface instead of only documenting the intended manual process.
 - If current code and docs disagree, update the docs to the current code in the same change unless the user explicitly asks to leave docs untouched.
 
 ## Project Commands
 
 ```bash
+# Install the shared review checks and local Git hooks:
+gh extension install PerfectPan/gh-repo-checks
+./scripts/install-git-hooks.sh
+
+# Repository checks:
+gh repo-checks repository
+
+# PR title check:
+gh repo-checks pr-title "docs: update contributing guide"
+
+# PR description check (file or stdin):
+gh repo-checks pr-body pr-body.md
+
+# Install, then the CI gates:
 pnpm install --frozen-lockfile --ignore-scripts
 pnpm test
 pnpm run typecheck
@@ -73,6 +85,15 @@ When an AI agent completes implementation work:
 6. Create or reuse a GitHub Pull Request when the task is not landing directly on `main`.
 7. Include a delivery summary with what changed and why, validation, and remaining risks.
 
+## Review Evidence
+
+- PR titles must be English and follow `type(scope): summary`, including bot-generated release and dependency PRs such as `chore(release): version packages`; use `gh repo-checks pr-title` to verify them.
+- PR descriptions must have a Summary (what changed and why) and a Validation section (exact commands and results, skipped gates with reasons); add Risks when there are any. Do not add agent attribution lines such as "Generated with <tool>". Verify the body with `gh repo-checks pr-body` before opening or updating the PR. Bot-opened PRs are exempt from the description check, not the title check.
+- If a claim depends on logs, screenshots, package output, deployed behavior, or generated artifacts, attach or link the evidence in the PR.
+- Update the PR description after substantial code changes, review-driven revisions, rebases that change behavior, or validation reruns.
+- After a rebase or force-push, verify the remote branch head, commit signature status, pull request issue links, and CI status before reporting completion.
+- Keep the GitHub PR template and the GitLab MR template in sync; `gh repo-checks repository` checks both.
+
 ## Git
 
 - Branch names should be short and descriptive, such as `feat/release-source`.
@@ -82,7 +103,7 @@ When an AI agent completes implementation work:
 
 ## Publish Safety Check
 
-Before pushing public-facing or package-facing changes, scan for accidental private references:
+`gh repo-checks repository` (pre-commit hook and CI) rejects tracked local artifacts, obvious secrets, and personal filesystem paths. Test fixtures use neutral paths such as `/fake-home/...` or `/work/...`. Before pushing public-facing or package-facing changes, also scan for accidental private references:
 
 ```bash
 rg --hidden --no-ignore -n "private-token|internal-domain.example|HOME_PATH_PLACEHOLDER|bnpm|byted" . \

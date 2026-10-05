@@ -78,7 +78,7 @@ describe('Claude hook installer helpers', () => {
   it('recognizes absolute-mode hook commands', () => {
     expect(
       isAgentSignatureCommand(
-        '/Users/example/.nvm/versions/node/v24.8.0/bin/node /Users/example/agent-presence/dist/src/cli.js hook --source codex --event Stop'
+        '/fake-home/.nvm/versions/node/v24.8.0/bin/node /fake-home/agent-presence/dist/src/cli.js hook --source codex --event Stop'
       )
     ).toBe(true);
     expect(
@@ -177,39 +177,39 @@ describe('pi extension installer helpers', () => {
   });
 
   it('keeps unrelated pi extension entries intact and never duplicates the managed entry', () => {
-    const settings: PiSettings = { extensions: ['/Users/example/.pi/agent/extensions/user-extension.ts'] };
-    const managedPath = '/Users/example/.pi/agent/extensions/agent-presence.ts';
+    const settings: PiSettings = { extensions: ['/fake-home/.pi/agent/extensions/user-extension.ts'] };
+    const managedPath = '/fake-home/.pi/agent/extensions/agent-presence.ts';
 
     const next = withPiAgentPresenceExtension(settings, managedPath);
-    expect(next.extensions).toEqual(['/Users/example/.pi/agent/extensions/user-extension.ts']);
+    expect(next.extensions).toEqual(['/fake-home/.pi/agent/extensions/user-extension.ts']);
 
     const settingsWithDup: PiSettings = {
       extensions: [
-        '/Users/example/.pi/agent/extensions/user-extension.ts',
-        '/Users/example/.pi/agent/extensions/agent-presence.ts'
+        '/fake-home/.pi/agent/extensions/user-extension.ts',
+        '/fake-home/.pi/agent/extensions/agent-presence.ts'
       ]
     };
     const cleaned = withPiAgentPresenceExtension(settingsWithDup, managedPath);
-    expect(cleaned.extensions).toEqual(['/Users/example/.pi/agent/extensions/user-extension.ts']);
+    expect(cleaned.extensions).toEqual(['/fake-home/.pi/agent/extensions/user-extension.ts']);
   });
 
   it('uninstall strips the managed entry without touching user extensions', () => {
     const settings: PiSettings = {
       extensions: [
-        '/Users/example/.pi/agent/extensions/user-extension.ts',
-        '/Users/example/.pi/agent/extensions/agent-presence.ts'
+        '/fake-home/.pi/agent/extensions/user-extension.ts',
+        '/fake-home/.pi/agent/extensions/agent-presence.ts'
       ]
     };
-    const managedPath = '/Users/example/.pi/agent/extensions/agent-presence.ts';
+    const managedPath = '/fake-home/.pi/agent/extensions/agent-presence.ts';
 
     expect(withoutPiAgentPresenceExtension(settings, managedPath)).toEqual({
-      extensions: ['/Users/example/.pi/agent/extensions/user-extension.ts']
+      extensions: ['/fake-home/.pi/agent/extensions/user-extension.ts']
     });
   });
 
   it('drops the extensions key when removing the only managed entry', () => {
     const settings: PiSettings = {
-      extensions: ['/Users/example/.pi/agent/extensions/agent-presence.ts']
+      extensions: ['/fake-home/.pi/agent/extensions/agent-presence.ts']
     };
 
     expect(withoutPiAgentPresenceExtension(settings, settings.extensions![0])).toEqual({});

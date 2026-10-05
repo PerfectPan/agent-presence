@@ -63,7 +63,7 @@ payload 有怪癖时(嵌套 id、事件重映射),指向一个 default 导出为
 {
   "plugins": {
     "sources": {
-      "youragent": { "handler": "/Users/me/.agent-presence/sources/youragent.mjs" }
+      "youragent": { "handler": "/path/to/home/.agent-presence/sources/youragent.mjs" }
     }
   }
 }

@@ -41,7 +41,7 @@ afterEach(async () => {
 describe('curatedEnv', () => {
   it('strips credential-bearing env keys but keeps ordinary ones', () => {
     const curated = curatedEnv({
-      HOME: '/Users/me',
+      HOME: '/fake-home',
       AGENT_PRESENCE_TOKEN: 'secret',
       FEISHU_SLOT_CREDENTIAL: 'secret',
       MAGIC_TOKEN: 'secret',
@@ -50,7 +50,7 @@ describe('curatedEnv', () => {
       MYAGENT_SESSION_ID: 'sess-1'
     });
 
-    expect(curated.HOME).toBe('/Users/me');
+    expect(curated.HOME).toBe('/fake-home');
     expect(curated.MYAGENT_SESSION_ID).toBe('sess-1');
     expect(curated.AGENT_PRESENCE_TOKEN).toBeUndefined();
     expect(curated.FEISHU_SLOT_CREDENTIAL).toBeUndefined();

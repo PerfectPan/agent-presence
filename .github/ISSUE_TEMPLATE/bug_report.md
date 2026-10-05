@@ -1,7 +1,7 @@
 ---
 name: Bug report
 about: Report reproducible broken behavior
-title: "bug: "
+title: "[Bug]: "
 labels: bug
 assignees: ""
 ---
@@ -21,12 +21,22 @@ assignees: ""
 ## Actual Behavior
 
 
+## Evidence
+
+- Logs, screenshots, traces, or failing command:
+- First known bad version or commit:
+- Workaround, if any:
+
 ## Environment
 
 - OS:
 - Runtime:
 - Version:
 
+## Impact
+
+- User-visible impact:
+- Data, security, or compatibility risk:
+- Release or rollback urgency:
+
 ## Additional Context
-
-
