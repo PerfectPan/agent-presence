@@ -40,7 +40,7 @@ npx --yes --registry=https://registry.npmjs.org @rivus/agent-presence@latest set
 
 ```bash
 corepack enable
-pnpm install --frozen-lockfile --ignore-scripts
+pnpm install --frozen-lockfile
 pnpm run build
 pnpm link --global
 agent-presence setup
