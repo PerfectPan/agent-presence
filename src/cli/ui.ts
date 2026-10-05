@@ -16,7 +16,12 @@ interface TextPromptOptions {
 }
 
 export function isInteractiveTerminal(): boolean {
-  return Boolean(process.stdin.isTTY && process.stdout.isTTY && process.env.CI !== 'true' && process.env.AGENT_PRESENCE_NO_PROMPTS !== '1');
+  return Boolean(
+    process.stdin.isTTY &&
+    process.stdout.isTTY &&
+    process.env.CI !== 'true' &&
+    process.env.AGENT_PRESENCE_NO_PROMPTS !== '1'
+  );
 }
 
 export function startIntro(title: string): void {

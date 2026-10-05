@@ -5,12 +5,7 @@ import { mapOpenCodeEvent, resolveOpenCodeHookContext } from '../src/hooks/openc
 import { resolvePiHookContext } from '../src/hooks/pi.js';
 import { resolveDshHookContext } from '../src/hooks/dsh.js';
 import { resolveHookContext } from '../src/cli/hook-context.js';
-import {
-  applyAgentEvent,
-  createEmptyState,
-  finishAllSessions,
-  getActiveSessions
-} from '../src/state.js';
+import { applyAgentEvent, createEmptyState, finishAllSessions, getActiveSessions } from '../src/state.js';
 import { renderPresence } from '../src/render.js';
 
 describe('Codex hook context', () => {
@@ -110,8 +105,7 @@ describe('Claude hook context', () => {
   it('falls back to Claude transcript file names when session_id is absent', () => {
     expect(
       resolveClaudeHookContext({
-        transcript_path:
-          '/Users/example/.claude/projects/-Users-example-repo/41ef8ec9-cb80-489b-aa69-d328b662814e.jsonl',
+        transcript_path: '/fake-home/.claude/projects/-work-repo/41ef8ec9-cb80-489b-aa69-d328b662814e.jsonl',
         cwd: '/repo',
         hook_event_name: 'UserPromptSubmit'
       })
@@ -240,9 +234,7 @@ describe('Pi hook context', () => {
   });
 
   it('routes through resolveHookContext when source is pi', () => {
-    expect(
-      resolveHookContext('pi', { session_id: 'pi-session-2', cwd: '/repo', event: 'Stop' })
-    ).toEqual({
+    expect(resolveHookContext('pi', { session_id: 'pi-session-2', cwd: '/repo', event: 'Stop' })).toEqual({
       event: 'Stop',
       project: '/repo',
       sessionId: 'pi-session-2'
@@ -283,9 +275,7 @@ describe('dsh hook context', () => {
   });
 
   it('routes through resolveHookContext when source is dsh', () => {
-    expect(
-      resolveHookContext('dsh', { session_id: 'dsh-session-2', cwd: '/repo', hook_event_name: 'Stop' })
-    ).toEqual({
+    expect(resolveHookContext('dsh', { session_id: 'dsh-session-2', cwd: '/repo', hook_event_name: 'Stop' })).toEqual({
       event: 'Stop',
       project: '/repo',
       sessionId: 'dsh-session-2'

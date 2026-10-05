@@ -145,14 +145,16 @@ describe('log timestamps', () => {
   });
 
   it('formats event values as readable single-line fields', () => {
-    expect(formatLogEvent({
-      type: 'hook.event',
-      status: 200,
-      hasSessionId: true,
-      project: '/tmp/project',
-      payloadKeys: ['cwd', 'session_id'],
-      message: 'missing slot credential'
-    })).toBe(
+    expect(
+      formatLogEvent({
+        type: 'hook.event',
+        status: 200,
+        hasSessionId: true,
+        project: '/tmp/project',
+        payloadKeys: ['cwd', 'session_id'],
+        message: 'missing slot credential'
+      })
+    ).toBe(
       'type=hook.event status=200 hasSessionId=true project=/tmp/project payloadKeys=[cwd,session_id] message="missing slot credential"'
     );
   });

@@ -1,14 +1,7 @@
 import { DAY_MS, startOfLocalDayMs } from '../time.js';
 import { writeLog } from '../log.js';
 import { resolveRecordCost, type PricingOverrides } from './pricing.js';
-import type {
-  BillableSource,
-  SourceUsage,
-  UsageRecord,
-  UsageSource,
-  UsageTotals,
-  WindowUsage
-} from './types.js';
+import type { BillableSource, SourceUsage, UsageRecord, UsageSource, UsageTotals, WindowUsage } from './types.js';
 
 export type { ModelPricing, PricingOverrides } from './pricing.js';
 export type {
@@ -62,23 +55,22 @@ export async function collectWindowUsage(options: CollectOptions): Promise<Windo
   const untilMs = options.now;
   const sinceMs = startOfLocalDayMs(options.now) - (options.days - 1) * DAY_MS;
 
-  const perSource = await Promise.all(
-    options.sources.map((source) =>
-      source.scanUsage({ sinceMs, untilMs, root: options.roots?.[source.id] }).catch(async (error) => {
-        // Fail-soft: one source's unreadable data must not break the whole run,
-        // mirroring how presence resolution fails open. Log it (redaction-safe,
-        // name only); a log-write failure must not resurface as the scan error.
-        await writeLog(`usage scan failed source=${source.id} error=${errorName(error)}`).catch(() => {});
-        if (options.failOnSourceError) {
-          throw error;
-        }
-        return [] as UsageRecord[];
-      })
-    )
-  );
-
-  const bySource = options.sources.map((source, index) =>
-    summarise(source.id, perSource[index], options.pricing)
+  const bySource = await Promise.all(
+    options.sources.map(async (source) => {
+      const records = await source
+        .scanUsage({ sinceMs, untilMs, root: options.roots?.[source.id] })
+        .catch(async (error) => {
+          // Fail-soft: one source's unreadable data must not break the whole run,
+          // mirroring how presence resolution fails open. Log it (redaction-safe,
+          // name only); a log-write failure must not resurface as the scan error.
+          await writeLog(`usage scan failed source=${source.id} error=${errorName(error)}`).catch(() => {});
+          if (options.failOnSourceError) {
+            throw error;
+          }
+          return [] as UsageRecord[];
+        });
+      return summarise(source.id, records, options.pricing);
+    })
   );
 
   return {
@@ -106,8 +98,7 @@ function summarise(source: UsageSource, records: UsageRecord[], pricing?: Pricin
     }
   }
 
-  totals.totalTokens =
-    totals.inputTokens + totals.outputTokens + totals.cacheWriteTokens + totals.cacheReadTokens;
+  totals.totalTokens = totals.inputTokens + totals.outputTokens + totals.cacheWriteTokens + totals.cacheReadTokens;
   if (!sawCost) {
     totals.costUsd = null;
   }

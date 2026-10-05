@@ -145,13 +145,16 @@ Versioned setup can still preserve reproducibility by materializing the exact pa
 
 `src/config.ts` owns durable local configuration. Provider-specific options stay under the provider id, so the generic presence model does not need Feishu-specific names.
 
-The current provider id is:
+The provider ids are:
 
 ```text
-feishu-signature
+magic-builder      default; preview served by a published magic-builder FaaS
+feishu-signature   direct l.garyyang preview; also the slot backend both providers write
 ```
 
-The provider can be configured with a base URL, preview base URL, image key, and target URL. Token and slot id are credentials, so they are resolved through `src/secret.ts` instead of being embedded in the URL.
+`providerId()` resolves the `--provider` flag, then `AGENT_PRESENCE_PROVIDER` / `AGENT_SIGNATURE_PROVIDER`, then `config.provider`, then the default (`l-garyyang` is a legacy alias of `feishu-signature`). Bare `setup` and `url` use `defaultCommandProviderId()`, which ignores a persisted `config.provider` so an older config that still names `feishu-signature` does not pull them off the default; the flag and environment overrides still apply. Which provider is active never changes the write path: hooks, `update`, `flush`, and `reset` always publish to the same slot (see [Slot backend vs. provider](#slot-backend-vs-provider)).
+
+The `feishu-signature` provider can be configured with a base URL, preview base URL, image key, and target URL. Token and slot id are credentials, so they are resolved through `src/secret.ts` instead of being embedded in the URL.
 
 ### State Store
 
@@ -297,7 +300,7 @@ Capabilities are optional because not every provider supports every operation:
 
 #### Slot backend vs. provider
 
-The two shipped providers are not independent backends: they read and write the **same** slot. That shared storage is modelled explicitly as a `SlotBackend` (`src/providers/slot-backend.ts`), implemented by `LGaryYangSlotBackend`. Both `feishu-signature` and `magic-builder` *compose* the same `SlotBackend` for login/publish/info and differ only in the signature URL (and, for magic-builder, the `getRemotePreview` FaaS read). Neither provider depends on the other.
+The two shipped providers are not independent backends: they read and write the **same** slot. That shared storage is modelled explicitly as a `SlotBackend` (`src/providers/slot-backend.ts`), implemented by `LGaryYangSlotBackend`. Both `feishu-signature` and `magic-builder` _compose_ the same `SlotBackend` for login/publish/info and differ only in the signature URL (and, for magic-builder, the `getRemotePreview` FaaS read). Neither provider depends on the other.
 
 The capability layer is deliberately generic (`publishValue`, not `updateSlot`) so a future provider with its own, slot-unrelated storage can implement `PresenceProvider` directly and never touch `SlotBackend`. Its own credential model and login flow would be added alongside at that point; the registry seam itself does not change.
 
@@ -313,11 +316,22 @@ A table entry resolves by kind:
 - **Declarative `match`** — no code. Each of `sessionId` / `project` / `event` is a `pickString`-shaped field spec (`envKeys` / `payloadKeys` / `nestedPayloadKeys` / `payloadFirst`), so it reaches nested payloads and controls env-vs-payload precedence like a built-in.
 - **JS `handler`** — an absolute path or npm specifier for an ESM module whose `default` export is a `SourcePlugin`. agent-presence `import()`s it in-process during a hook.
 
-Trust follows the `builtin:` marker, not the id: a user who overrides `codex` with their own `handler` gets the guarded path. Because a `handler` runs in-process with full CLI trust (including credential access), loading is guarded: it is opt-in (shipped defaults are all `builtin:` and run no user code), the handler receives a **curated env** with credential-bearing keys stripped, an absolute-path handler is refused if it is a symlink / not owned by the current user / world-writable, and `handler` entries are ignored entirely if `config.json` itself is world-writable or not user-owned. Handler failures fail open — logged with non-secret fields only, degrading to an empty context — so a source can never break a hook. `agent-presence config show` prints the merged table as `sources`, each with its `origin` (`default`/`config`), `kind` (`builtin`/`handler`/`match`), and `overridesDefault` flag. Full design: [`rfcs/source-plugins.md`](../rfcs/source-plugins.md).
+Trust follows the `builtin:` marker, not the id: a user who overrides `codex` with their own `handler` gets the guarded path. Because a `handler` runs in-process with full CLI trust (including credential access), loading is guarded: it is opt-in (shipped defaults are all `builtin:` and run no user code), the handler receives a **curated env** with credential-bearing keys stripped, an absolute-path handler is refused if it is a symlink / not owned by the current user / world-writable, and `handler` entries are ignored entirely if `config.json` itself is world-writable or not user-owned. Handler failures fail open — logged with non-secret fields only, degrading to an empty context — so a source can never break a hook. `agent-presence config show` prints the merged table as `sources`, each with its `origin` (`default`/`config`), `kind` (`builtin`/`handler`/`match`), and `overridesDefault` flag.
+
+Source table invariants:
+
+- `resolveHookContext` must be synchronous and do no I/O: it runs on the hook hot path. The framework cannot enforce that for a `handler`; the only hard bound is the agent-side hook timeout set on the managed hook entries, so a misbehaving handler fails only its own hook.
+- A handler is imported lazily and cached per process. Each hook is a fresh short-lived process, so a handler is imported at most once per hook and only when its source fires; `builtin:` entries are static imports.
+- A bare handler specifier resolves only from the plugins dir's `node_modules` (`createRequire` anchored there), never from the user's cwd or an ancestor `node_modules`. An absolute path is imported through `pathToFileURL` after the ownership checks above.
+- The ownership checks `lstat` the handler file and its parent directory before `import()`. A same-user process can still swap the file between the check and the import; closing that window needs fd-based loading and is not done. The practical bound is that the operator owns the file and its directory and vets the code.
+- A runtime `import()` bypasses the install-time supply-chain controls this repository applies to its own dependencies (frozen lockfile, the `allowBuilds` allowlist for dependency build scripts, `minimumReleaseAge`). Prefer absolute paths under a user-owned directory, and use an organization-reserved npm scope for bare specifiers to avoid dependency confusion.
+- If `sources.default.json` is missing at runtime, `defaultSources()` falls back to the in-code built-in ids as `builtin:<id>`, so presence never silently stops counting first-party agents.
+- Event names outside `normalizeEvent`'s vocabulary count as heartbeats; a `handler` or `match.event` should normalize them first.
+- `setup` installs agent-side hooks only for the built-ins, and `help` lists only them. A configured source's agent side is delivered through that agent's own mechanism.
 
 #### Installing a source by package
 
-`agent-presence source add <npm-package>` downloads a source-plugin package and registers it, so operators do not hand-edit config. It `npm install`s (via `execFile`, with `--ignore-scripts`) into an isolated plugins dir (`~/.agent-presence/plugins/`, override `AGENT_PRESENCE_PLUGINS_DIR`) so packages land under `<pluginsDir>/node_modules`, never in the CLI's own install; use `--registry` (or `AGENT_PRESENCE_REGISTRY`) for an internal registry. It then validates the package exports a real `SourcePlugin`, and records `plugins.sources.<id> = { handler: "<packageName>" }` — the merged table stays the one source of truth. At hook time a bare specifier resolves from the plugins dir via `createRequire`. `source list` prints the merged table; `source remove <id>` unregisters and (unless `--keep-package`) uninstalls the package; `uninstall --all` removes the whole plugins dir. Because `add` downloads and runs third-party code in the credential-bearing process, it prints a trust notice and requires `--yes` or an interactive confirmation.
+`agent-presence source add <npm-package>` downloads a source-plugin package and registers it, so operators do not hand-edit config. It accepts only a plain registry spec (`pkg`, `pkg@range`, `@scope/pkg[@range]`); git, URL, tarball, `file:`, and `npm:` alias specs are rejected because their installed directory name would not match the recorded handler. It `npm install`s (via `execFile`, with `--ignore-scripts`) into an isolated plugins dir (`~/.agent-presence/plugins/`, override `AGENT_PRESENCE_PLUGINS_DIR`) so packages land under `<pluginsDir>/node_modules`, never in the CLI's own install; use `--registry` (or `AGENT_PRESENCE_REGISTRY`) for an internal registry. It then validates the package exports a real `SourcePlugin`, and records `plugins.sources.<id> = { handler: "<packageName>" }` — the merged table stays the one source of truth. At hook time a bare specifier resolves from the plugins dir via `createRequire`. `source list` prints the merged table; `source remove <id>` unregisters and (unless `--keep-package`) uninstalls the package; `uninstall --all` removes the whole plugins dir. Because `add` downloads and runs third-party code in the credential-bearing process, it prints a trust notice and requires `--yes` or an interactive confirmation.
 
 #### Token usage (`scanUsage`)
 
@@ -330,9 +344,21 @@ Signature accounting keeps a per-window, per-source snapshot in state. Same-day 
 Two trust/portability details:
 
 - **Hot path stays first-party and source-scoped within a calendar day.** The signature-badge refresh calls `billableSources(config, { includeHandlers: false })`, then same-day hooks select only their own built-in source and never `import()` a third-party `handler` to probe for `scanUsage`. The first boundary after midnight and an explicit update scan all built-ins. The standalone `usage` command is interactive and includes handlers.
-- **`node:sqlite` is guarded.** The opencode scanner prefers opencode's SQLite store (`~/.local/share/opencode/opencode.db`) and imports `node:sqlite` **dynamically inside the function** (with a legacy-JSON fallback), because that builtin does not exist before Node 22 while `engines.node` allows `>=20`. A static import would break the hook on older Node.
+- **`node:sqlite` is guarded.** The opencode scanner prefers opencode's SQLite store (`~/.local/share/opencode/opencode.db`) and imports `node:sqlite` **dynamically inside the function** (with a legacy-JSON fallback), because `engines.node` allows `>=22` and that builtin does not exist before Node.js 22.5, needs `--experimental-sqlite` on 22.5-22.12, and is unflagged only from 22.13. A static import would break the hook on the earlier versions.
 
-Cost semantics live in `src/usage/pricing.ts`: Pi and opencode log a real per-message cost, which is trusted as-is (even `0`); Claude, Codex, Gemini, and TraeX-style handlers reprice by model id. Claude records one-hour cache creation separately from its default five-minute cache, so the scanner treats the TTL breakdown as authoritative when present, preserves the one-hour subset, and applies LiteLLM's dedicated one-hour rate. Codex pricing follows ccusage's `--speed auto` behavior: the scanner reads the current `service_tier` from `~/.codex/config.toml` and applies the priority multiplier to the report. The primary price table is a committed **LiteLLM snapshot** (`src/usage/litellm-pricing.json`) generated by `pnpm run update-pricing`, filtered to the model ids agent-presence sources actually record (for example `gpt-5.6-sol`, `claude-sonnet-5`, `deepseek-v4-pro`, `gemini-3-flash-preview`) rather than the full LiteLLM database. A weekly GitHub Action regenerates the snapshot and opens a PR when those supported-model prices drift. Resolution order is user `config.usage.pricing` overrides, then the LiteLLM snapshot, then the small fallback `DEFAULT_PRICING` table. Unknown models still show `n/a` while token counts stay exact. Full design: [`rfcs/source-usage.md`](../rfcs/source-usage.md).
+Cost semantics live in `src/usage/pricing.ts`: Pi and opencode log a real per-message cost, which is trusted as-is (even `0`); Claude, Codex, Gemini, and TraeX-style handlers reprice by model id. Claude records one-hour cache creation separately from its default five-minute cache, so the scanner treats the TTL breakdown as authoritative when present, preserves the one-hour subset, and applies LiteLLM's dedicated one-hour rate. Codex pricing follows ccusage's `--speed auto` behavior: the scanner reads the current `service_tier` from `~/.codex/config.toml` and applies the priority multiplier to the report. The primary price table is a committed **LiteLLM snapshot** (`src/usage/litellm-pricing.json`) generated by `pnpm run update-pricing`, filtered to the model ids agent-presence sources actually record (for example `gpt-5.6-sol`, `claude-sonnet-5`, `deepseek-v4-pro`, `gemini-3-flash-preview`) rather than the full LiteLLM database. A weekly GitHub Action regenerates the snapshot and opens a PR when those supported-model prices drift. Resolution order is user `config.usage.pricing` overrides, then the LiteLLM snapshot, then the small fallback `DEFAULT_PRICING` table. Unknown models still show `n/a` while token counts stay exact.
+
+Windows are calendar days in the host's local time: a `days`-day window is `[startOfLocalDay(now) - (days - 1) days, now)`, so `今日` only grows during a day and resets at midnight instead of sliding like a rolling 24 hours. `collectWindowUsage()` scans every billable source in parallel and fails soft per source: a `scanUsage` that throws is logged by source id and error name only and contributes nothing, so one unreadable store never breaks the report. Records are grouped under the id of the source that was scanned, not the `source` field a handler writes into them, and `UsageSource` is therefore a plain string. `read-jsonl.ts` skips transcript files whose mtime predates the window and tolerates malformed lines; every scanner degrades to fewer records on format drift, never a crash.
+
+Scanner rules that keep totals comparable with the agents' own counters and with ccusage:
+
+- **Claude Code**: de-duplicate by `message.id` + `requestId`, keeping the largest occurrence, because streaming rewrites a turn with growing output tokens. `<synthetic>` turns are excluded.
+- **Codex**: prefer each event's `last_token_usage`, falling back to a saturating diff of `total_token_usage` for older logs. Forked and subagent sessions replay the parent's history; that prefix (detected through `forked_from_id` / `thread_spawn`) is skipped while its cumulative baseline is kept. Both `sessions/` and `archived_sessions/` are scanned, and cached input is split out of input.
+- **opencode**: reads the `message` table of `opencode.db` read-only, falling back to the legacy JSON message files. Reasoning tokens count as output so the four buckets add up to opencode's own total.
+- **Gemini CLI**: walks the chat files under `$GEMINI_CLI_HOME/tmp` (default `~/.gemini/tmp`), both JSONL and the legacy JSON form, and de-duplicates by message id keeping the largest total, because the CLI re-appends a message once tokens are attached. Gemini's input already includes cached tokens, so uncached input is `input - cached`; thinking tokens count as output. Tool-use prompt tokens have no pricing bucket and are not mapped, so tool-heavy turns can slightly undercount Gemini's own total.
+- **Pi**, **opencode**: the recorded per-message cost is used as-is; **dsh** reads the usage log its plugin feeds.
+
+In the signature, `{usage}` (the default window) and `{usage_Nd}` (for example `{usage_1d}`, `{usage_7d}`) are render variables backed by the per-window cache in state; `usage.showInSignature` appends the default window without a template change. Hooks refresh the cache only on session-boundary events (start and finish, excluding subagent boundaries); other events reuse it. The signature therefore shows usage as of the last boundary rather than the live in-progress count; the standalone `usage` command always rescans. A cached badge whose window has fully rolled over (`今日` after one local midnight, `近N天` after N) renders as `—` instead of a number from a stale day, but only when something re-renders: an idle machine keeps the last published value until the next write ([Spec 0001](specs/0001-idle-usage-reset.md) covers resetting it remotely).
 
 ### Provider
 
@@ -404,7 +430,9 @@ agent-presence: skipping power watcher on linux
   (no reliable systemd/logind path); TTL pruning still covers expired sessions.
 ```
 
-TTL pruning (3-minute default) handles most failure modes (agent crashes, hard kills, terminal closures). A future Linux watcher is documented in `rfcs/linux-watcher.md`.
+TTL pruning (3-minute default) handles most failure modes (agent crashes, hard kills, terminal closures). The gap a watcher would close is a suspend that ends before the TTL expires, which is rare because suspends usually outlast three minutes.
+
+A Linux watcher would be a systemd user unit subscribed to logind's `PrepareForSleep`, `Lock`, `Unlock`, and `SessionRemoved` signals, running `agent-presence reset --force --silent`. It is not shipped because the session D-Bus is missing in headless, SSH, and container sessions (a watcher that fails silently there is worse than none), some distributions disable the systemd user instance or need `linger`, unit search paths and signal semantics differ across distributions, and testing it would multiply the test matrix. Reconsider it when systemd user instances and a D-Bus client (`busctl` or `gdbus`) are reliably present on the distributions users run, install and uninstall reduce to copying a unit into `~/.config/systemd/user/` plus `systemctl --user enable`, and suspend/resume and lock/unlock can be tested on at least two major distributions.
 
 ### Setup And Idempotency
 
@@ -425,19 +453,19 @@ Each installer is idempotent. Existing unrelated user configuration is preserved
 
 Idempotency is part of the installer contract, not a nice-to-have:
 
-| Area | Idempotency rule |
-| --- | --- |
-| Provider login | Reuse existing Keychain credential and configured slot. Normal setup starts QR login only when credentials are missing; `--skip-login` refreshes hooks without login checks, and `--login` forces fresh authentication. |
-| Config | Merge provider/render settings without deleting unrelated keys. |
-| Codex hooks | Remove prior managed Agent Presence hooks, add exactly one current managed group per event, then remind the user to approve changed hooks in Codex settings. |
-| Claude Code hooks | Remove prior managed Agent Presence hooks, add exactly one current managed group per event. |
-| opencode plugin | Rewrite the managed plugin file from the current package; do not append duplicate plugin registrations. |
-| Pi extension | Rewrite the managed `~/.pi/agent/extensions/agent-presence.ts` from the current package; refuse to overwrite a non-managed file with the same name. Pi auto-discovers the file, so settings.json is not modified by default. Uninstall removes only the managed file and only its own entry from `settings.json#/extensions`. |
-| Power watcher | On macOS: replace the managed LaunchAgent plist and script, then reload the same label. On Linux: skipped with a message; TTL pruning covers expired sessions. |
-| Managed runtime | Install into a staging directory first, then atomically switch the active runtime or shim target. |
-| Legacy home migration | During interactive setup, ask before copying known files from `~/.codex/agent-signature` to `~/.agent-presence`; never overwrite existing destination files; remove known legacy files after the new home has them; keep unknown files. |
-| State | Preserve local session state during setup; only `reset` or `uninstall --all` clears it. |
-| Credentials | Preserve credentials during normal setup and uninstall; only `uninstall --credentials` or `uninstall --all` removes them. |
+| Area                  | Idempotency rule                                                                                                                                                                                                                                                                                                              |
+| --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Provider login        | Reuse existing Keychain credential and configured slot. Normal setup starts QR login only when credentials are missing; `--skip-login` refreshes hooks without login checks, and `--login` forces fresh authentication.                                                                                                       |
+| Config                | Merge provider/render settings without deleting unrelated keys.                                                                                                                                                                                                                                                               |
+| Codex hooks           | Remove prior managed Agent Presence hooks, add exactly one current managed group per event, then remind the user to approve changed hooks in Codex settings.                                                                                                                                                                  |
+| Claude Code hooks     | Remove prior managed Agent Presence hooks, add exactly one current managed group per event.                                                                                                                                                                                                                                   |
+| opencode plugin       | Rewrite the managed plugin file from the current package; do not append duplicate plugin registrations.                                                                                                                                                                                                                       |
+| Pi extension          | Rewrite the managed `~/.pi/agent/extensions/agent-presence.ts` from the current package; refuse to overwrite a non-managed file with the same name. Pi auto-discovers the file, so settings.json is not modified by default. Uninstall removes only the managed file and only its own entry from `settings.json#/extensions`. |
+| Power watcher         | On macOS: replace the managed LaunchAgent plist and script, then reload the same label. On Linux: skipped with a message; TTL pruning covers expired sessions.                                                                                                                                                                |
+| Managed runtime       | Install into a staging directory first, then atomically switch the active runtime or shim target.                                                                                                                                                                                                                             |
+| Legacy home migration | During interactive setup, ask before copying known files from `~/.codex/agent-signature` to `~/.agent-presence`; never overwrite existing destination files; remove known legacy files after the new home has them; keep unknown files.                                                                                       |
+| State                 | Preserve local session state during setup; only `reset` or `uninstall --all` clears it.                                                                                                                                                                                                                                       |
+| Credentials           | Preserve credentials during normal setup and uninstall; only `uninstall --credentials` or `uninstall --all` removes them.                                                                                                                                                                                                     |
 
 This makes the supported repair command simple and keeps its default on magic-builder:
 
@@ -524,7 +552,14 @@ The LaunchAgent redirects stdout and stderr to:
 
 This log is for watcher startup/runtime failures. It should stay credential-free because the watcher only invokes `agent-presence reset --force --silent`.
 
-The generated watcher script applies the same 5 MiB / latest-1-MiB policy before starting the watcher and whenever the watcher restarts, which bounds repeated Swift compile/startup failures. The long-running Swift watcher also checks once every 86,400 seconds so runtime output is cleaned even when the process stays healthy. Both paths compact in place because launchd owns the stdout/stderr file descriptors. Existing macOS installations must run `agent-presence setup --skip-login` once after upgrading to regenerate these persistent watcher files. Full design: [`rfcs/log-retention.md`](../rfcs/log-retention.md).
+The generated watcher script applies the same 5 MiB / latest-1-MiB policy before starting the watcher and whenever the watcher restarts, which bounds repeated Swift compile/startup failures. The long-running Swift watcher also checks once every 86,400 seconds so runtime output is cleaned even when the process stays healthy. Both paths compact in place because launchd owns the stdout/stderr file descriptors. Existing macOS installations must run `agent-presence setup --skip-login` once after upgrading to regenerate these persistent watcher files.
+
+Retention limits:
+
+- The 5 MiB trigger and the roughly 1 MiB tail are fixed; there is no time-based retention, archive, or user setting. Logs that user-supplied source handlers write elsewhere are not managed.
+- A single event larger than the retained tail keeps only its most recent bytes.
+- A crash inside the small reclaim critical section can leave the fixed reclaim hard link behind. Normal lock generations keep working, but a later stale generation cannot be reclaimed until that link is removed.
+- During an upgrade, an older package version that does not take the lock can race an in-place compaction.
 
 ### Provider Request Log
 
@@ -561,18 +596,18 @@ remote value is wrong but local is correct      -> provider sync path bug or del
 
 ## Failure Model
 
-| Failure | Expected behavior |
-| --- | --- |
-| Agent exits without a finish hook | Session expires after TTL. |
-| Hook command fails | Coding agent continues; Codex receives `{}`. |
-| Provider returns 429 | Local state remains correct; next non-debounced update can sync. |
-| Laptop sleeps or lid closes | On macOS, power watcher resets local and remote state to 0 when possible. On Linux, TTL pruning clears sessions after expiry. |
-| Sudden power loss | Wake reset (macOS) and TTL clear stale sessions. |
-| Keychain is unavailable | Explicit environment variables can supply token and slot id. |
-| Linux has no secret-tool | Credential operations bail with a clear install instruction; env vars still work. |
-| `npx` cache disappears after setup | Managed hooks keep working because they target the stable runtime or shim. |
-| Setup is interrupted halfway | The previous runtime/config remains usable; the next setup run can repair managed files. |
-| Codex hooks are present but not trusted | Setup prints a reminder; approve the managed hooks in Codex settings. |
+| Failure                                 | Expected behavior                                                                                                             |
+| --------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| Agent exits without a finish hook       | Session expires after TTL.                                                                                                    |
+| Hook command fails                      | Coding agent continues; Codex receives `{}`.                                                                                  |
+| Provider returns 429                    | Local state remains correct; next non-debounced update can sync.                                                              |
+| Laptop sleeps or lid closes             | On macOS, power watcher resets local and remote state to 0 when possible. On Linux, TTL pruning clears sessions after expiry. |
+| Sudden power loss                       | Wake reset (macOS) and TTL clear stale sessions.                                                                              |
+| Keychain is unavailable                 | Explicit environment variables can supply token and slot id.                                                                  |
+| Linux has no secret-tool                | Credential operations bail with a clear install instruction; env vars still work.                                             |
+| `npx` cache disappears after setup      | Managed hooks keep working because they target the stable runtime or shim.                                                    |
+| Setup is interrupted halfway            | The previous runtime/config remains usable; the next setup run can repair managed files.                                      |
+| Codex hooks are present but not trusted | Setup prints a reminder; approve the managed hooks in Codex settings.                                                         |
 
 ## Security Boundaries
 
@@ -589,7 +624,7 @@ remote value is wrong but local is correct      -> provider sync path bug or del
 
 ## Package And Release Safety
 
-The repository is managed with pnpm and pins the package manager through `packageManager`.
+The repository is managed with pnpm and pins the package manager through `packageManager`; CI and the release job install that pnpm and the Node.js major in `.node-version` through `pnpm/setup`.
 
 Supply-chain settings live in `pnpm-workspace.yaml`:
 
@@ -599,12 +634,12 @@ minimumReleaseAgeStrict: fail instead of falling back to too-new versions
 minimumReleaseAgeIgnoreMissingTime: require registry publish-time metadata
 blockExoticSubdeps: block transitive git or tarball URL dependencies
 strictDepBuilds: fail on unreviewed dependency build scripts
-pmOnFail: require the declared pnpm version
 engineStrict: enforce Node engine compatibility
 verifyDepsBeforeRun: do not auto-install before scripts
+allowBuilds: the only dependency build scripts that may run
 ```
 
-CI installs with a frozen pnpm lockfile and `--ignore-scripts`. Release uses Changesets plus npm Trusted Publishing, so the GitHub workflow gets an OIDC token and does not need an npm token secret.
+Every install runs the pnpm version in `packageManager`: another pnpm downloads it first (pnpm's default `pmOnFail`). CI installs with a frozen pnpm lockfile; dependency build scripts run only for packages `allowBuilds` sets to `true`. Release uses Changesets plus npm Trusted Publishing, so the GitHub workflow gets an OIDC token and does not need an npm token secret.
 
 ## Extension Points
 

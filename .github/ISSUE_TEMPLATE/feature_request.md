@@ -1,7 +1,7 @@
 ---
 name: Feature request
 about: Propose a new capability or improvement
-title: "feat: "
+title: "[Feature]: "
 labels: enhancement
 assignees: ""
 ---
@@ -12,6 +12,18 @@ assignees: ""
 ## Proposed Solution
 
 
+## Acceptance Criteria
+
+-
+
+## Validation Plan
+
+- Format:
+- Lint:
+- Test:
+- Build:
+- Package or release dry-run:
+
 ## Alternatives Considered
 
 
@@ -21,4 +33,5 @@ assignees: ""
 - Configuration:
 - Compatibility:
 - Documentation:
-
+- Security or privacy:
+- Rollout and rollback:

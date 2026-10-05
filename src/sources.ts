@@ -12,11 +12,7 @@ import {
   type SourcePluginConfig
 } from './config.js';
 import { pickString, type StringEnv } from './hooks/context.js';
-import {
-  BUILTIN_SOURCE_PLUGINS,
-  type SourceContext,
-  type SourcePlugin
-} from './cli/hook-context.js';
+import { BUILTIN_SOURCE_PLUGINS, type SourceContext, type SourcePlugin } from './cli/hook-context.js';
 import type { BillableSource } from './usage/types.js';
 import { writeLog } from './log.js';
 
@@ -35,7 +31,16 @@ const BUILTIN_HANDLER_PREFIX = 'builtin:';
  * intentionally errs toward stripping (any `*TOKEN*`/`*SECRET*`/… name). Built-in
  * (`builtin:`) sources are trusted and receive the raw env.
  */
-const SECRET_ENV_PATTERNS = [/TOKEN/i, /SECRET/i, /CREDENTIAL/i, /SLOT_ID/i, /PASSWORD/i, /API_?KEY/i, /PRIVATE_?KEY/i, /ACCESS_KEY/i];
+const SECRET_ENV_PATTERNS = [
+  /TOKEN/i,
+  /SECRET/i,
+  /CREDENTIAL/i,
+  /SLOT_ID/i,
+  /PASSWORD/i,
+  /API_?KEY/i,
+  /PRIVATE_?KEY/i,
+  /ACCESS_KEY/i
+];
 
 export function curatedEnv(env: StringEnv): StringEnv {
   const curated: StringEnv = {};
@@ -183,10 +188,9 @@ export async function billableSources(
 ): Promise<BillableSource[]> {
   const billable: BillableSource[] = [];
   for (const [id, entry] of Object.entries(mergedSources(config))) {
-    const resolved = await resolveSourcePlugin(id, entry, options);
-    const scanUsage = resolved?.plugin.scanUsage;
-    if (scanUsage) {
-      billable.push({ id, scanUsage: scanUsage.bind(resolved.plugin) });
+    const plugin = (await resolveSourcePlugin(id, entry, options))?.plugin;
+    if (plugin?.scanUsage) {
+      billable.push({ id, scanUsage: plugin.scanUsage.bind(plugin) });
     }
   }
   return billable;
@@ -210,7 +214,10 @@ async function loadConfiguredSource(source: string, entry: SourcePluginConfig): 
   return plugin;
 }
 
-async function loadConfiguredSourceUncached(source: string, entry: SourcePluginConfig): Promise<SourcePlugin | undefined> {
+async function loadConfiguredSourceUncached(
+  source: string,
+  entry: SourcePluginConfig
+): Promise<SourcePlugin | undefined> {
   if (entry.handler) {
     return loadHandlerSource(source, entry.handler);
   }
@@ -292,7 +299,7 @@ async function resolveHandlerSpecifier(source: string, handler: string): Promise
     // A writable parent dir lets another user swap the (otherwise fine) file, so
     // narrow the swap window by requiring the directory be owned and not
     // group/world-writable too. This does not fully close the check-to-import
-    // TOCTOU gap (see the RFC), but removes the easy directory-swap vector.
+    // TOCTOU gap (see docs/architecture.md), but removes the easy directory-swap vector.
     const parent = lstatSync(dirname(handler));
     if (typeof process.getuid === 'function' && parent.uid !== process.getuid()) {
       await writeLog(`source refused source=${source} reason=handler-dir-not-owned`);

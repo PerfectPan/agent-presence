@@ -5,8 +5,8 @@ Rationale behind the docs site + landing page, so future changes stay coherent.
 ## Concept
 
 agent-presence is a terminal tool that shows a **live count of working AI agents**
-and their **token spend** in a Feishu signature. The site is framed as a *live
-presence monitor*: the hero is the product itself, animating.
+and their **token spend** in a Feishu signature. The site is framed as a _live
+presence monitor_: the hero is the product itself, animating.
 
 **Deliberately avoided** the two clichés AI design tends to default to:
 
@@ -15,7 +15,7 @@ presence monitor*: the hero is the product itself, animating.
 - warm-cream + serif + terracotta.
 
 Instead: a **light, airy canvas** with a **dark terminal floating in the hero** as
-the high-contrast centerpiece. The terminal is dark because terminals *are* dark —
+the high-contrast centerpiece. The terminal is dark because terminals _are_ dark —
 on a light page it reads as intentional, not as a theme default.
 
 ## Signature element
@@ -24,21 +24,21 @@ The hero terminal is the one thing the page is built around. It replays a real
 `agent-presence` session — types `npm i -g …` → `setup`, ticks the agent count
 1→2→3, accrues token cost — and resolves into the **actual Feishu signature badge**
 (`3 个 AI 牛马正在并行搬砖 | claude 2 · codex 1 | 今日 …`). It is the product in one
-animated moment. Pure CSS/JS, no deps (`components/LiveTerminal.astro`).
+animated moment. Pure CSS/JS, no deps (`components/live-terminal.astro`).
 
 ## Tokens
 
 Defined once in `src/styles/global.css` (`--ap-*`), and mapped onto Starlight's
 `--sl-*` variables so docs and landing share one system.
 
-| Token | Value | Use |
-| --- | --- | --- |
-| `--ap-blue` | `#2563eb` | primary accent |
-| `--ap-sky` | `#38bdf8` | gradient end |
-| `--ap-grad` | blue→sky | headline, buttons, accents |
-| `--ap-emerald` | `#10b981` | the "live" dot only |
-| `--ap-ink` (`--ap-text`) | `#15171f` | text |
-| `--ap-bg` | `#f7f8fb` | canvas |
+| Token                    | Value     | Use                        |
+| ------------------------ | --------- | -------------------------- |
+| `--ap-blue`              | `#2563eb` | primary accent             |
+| `--ap-sky`               | `#38bdf8` | gradient end               |
+| `--ap-grad`              | blue→sky  | headline, buttons, accents |
+| `--ap-emerald`           | `#10b981` | the "live" dot only        |
+| `--ap-ink` (`--ap-text`) | `#15171f` | text                       |
+| `--ap-bg`                | `#f7f8fb` | canvas                     |
 
 The accent is **blue→sky** — not purple, not neon green (both were tried and
 rejected during review). Emerald is reserved for the live/online dot.
@@ -65,13 +65,13 @@ live. Documented for users at `/project/brand`.
 
 - **Docs** are [Starlight](https://starlight.astro.build). Content in
   `src/content/docs/` (English at root, 简体中文 under `zh/`).
-- **Landing** is one data-driven layout, `src/layouts/Landing.astro`. The two
+- **Landing** is one data-driven layout, `src/layouts/landing.astro`. The two
   entry pages (`src/pages/index.astro`, `src/pages/zh/index.astro`) are ~50 lines
   of locale strings each — all markup and CSS live in the layout, so the EN/ZH
   pages can't drift.
 - **i18n**: Starlight's built-in locales; sidebar labels carry `translations`.
-- **Theme + language pickers** are custom components (`ThemeSelect.astro`,
-  `LanguageSelect.astro`) that replace Starlight's native `<select>` — the native
+- **Theme + language pickers** are custom components (`theme-select.astro`,
+  `language-select.astro`) that replace Starlight's native `<select>` — the native
   dropdown renders an un-stylable OS menu. The light theme is the default (a head
   script seeds `localStorage`), and the same `EN · 中` pill is reused on the
   landing nav so the switch is identical inside and outside the docs.

@@ -76,18 +76,26 @@ export class LGaryYangSlotBackend implements SlotBackend {
 
   async updateSlot(value: string): Promise<void> {
     const credential = this.requireCredential();
-    await this.requestJson('/api/slot/update', {
-      method: 'POST',
-      headers: this.authHeaders(credential),
-      body: JSON.stringify({ slotId: credential.slotId, value })
-    }, { logSuccess: true, slotId: credential.slotId, value });
+    await this.requestJson(
+      '/api/slot/update',
+      {
+        method: 'POST',
+        headers: this.authHeaders(credential),
+        body: JSON.stringify({ slotId: credential.slotId, value })
+      },
+      { logSuccess: true, slotId: credential.slotId, value }
+    );
   }
 
   async getInfo(): Promise<unknown> {
     const credential = this.requireCredential();
-    return await this.requestJson('/api/slot/info', {
-      headers: this.authHeaders(credential)
-    }, { logSuccess: true, slotId: credential.slotId });
+    return await this.requestJson(
+      '/api/slot/info',
+      {
+        headers: this.authHeaders(credential)
+      },
+      { logSuccess: true, slotId: credential.slotId }
+    );
   }
 
   buildDirectPreviewUrl(options: SlotPreviewUrlOptions): string {
@@ -116,7 +124,11 @@ export class LGaryYangSlotBackend implements SlotBackend {
     };
   }
 
-  private async requestJson(path: string, init: RequestInit = {}, logOptions: ProviderRequestLogOptions = {}): Promise<unknown> {
+  private async requestJson(
+    path: string,
+    init: RequestInit = {},
+    logOptions: ProviderRequestLogOptions = {}
+  ): Promise<unknown> {
     const url = new URL(path, this.baseUrl);
     const startedAt = Date.now();
     const method = init.method ?? 'GET';
@@ -261,7 +273,9 @@ function pickSlotId(root: Record<string, unknown>): string | undefined {
 }
 
 function pickFirstString(value: unknown): string | undefined {
-  return Array.isArray(value) ? value.find((item): item is string => typeof item === 'string' && item.length > 0) : undefined;
+  return Array.isArray(value)
+    ? value.find((item): item is string => typeof item === 'string' && item.length > 0)
+    : undefined;
 }
 
 function readRetryAfter(value: string | null): number | undefined {
@@ -272,28 +286,27 @@ function readRetryAfter(value: string | null): number | undefined {
   return Number.isFinite(seconds) ? seconds * 1000 : undefined;
 }
 
-function createProviderRequestLogger(base: ProviderRequestLogBase): (event: {
-  status?: number;
-  result: string;
-  retryAfterMs?: number;
-  success?: boolean;
-}) => void {
+function createProviderRequestLogger(
+  base: ProviderRequestLogBase
+): (event: { status?: number; result: string; retryAfterMs?: number; success?: boolean }) => void {
   return (event) => {
     if (event.success && !base.logSuccess) {
       return;
     }
-    void log.event({
-      type: 'provider.request',
-      method: base.method,
-      path: base.path,
-      status: event.status,
-      durationMs: Date.now() - base.startedAt,
-      slotId: redactSlotId(base.slotId),
-      valueLength: valueLength(base.value),
-      retryAfterMs: event.retryAfterMs,
-      result: event.result
-    }).catch(() => {
-      // Request logging is diagnostic only and must not affect provider behavior.
-    });
+    void log
+      .event({
+        type: 'provider.request',
+        method: base.method,
+        path: base.path,
+        status: event.status,
+        durationMs: Date.now() - base.startedAt,
+        slotId: redactSlotId(base.slotId),
+        valueLength: valueLength(base.value),
+        retryAfterMs: event.retryAfterMs,
+        result: event.result
+      })
+      .catch(() => {
+        // Request logging is diagnostic only and must not affect provider behavior.
+      });
   };
 }

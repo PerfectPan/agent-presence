@@ -36,8 +36,7 @@ function geminiMessage(id: string, tsMs: number, tokens: GeminiTokens | null, mo
       cached: tokens.cached ?? 0,
       thoughts: tokens.thoughts ?? 0,
       tool: tokens.tool ?? 0,
-      total:
-        (tokens.input ?? 0) + (tokens.output ?? 0) + (tokens.thoughts ?? 0) + (tokens.tool ?? 0)
+      total: (tokens.input ?? 0) + (tokens.output ?? 0) + (tokens.thoughts ?? 0) + (tokens.tool ?? 0)
     };
   }
   return record;
@@ -83,8 +82,8 @@ describe('scanGemini (JSONL)', () => {
 
     const records = await scanGemini({ root, sinceMs: NOW - DAY, untilMs: NOW });
     expect(records).toHaveLength(1);
-    expect(records[0].inputTokens).toBe(500);
-    expect(records[0].outputTokens).toBe(120);
+    expect(records[0]?.inputTokens).toBe(500);
+    expect(records[0]?.outputTokens).toBe(120);
   });
 
   it('drops turns outside the window', async () => {
@@ -94,7 +93,7 @@ describe('scanGemini (JSONL)', () => {
     ]);
     const records = await scanGemini({ root, sinceMs: NOW - DAY, untilMs: NOW });
     expect(records).toHaveLength(1);
-    expect(records[0].inputTokens).toBe(10);
+    expect(records[0]?.inputTokens).toBe(10);
   });
 
   it('ignores gemini messages without a tokens object', async () => {

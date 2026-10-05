@@ -7,10 +7,8 @@ import { assertSupportedPlatform } from '../src/platform.js';
 async function main(): Promise<void> {
   assertSupportedPlatform();
   const settingsPath = process.env.PI_SETTINGS_FILE ?? join(homedir(), '.pi', 'agent', 'settings.json');
-  const extensionsDir =
-    process.env.PI_AGENT_PRESENCE_EXTENSION_DIR ?? join(homedir(), '.pi', 'agent', 'extensions');
-  const extensionPath =
-    process.env.PI_AGENT_PRESENCE_EXTENSION_FILE ?? join(extensionsDir, PI_EXTENSION_FILE_NAME);
+  const extensionsDir = process.env.PI_AGENT_PRESENCE_EXTENSION_DIR ?? join(homedir(), '.pi', 'agent', 'extensions');
+  const extensionPath = process.env.PI_AGENT_PRESENCE_EXTENSION_FILE ?? join(extensionsDir, PI_EXTENSION_FILE_NAME);
 
   const result = await installPiExtension({ extensionPath, settingsPath });
 

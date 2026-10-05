@@ -46,7 +46,7 @@ export interface OpenCodeConfig {
 export function withClaudeAgentSignatureHooks(input: Partial<HookSettings>): HookSettings {
   const settings: HookSettings = {
     ...input,
-    hooks: { ...(input.hooks ?? {}) }
+    hooks: { ...input.hooks }
   };
 
   for (const event of CLAUDE_EVENTS) {
@@ -805,19 +805,12 @@ function shellQuote(value: string): string {
   return `'${value.replaceAll("'", "'\\''")}'`;
 }
 
-const GEMINI_EVENTS = [
-  'SessionStart',
-  'UserPromptSubmit',
-  'PreToolUse',
-  'PostToolUse',
-  'Stop',
-  'SessionEnd'
-];
+const GEMINI_EVENTS = ['SessionStart', 'UserPromptSubmit', 'PreToolUse', 'PostToolUse', 'Stop', 'SessionEnd'];
 
 export function withGeminiAgentSignatureHooks(input: Partial<HookSettings>): HookSettings {
   const settings: HookSettings = {
     ...input,
-    hooks: { ...(input.hooks ?? {}) }
+    hooks: { ...input.hooks }
   };
 
   for (const event of GEMINI_EVENTS) {

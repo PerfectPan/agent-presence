@@ -34,7 +34,10 @@ export function resolveClaudeHookContext(payload: unknown, env: StringEnv = proc
     payloadKeys: ['agent_id', 'agentId', 'agentID'],
     nestedPayloadKeys: ['event', 'session', 'input', 'context']
   });
-  const sessionId = event?.startsWith('Subagent') && parentSessionId && agentId ? `${parentSessionId}:subagent:${agentId}` : parentSessionId;
+  const sessionId =
+    event?.startsWith('Subagent') && parentSessionId && agentId
+      ? `${parentSessionId}:subagent:${agentId}`
+      : parentSessionId;
 
   return {
     event,

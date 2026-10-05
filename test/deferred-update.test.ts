@@ -4,8 +4,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 const spawnMock = vi.hoisted(() =>
-  vi.fn((..._args: unknown[]) => ({
-    unref: vi.fn()
+  vi.fn<(...args: unknown[]) => { unref: () => void }>((..._args: unknown[]) => ({
+    unref: vi.fn<() => void>()
   }))
 );
 

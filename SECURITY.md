@@ -23,6 +23,6 @@ Agent Presence stores provider credentials in Keychain by default, with environm
 
 ## Supply Chain
 
-Repository package management uses the pinned pnpm version in `packageManager` and the safety settings in `pnpm-workspace.yaml`. CI uses frozen lockfile installs with dependency install scripts disabled, then runs tests, typecheck, build, and package dry-run explicitly.
+Repository package management uses the pinned pnpm version in `packageManager` and the safety settings in `pnpm-workspace.yaml`. CI uses frozen lockfile installs that run dependency build scripts only for packages allowed in `allowBuilds`, then runs tests, typecheck, build, and package dry-run explicitly.
 
 Releases go through Changesets and npm Trusted Publishing. Do not add long-lived npm publish tokens to repository secrets for the default release path.

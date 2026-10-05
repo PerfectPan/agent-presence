@@ -55,7 +55,7 @@ export async function scheduleDeferredRenderedUpdateForResult(
     ...options,
     delayMs:
       result.reason === 'rate-limited'
-        ? result.retryAfterMs ?? Math.max(options.delayMs, DEFAULT_RATE_LIMIT_RETRY_MS)
+        ? (result.retryAfterMs ?? Math.max(options.delayMs, DEFAULT_RATE_LIMIT_RETRY_MS))
         : options.delayMs
   });
 }

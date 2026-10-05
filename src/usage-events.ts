@@ -60,11 +60,7 @@ export async function readUsageEvents(source: string, sinceMs: number, untilMs: 
  * presence as `{ model, usage: { inputTokens, outputTokens, cacheReadTokens,
  * cacheWriteTokens } }`; a payload without it yields `null`.
  */
-export function usageEventFromPayload(
-  source: string,
-  payload: unknown,
-  now: number
-): UsageEvent | null {
+export function usageEventFromPayload(source: string, payload: unknown, now: number): UsageEvent | null {
   if (typeof payload !== 'object' || payload === null) {
     return null;
   }

@@ -41,7 +41,7 @@ afterEach(async () => {
 describe('curatedEnv', () => {
   it('strips credential-bearing env keys but keeps ordinary ones', () => {
     const curated = curatedEnv({
-      HOME: '/Users/me',
+      HOME: '/fake-home',
       AGENT_PRESENCE_TOKEN: 'secret',
       FEISHU_SLOT_CREDENTIAL: 'secret',
       MAGIC_TOKEN: 'secret',
@@ -50,7 +50,7 @@ describe('curatedEnv', () => {
       MYAGENT_SESSION_ID: 'sess-1'
     });
 
-    expect(curated.HOME).toBe('/Users/me');
+    expect(curated.HOME).toBe('/fake-home');
     expect(curated.MYAGENT_SESSION_ID).toBe('sess-1');
     expect(curated.AGENT_PRESENCE_TOKEN).toBeUndefined();
     expect(curated.FEISHU_SLOT_CREDENTIAL).toBeUndefined();
@@ -249,9 +249,13 @@ describe('resolveHookContextForSource — JS handler', () => {
     const dir = join(workDir, 'wideopen');
     mkdirSync(dir, { recursive: true });
     const handlerPath = join(dir, 'handler.mjs');
-    writeFileSync(handlerPath, `export default { id: 'myagent', resolveHookContext() { return { sessionId: 'x' }; } };`, {
-      mode: 0o600
-    });
+    writeFileSync(
+      handlerPath,
+      `export default { id: 'myagent', resolveHookContext() { return { sessionId: 'x' }; } };`,
+      {
+        mode: 0o600
+      }
+    );
     chmodSync(dir, 0o777);
     const config: AppConfig = { plugins: { sources: { myagent: { handler: handlerPath } } } };
     const context = await resolveHookContextForSource('myagent', {}, config);
@@ -363,7 +367,7 @@ describe('billableSources', () => {
     expect(myagent).toBeDefined();
     const records = await myagent!.scanUsage({ sinceMs: 0, untilMs: 1 });
     expect(records).toHaveLength(1);
-    expect(records[0].source).toBe('myagent');
+    expect(records[0]?.source).toBe('myagent');
   });
 
   it('never loads a JS handler when includeHandlers is false (hook/badge path)', async () => {

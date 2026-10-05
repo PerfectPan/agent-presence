@@ -89,8 +89,7 @@ export async function refreshUsageBadgeCache(options: UsageBadgeCacheRefresh): P
   const cachedState = await loadState(options.statePath);
   const refreshSource =
     options.source &&
-    (cachedState.usageBadgesAt === undefined ||
-      calendarDaysBetween(cachedState.usageBadgesAt, options.now) > 0)
+    (cachedState.usageBadgesAt === undefined || calendarDaysBetween(cachedState.usageBadgesAt, options.now) > 0)
       ? undefined
       : options.source;
   const selectedSources = refreshSource
@@ -149,8 +148,7 @@ export async function refreshUsageBadgeCache(options: UsageBadgeCacheRefresh): P
           // Scans happen outside the lock. Preserve a snapshot committed by a
           // newer overlapping refresh instead of letting an older scan win by
           // finishing last.
-          const latest =
-            previous && previous.scannedAt > candidate.scannedAt ? previous : candidate;
+          const latest = previous && previous.scannedAt > candidate.scannedAt ? previous : candidate;
           return [[source.id, latest] as const];
         })
       );

@@ -3,7 +3,13 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createEmptyState, applyAgentEvent } from '../src/state.js';
-import { markSlotSyncSuccess, prepareSlotSync, rollbackSlotSyncClaim, SlotRateLimitError, syncSlot } from '../src/render.js';
+import {
+  markSlotSyncSuccess,
+  prepareSlotSync,
+  rollbackSlotSyncClaim,
+  SlotRateLimitError,
+  syncSlot
+} from '../src/render.js';
 import { syncExplicitSlotValueWithStateLock, syncRenderedSlotWithStateLock } from '../src/cli/slot-sync.js';
 
 let tempDir: string | undefined;
@@ -27,7 +33,7 @@ describe('slot sync debounce', () => {
       sessionId: 'thread-1',
       now: 1778577020000
     });
-    const updateSlot = vi.fn().mockResolvedValue(undefined);
+    const updateSlot = vi.fn<(value: string) => Promise<void>>().mockResolvedValue(undefined);
 
     const result = await syncSlot(state, {
       force: true,
@@ -51,7 +57,7 @@ describe('slot sync debounce', () => {
       sessionId: 'thread-1',
       now: 1778577020000
     });
-    const updateSlot = vi.fn().mockResolvedValue(undefined);
+    const updateSlot = vi.fn<(value: string) => Promise<void>>().mockResolvedValue(undefined);
 
     const result = await syncSlot(state, {
       force: false,
@@ -127,7 +133,7 @@ describe('slot sync debounce', () => {
 
   it('logs each slot update attempt and result without leaking the rendered value', async () => {
     const { logPath, statePath } = await useTempFiles();
-    const updateSlot = vi.fn().mockResolvedValue(undefined);
+    const updateSlot = vi.fn<(value: string) => Promise<void>>().mockResolvedValue(undefined);
 
     await expect(
       syncExplicitSlotValueWithStateLock(
@@ -157,7 +163,9 @@ describe('slot sync debounce', () => {
 
   it('logs rate limited slot updates', async () => {
     const { logPath, statePath } = await useTempFiles();
-    const updateSlot = vi.fn().mockRejectedValue(new SlotRateLimitError('slot provider returned 429', 60_000));
+    const updateSlot = vi
+      .fn<(value: string) => Promise<void>>()
+      .mockRejectedValue(new SlotRateLimitError('slot provider returned 429', 60_000));
 
     await expect(
       syncExplicitSlotValueWithStateLock(
@@ -183,7 +191,7 @@ describe('slot sync debounce', () => {
 
   it('persists local session state before provider IO and keeps it when provider IO fails', async () => {
     const { statePath } = await useTempFiles();
-    const updateSlot = vi.fn().mockRejectedValue(new Error('provider unavailable'));
+    const updateSlot = vi.fn<(value: string) => Promise<void>>().mockRejectedValue(new Error('provider unavailable'));
 
     await expect(
       syncRenderedSlotWithStateLock(
@@ -240,10 +248,7 @@ async function waitForLogEvents(path: string, count: number): Promise<Array<Reco
       }
     })
     .toBe(count);
-  return (await readFile(path, 'utf8'))
-    .trim()
-    .split('\n')
-    .map(parseLogLine);
+  return (await readFile(path, 'utf8')).trim().split('\n').map(parseLogLine);
 }
 
 function parseLogLine(line: string): Record<string, unknown> {

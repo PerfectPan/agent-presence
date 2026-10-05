@@ -32,13 +32,18 @@ describe('l.garyyang login status', () => {
   it('accepts current confirmed login responses with credential and user slot ids', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn(async () => new Response(JSON.stringify({
-        status: 'confirmed',
-        credential: 'cred_test',
-        user: {
-          slotIds: ['slot_existing', 'slot_new']
-        }
-      })))
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              status: 'confirmed',
+              credential: 'cred_test',
+              user: {
+                slotIds: ['slot_existing', 'slot_new']
+              }
+            })
+          )
+      )
     );
 
     const provider = new LGaryYangSlotBackend('https://l.garyyang.work');
@@ -51,7 +56,10 @@ describe('l.garyyang login status', () => {
   });
 
   it('keeps expired login status visible to the cli', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ status: 'expired' }))));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(JSON.stringify({ status: 'expired' })))
+    );
 
     const provider = new LGaryYangSlotBackend('https://l.garyyang.work');
 
@@ -73,7 +81,10 @@ describe('l.garyyang request logging', () => {
 
   it('logs provider requests without leaking tokens or full slot values', async () => {
     const logPath = await useTempLogFile();
-    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ ok: true }), { status: 200 })));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(JSON.stringify({ ok: true }), { status: 200 }))
+    );
     const provider = new LGaryYangSlotBackend('https://l.garyyang.work', {
       token: 'secret_token',
       slotId: 'slot_123456789abcdef'
@@ -103,10 +114,13 @@ describe('l.garyyang request logging', () => {
     const logPath = await useTempLogFile();
     vi.stubGlobal(
       'fetch',
-      vi.fn(async () => new Response(JSON.stringify({ error: 'too many requests' }), {
-        status: 429,
-        headers: { 'retry-after': '60' }
-      }))
+      vi.fn(
+        async () =>
+          new Response(JSON.stringify({ error: 'too many requests' }), {
+            status: 429,
+            headers: { 'retry-after': '60' }
+          })
+      )
     );
     const provider = new LGaryYangSlotBackend('https://l.garyyang.work', {
       token: 'secret_token',
@@ -125,7 +139,10 @@ describe('l.garyyang request logging', () => {
 
   it('does not log successful login polling by default', async () => {
     const logPath = await useTempLogFile();
-    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ status: 'pending' }))));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(JSON.stringify({ status: 'pending' })))
+    );
     const provider = new LGaryYangSlotBackend('https://l.garyyang.work');
 
     await expect(provider.getLoginStatus('cslot_test')).resolves.toEqual({ status: 'pending' });

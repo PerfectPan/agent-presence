@@ -5,11 +5,12 @@
   "scripts": {
     "docs:dev": "astro dev",
     "docs:build": "astro build",
+    "docs:sync": "astro sync",
     "docs:preview": "astro preview"
   },
   "dependencies": {
-    "@astrojs/starlight": "^0.40.0",
-    "astro": "^6.4.8",
-    "sharp": "^0.35.1"
+    "@astrojs/starlight": "^0.42.5",
+    "astro": "^7.3.5",
+    "sharp": "^0.35.5"
   }
 }

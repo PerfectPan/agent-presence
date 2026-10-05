@@ -27,7 +27,9 @@ export async function source(args: string[]): Promise<void> {
 async function addSource(args: string[]): Promise<void> {
   const spec = args.find((arg) => !arg.startsWith('--'));
   if (!spec) {
-    showWarning('usage: agent-presence source add <npm-package|@scope/pkg@version> [--id <id>] [--registry <url>] [--yes]');
+    showWarning(
+      'usage: agent-presence source add <npm-package|@scope/pkg@version> [--id <id>] [--registry <url>] [--yes]'
+    );
     process.exitCode = 1;
     return;
   }
@@ -109,7 +111,9 @@ async function removeSource(args: string[]): Promise<void> {
   const config = await loadConfig();
   const entry = config.plugins?.sources?.[id];
   if (!entry) {
-    showWarning(`no configured source "${id}" (built-in defaults cannot be removed; disable with { "enabled": false }).`);
+    showWarning(
+      `no configured source "${id}" (built-in defaults cannot be removed; disable with { "enabled": false }).`
+    );
     process.exitCode = 1;
     return;
   }

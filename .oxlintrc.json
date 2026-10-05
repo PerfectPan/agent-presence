@@ -1,0 +1,5 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "extends": ["./node_modules/@perfectpan/lint-config/oxlint.json"],
+  "ignorePatterns": ["dist/**", "site/dist/**", "site/.astro/**"]
+}

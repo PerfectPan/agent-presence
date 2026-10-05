@@ -58,10 +58,14 @@ describe('Claude hook installer helpers', () => {
     const next = withClaudeAgentSignatureHooks(settings);
 
     expect(next.hooks.Stop).toHaveLength(2);
-    expect(next.hooks.Stop[0]?.hooks?.[0]?.command).toBe('echo existing');
-    expect(next.hooks.Stop[1]?.hooks?.[0]?.command).toContain('npx --yes --registry=https://registry.npmjs.org @rivus/agent-presence@');
-    expect(next.hooks.Stop[1]?.hooks?.[0]?.command).toContain('hook --source claude --event Stop --silent');
-    expect(next.hooks.SessionStart.at(-1)?.hooks?.[0]?.command).toContain('hook --source claude --event SessionStart --silent');
+    expect(next.hooks.Stop?.[0]?.hooks?.[0]?.command).toBe('echo existing');
+    expect(next.hooks.Stop?.[1]?.hooks?.[0]?.command).toContain(
+      'npx --yes --registry=https://registry.npmjs.org @rivus/agent-presence@'
+    );
+    expect(next.hooks.Stop?.[1]?.hooks?.[0]?.command).toContain('hook --source claude --event Stop --silent');
+    expect(next.hooks.SessionStart?.at(-1)?.hooks?.[0]?.command).toContain(
+      'hook --source claude --event SessionStart --silent'
+    );
   });
 
   it('recognizes current and legacy managed hook commands', () => {
@@ -78,7 +82,7 @@ describe('Claude hook installer helpers', () => {
   it('recognizes absolute-mode hook commands', () => {
     expect(
       isAgentSignatureCommand(
-        '/Users/example/.nvm/versions/node/v24.8.0/bin/node /Users/example/agent-presence/dist/src/cli.js hook --source codex --event Stop'
+        '/fake-home/.nvm/versions/node/v24.8.0/bin/node /fake-home/agent-presence/dist/src/cli.js hook --source codex --event Stop'
       )
     ).toBe(true);
     expect(
@@ -93,7 +97,7 @@ describe('Claude hook installer helpers', () => {
       const settings: Partial<HookSettings> = { hooks: {} };
       const next = withClaudeAgentSignatureHooks(settings);
 
-      const command = next.hooks.SessionStart[0]?.hooks?.[0]?.command ?? '';
+      const command = next.hooks.SessionStart?.[0]?.hooks?.[0]?.command ?? '';
       expect(command).toContain(`hook --source claude --event SessionStart --silent`);
       expect(command).not.toContain('npx');
       expect(command).toContain('/usr/local/lib/node_modules/@rivus/agent-presence/dist/src/cli.js');
@@ -105,7 +109,9 @@ describe('opencode plugin installer helpers', () => {
   it('generates an opencode plugin that feeds lifecycle events into the CLI silently', () => {
     const source = buildOpenCodePluginSource();
 
-    expect(source).toContain('const CLI_COMMAND = ["npx","--yes","--registry=https://registry.npmjs.org","@rivus/agent-presence@');
+    expect(source).toContain(
+      'const CLI_COMMAND = ["npx","--yes","--registry=https://registry.npmjs.org","@rivus/agent-presence@'
+    );
     expect(source).toContain('--source');
     expect(source).toContain('opencode');
     expect(source).toContain('session.created');
@@ -118,9 +124,14 @@ describe('opencode plugin installer helpers', () => {
   });
 
   it('generates an opencode plugin with absolute CLI command', () => {
-    const source = buildOpenCodePluginSource(['/usr/local/bin/node', '/usr/local/lib/node_modules/@rivus/agent-presence/dist/src/cli.js']);
+    const source = buildOpenCodePluginSource([
+      '/usr/local/bin/node',
+      '/usr/local/lib/node_modules/@rivus/agent-presence/dist/src/cli.js'
+    ]);
 
-    expect(source).toContain('const CLI_COMMAND = ["/usr/local/bin/node","/usr/local/lib/node_modules/@rivus/agent-presence/dist/src/cli.js"]');
+    expect(source).toContain(
+      'const CLI_COMMAND = ["/usr/local/bin/node","/usr/local/lib/node_modules/@rivus/agent-presence/dist/src/cli.js"]'
+    );
     expect(source).toContain('--source');
     expect(source).toContain('opencode');
     expect(source).toContain('session.created');
@@ -149,7 +160,9 @@ describe('pi extension installer helpers', () => {
 
     expect(source).toContain(PI_EXTENSION_MARKER);
     expect(source).toContain('import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent"');
-    expect(source).toContain('const CLI_COMMAND = ["npx","--yes","--registry=https://registry.npmjs.org","@rivus/agent-presence@');
+    expect(source).toContain(
+      'const CLI_COMMAND = ["npx","--yes","--registry=https://registry.npmjs.org","@rivus/agent-presence@'
+    );
     expect(source).toContain('--source');
     expect(source).toContain('"pi"');
     // We must NOT subscribe to session_start as a SessionStart trigger; opening pi
@@ -177,41 +190,41 @@ describe('pi extension installer helpers', () => {
   });
 
   it('keeps unrelated pi extension entries intact and never duplicates the managed entry', () => {
-    const settings: PiSettings = { extensions: ['/Users/example/.pi/agent/extensions/user-extension.ts'] };
-    const managedPath = '/Users/example/.pi/agent/extensions/agent-presence.ts';
+    const settings: PiSettings = { extensions: ['/fake-home/.pi/agent/extensions/user-extension.ts'] };
+    const managedPath = '/fake-home/.pi/agent/extensions/agent-presence.ts';
 
     const next = withPiAgentPresenceExtension(settings, managedPath);
-    expect(next.extensions).toEqual(['/Users/example/.pi/agent/extensions/user-extension.ts']);
+    expect(next.extensions).toEqual(['/fake-home/.pi/agent/extensions/user-extension.ts']);
 
     const settingsWithDup: PiSettings = {
       extensions: [
-        '/Users/example/.pi/agent/extensions/user-extension.ts',
-        '/Users/example/.pi/agent/extensions/agent-presence.ts'
+        '/fake-home/.pi/agent/extensions/user-extension.ts',
+        '/fake-home/.pi/agent/extensions/agent-presence.ts'
       ]
     };
     const cleaned = withPiAgentPresenceExtension(settingsWithDup, managedPath);
-    expect(cleaned.extensions).toEqual(['/Users/example/.pi/agent/extensions/user-extension.ts']);
+    expect(cleaned.extensions).toEqual(['/fake-home/.pi/agent/extensions/user-extension.ts']);
   });
 
   it('uninstall strips the managed entry without touching user extensions', () => {
     const settings: PiSettings = {
       extensions: [
-        '/Users/example/.pi/agent/extensions/user-extension.ts',
-        '/Users/example/.pi/agent/extensions/agent-presence.ts'
+        '/fake-home/.pi/agent/extensions/user-extension.ts',
+        '/fake-home/.pi/agent/extensions/agent-presence.ts'
       ]
     };
-    const managedPath = '/Users/example/.pi/agent/extensions/agent-presence.ts';
+    const managedPath = '/fake-home/.pi/agent/extensions/agent-presence.ts';
 
     expect(withoutPiAgentPresenceExtension(settings, managedPath)).toEqual({
-      extensions: ['/Users/example/.pi/agent/extensions/user-extension.ts']
+      extensions: ['/fake-home/.pi/agent/extensions/user-extension.ts']
     });
   });
 
   it('drops the extensions key when removing the only managed entry', () => {
     const settings: PiSettings = {
-      extensions: ['/Users/example/.pi/agent/extensions/agent-presence.ts']
+      extensions: ['/fake-home/.pi/agent/extensions/agent-presence.ts']
     };
 
-    expect(withoutPiAgentPresenceExtension(settings, settings.extensions![0])).toEqual({});
+    expect(withoutPiAgentPresenceExtension(settings, settings.extensions![0]!)).toEqual({});
   });
 });

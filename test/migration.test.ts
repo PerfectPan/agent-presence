@@ -29,8 +29,10 @@ describe('legacy home migration', () => {
     expect(result.status).toBe('migrated');
     expect(result.copied).toEqual(['config.json', 'state.json']);
     expect(result.removed).toEqual(['config.json', 'state.json']);
-    await expect(readFile(join(home, '.agent-presence', 'config.json'), 'utf8')).resolves.toBe('{"slot_id":"slot_legacy"}');
-    await expect(stat(join(legacyHome, 'config.json'))).rejects.toThrow();
+    await expect(readFile(join(home, '.agent-presence', 'config.json'), 'utf8')).resolves.toBe(
+      '{"slot_id":"slot_legacy"}'
+    );
+    await expect(stat(join(legacyHome, 'config.json'))).rejects.toThrow(/ENOENT/);
   });
 
   it('does not overwrite existing destination files', async () => {
@@ -52,8 +54,8 @@ describe('legacy home migration', () => {
     expect(result.removed).toEqual(['config.json', 'state.json']);
     await expect(readFile(join(defaultHome, 'config.json'), 'utf8')).resolves.toBe('{"slot_id":"slot_new"}');
     await expect(readFile(join(defaultHome, 'state.json'), 'utf8')).resolves.toBe('{"sessions":{}}');
-    await expect(stat(join(legacyHome, 'config.json'))).rejects.toThrow();
-    await expect(stat(join(legacyHome, 'state.json'))).rejects.toThrow();
+    await expect(stat(join(legacyHome, 'config.json'))).rejects.toThrow(/ENOENT/);
+    await expect(stat(join(legacyHome, 'state.json'))).rejects.toThrow(/ENOENT/);
   });
 
   it('cleans already migrated legacy files before checking whether a prompt is needed', async () => {
@@ -75,7 +77,7 @@ describe('legacy home migration', () => {
 
     expect(cleanup.removed).toEqual(['config.json', 'state.json', 'agent-presence.log']);
     await expect(hasLegacyHomeToMigrate()).resolves.toBe(false);
-    const confirm = vi.fn(async () => true);
+    const confirm = vi.fn<() => Promise<boolean>>(async () => true);
     const result = await migrateLegacyHome({ confirm });
 
     expect(result.status).toBe('not-needed');

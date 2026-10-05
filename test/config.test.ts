@@ -56,14 +56,14 @@ describe('agent-presence env aliases', () => {
 
 describe('home directory', () => {
   it('defaults durable files to ~/.agent-presence', () => {
-    vi.stubEnv('HOME', '/Users/example');
+    vi.stubEnv('HOME', '/fake-home');
     vi.stubEnv('AGENT_PRESENCE_HOME', '');
     vi.stubEnv('AGENT_SIGNATURE_HOME', '');
     vi.unstubAllEnvs();
-    vi.stubEnv('HOME', '/Users/example');
+    vi.stubEnv('HOME', '/fake-home');
 
-    expect(getHomeDir()).toBe('/Users/example/.agent-presence');
-    expect(getConfigPath()).toBe('/Users/example/.agent-presence/config.json');
+    expect(getHomeDir()).toBe('/fake-home/.agent-presence');
+    expect(getConfigPath()).toBe('/fake-home/.agent-presence/config.json');
 
     vi.unstubAllEnvs();
   });

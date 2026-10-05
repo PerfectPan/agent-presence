@@ -58,9 +58,7 @@ function assistantData(message: AssistantMessage): string {
 /** Build a minimal opencode SQLite store with a `message` table. */
 function writeDb(rows: Array<{ id: string; createdMs: number; data: string }>): string {
   const db = new DatabaseSync(join(dir, 'opencode.db'));
-  db.exec(
-    'CREATE TABLE message (id TEXT, session_id TEXT, time_created INTEGER, time_updated INTEGER, data TEXT)'
-  );
+  db.exec('CREATE TABLE message (id TEXT, session_id TEXT, time_created INTEGER, time_updated INTEGER, data TEXT)');
   const insert = db.prepare(
     'INSERT INTO message (id, session_id, time_created, time_updated, data) VALUES (?, ?, ?, ?, ?)'
   );
@@ -104,7 +102,7 @@ describe('scanOpenCode (SQLite)', () => {
       costUsd: 0.02104008
     });
     // Four buckets reproduce opencode's own total.
-    const r = records[0];
+    const r = records[0]!;
     expect(r.inputTokens + r.outputTokens + r.cacheReadTokens + r.cacheWriteTokens).toBe(82462);
   });
 
@@ -114,13 +112,17 @@ describe('scanOpenCode (SQLite)', () => {
     ]);
     const records = await scanOpenCode({ root, sinceMs: NOW - DAY, untilMs: NOW });
     expect(records).toHaveLength(1);
-    expect(records[0].costUsd).toBe(0);
+    expect(records[0]?.costUsd).toBe(0);
   });
 
   it('filters by the message completion time against the window', async () => {
     const root = writeDb([
       // completed inside the window
-      { id: 'in', createdMs: NOW - 2000, data: assistantData({ createdMs: NOW - 2000, completedMs: NOW - 1000, input: 5 }) },
+      {
+        id: 'in',
+        createdMs: NOW - 2000,
+        data: assistantData({ createdMs: NOW - 2000, completedMs: NOW - 1000, input: 5 })
+      },
       // completed before the window (but created recently) — dropped
       {
         id: 'old',
@@ -130,7 +132,7 @@ describe('scanOpenCode (SQLite)', () => {
     ]);
     const records = await scanOpenCode({ root, sinceMs: NOW - DAY, untilMs: NOW });
     expect(records).toHaveLength(1);
-    expect(records[0].inputTokens).toBe(5);
+    expect(records[0]?.inputTokens).toBe(5);
   });
 
   it('returns [] for a missing store', async () => {

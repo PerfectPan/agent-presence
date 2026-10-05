@@ -1,4 +1,12 @@
-import { configSlotId, debounceMs, getStatePath, loadConfig, providerId, renderTemplates, ttlMs } from '../../config.js';
+import {
+  configSlotId,
+  debounceMs,
+  getStatePath,
+  loadConfig,
+  providerId,
+  renderTemplates,
+  ttlMs
+} from '../../config.js';
 import { createProvider } from '../../providers/registry.js';
 import { assertSupportsPublish } from '../../providers/types.js';
 import { readCredential } from '../../secret.js';

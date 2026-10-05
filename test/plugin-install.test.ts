@@ -4,7 +4,12 @@ import { mkdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { AppConfig } from '../src/config.js';
-import { installPluginPackage, isSupportedPackageSpec, packageNameFromSpec, uninstallPluginPackage } from '../src/plugin-install.js';
+import {
+  installPluginPackage,
+  isSupportedPackageSpec,
+  packageNameFromSpec,
+  uninstallPluginPackage
+} from '../src/plugin-install.js';
 import {
   loadSourcePluginForValidation,
   resetSourcePluginCacheForTests,
@@ -171,8 +176,8 @@ describe('uninstallPluginPackage', () => {
     };
     await uninstallPluginPackage('agent-presence-myagent', { pluginsDir, runner });
     expect(calls).toHaveLength(1);
-    expect(calls[0].args[0]).toBe('uninstall');
-    expect(calls[0].args[1]).toBe('agent-presence-myagent');
-    expect(calls[0].cwd).toBe(pluginsDir);
+    expect(calls[0]?.args[0]).toBe('uninstall');
+    expect(calls[0]?.args[1]).toBe('agent-presence-myagent');
+    expect(calls[0]?.cwd).toBe(pluginsDir);
   });
 });

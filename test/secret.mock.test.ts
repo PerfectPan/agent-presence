@@ -1,6 +1,6 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 
-const execFileMock = vi.hoisted(() => vi.fn());
+const execFileMock = vi.hoisted(() => vi.fn<(...args: unknown[]) => void>());
 
 vi.mock('node:child_process', () => ({
   execFile: execFileMock
@@ -61,20 +61,26 @@ describe('credential storage', () => {
   function cbResolve(value: string): (...args: unknown[]) => void {
     return (...args: unknown[]) => {
       const cb = args[args.length - 1];
-      if (typeof cb === 'function') cb(null, { stdout: value });
+      if (typeof cb === 'function') {
+        cb(null, { stdout: value });
+      }
     };
   }
 
   function cbReject(msg: string): (...args: unknown[]) => void {
     return (...args: unknown[]) => {
       const cb = args[args.length - 1];
-      if (typeof cb === 'function') cb(new Error(msg));
+      if (typeof cb === 'function') {
+        cb(new Error(msg));
+      }
     };
   }
 
   function cbIgnore(...args: unknown[]) {
     const cb = args[args.length - 1];
-    if (typeof cb === 'function') cb(null, { stdout: '' });
+    if (typeof cb === 'function') {
+      cb(null, { stdout: '' });
+    }
   }
 
   describe('environment variable resolution (platform-independent)', () => {
@@ -157,10 +163,26 @@ describe('credential storage', () => {
       expect(calls[0]![0]).toBe('secret-tool');
       expect(calls[0]![1]).toEqual(['--version']);
       expect(calls[1]![0]).toBe('secret-tool');
-      expect(calls[1]![1]).toEqual(['store', '--label', 'agent-presence', 'service', 'agent-presence', 'account', 'token']);
+      expect(calls[1]![1]).toEqual([
+        'store',
+        '--label',
+        'agent-presence',
+        'service',
+        'agent-presence',
+        'account',
+        'token'
+      ]);
       expect(calls[1]![2]).toEqual({ input: 'my-token' });
       expect(calls[2]![0]).toBe('secret-tool');
-      expect(calls[2]![1]).toEqual(['store', '--label', 'agent-presence', 'service', 'agent-presence', 'account', 'slotId']);
+      expect(calls[2]![1]).toEqual([
+        'store',
+        '--label',
+        'agent-presence',
+        'service',
+        'agent-presence',
+        'account',
+        'slotId'
+      ]);
       expect(calls[2]![2]).toEqual({ input: 'my-slot' });
     });
 
@@ -195,9 +217,7 @@ describe('credential storage', () => {
     it('uses configSlotId fallback when env token is set but no env slotId and secret-tool has no slotId', async () => {
       process.env.AGENT_PRESENCE_TOKEN = 'env-tok';
 
-      execFileMock
-        .mockImplementationOnce(cbResolve('1.0'))
-        .mockImplementationOnce(cbReject('not found'));
+      execFileMock.mockImplementationOnce(cbResolve('1.0')).mockImplementationOnce(cbReject('not found'));
 
       const cred = await readCredential('config-slot');
       expect(cred).toEqual({ token: 'env-tok', slotId: 'config-slot' });
@@ -237,9 +257,27 @@ describe('credential storage', () => {
       expect(execFileMock).toHaveBeenCalledTimes(2);
       const calls = execFileMock.mock.calls;
       expect(calls[0]![0]).toBe('security');
-      expect(calls[0]![1]).toEqual(['add-generic-password', '-U', '-s', 'agent-signature:l-garyyang', '-a', 'token', '-w', 'mytok']);
+      expect(calls[0]![1]).toEqual([
+        'add-generic-password',
+        '-U',
+        '-s',
+        'agent-signature:l-garyyang',
+        '-a',
+        'token',
+        '-w',
+        'mytok'
+      ]);
       expect(calls[1]![0]).toBe('security');
-      expect(calls[1]![1]).toEqual(['add-generic-password', '-U', '-s', 'agent-signature:l-garyyang', '-a', 'slotId', '-w', 'myslot']);
+      expect(calls[1]![1]).toEqual([
+        'add-generic-password',
+        '-U',
+        '-s',
+        'agent-signature:l-garyyang',
+        '-a',
+        'slotId',
+        '-w',
+        'myslot'
+      ]);
     });
 
     it('deleteCredential clears via security CLI on macOS', async () => {

@@ -218,8 +218,12 @@ module.exports = async function (request, context) {
 
     logRequest('GET', `/api/faas/${faasId}`, response.status, startedAt, 'ok');
     const inline = isRecord(parsed) && isRecord(parsed.inline) ? parsed.inline : undefined;
-    const title = inline && isRecord(inline.i18n_title) && typeof inline.i18n_title.zh_cn === 'string' ? inline.i18n_title.zh_cn : undefined;
-    const expireStrategy = isRecord(parsed) && typeof parsed.expire_strategy === 'string' ? parsed.expire_strategy : undefined;
+    const title =
+      inline && isRecord(inline.i18n_title) && typeof inline.i18n_title.zh_cn === 'string'
+        ? inline.i18n_title.zh_cn
+        : undefined;
+    const expireStrategy =
+      isRecord(parsed) && typeof parsed.expire_strategy === 'string' ? parsed.expire_strategy : undefined;
     return { title, expireStrategy, raw: parsed };
   }
 

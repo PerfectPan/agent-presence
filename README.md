@@ -17,7 +17,7 @@ Codex / Claude Code / Gemini CLI / opencode / Pi / dsh
 
 ## Install
 
-macOS and Linux only — Windows exits with a clear error. macOS uses Keychain and installs a LaunchAgent power watcher; Linux uses libsecret and relies on TTL pruning instead of a watcher.
+Requires Node.js 22 or newer. macOS and Linux only — Windows exits with a clear error. macOS uses Keychain and installs a LaunchAgent power watcher; Linux uses libsecret and relies on TTL pruning instead of a watcher.
 
 ```bash
 pnpm add -g @rivus/agent-presence
@@ -40,7 +40,7 @@ From a local checkout:
 
 ```bash
 corepack enable
-pnpm install --frozen-lockfile --ignore-scripts
+pnpm install --frozen-lockfile
 pnpm run build
 pnpm link --global
 agent-presence setup

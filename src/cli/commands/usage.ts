@@ -17,9 +17,7 @@ export async function printUsage(args: string[]): Promise<void> {
   const explicitDays = readDays(optionValue(args, '--days'));
   const windowDays = explicitDays !== undefined ? [explicitDays] : [1, 7];
 
-  const windows = await Promise.all(
-    windowDays.map((days) => collectWindowUsage({ days, now, pricing, sources }))
-  );
+  const windows = await Promise.all(windowDays.map((days) => collectWindowUsage({ days, now, pricing, sources })));
 
   if (hasFlag(args, '--json')) {
     const payload = windowDays.map((days, index) => ({ days, ...windows[index] }));
@@ -66,10 +64,7 @@ export function renderUsageTable(windowDays: number[], windows: WindowUsage[]): 
     const cells = [source];
     for (const window of windows) {
       const group = window.bySource.find((entry) => entry.source === source);
-      cells.push(
-        group ? formatTokens(group.totalTokens) : '0',
-        group ? formatCost(group.costUsd) : 'n/a'
-      );
+      cells.push(group ? formatTokens(group.totalTokens) : '0', group ? formatCost(group.costUsd) : 'n/a');
     }
     rows.push(cells);
   }
@@ -110,7 +105,10 @@ function columnWidths(rows: string[][]): number[] {
 }
 
 function formatRow(row: string[], widths: number[]): string {
-  return row.map((cell, index) => cell.padEnd(widths[index])).join('  ').trimEnd();
+  return row
+    .map((cell, index) => cell.padEnd(widths[index] ?? 0))
+    .join('  ')
+    .trimEnd();
 }
 
 function divider(widths: number[]): string {

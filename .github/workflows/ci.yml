@@ -15,16 +15,19 @@ jobs:
         os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
 
-      - uses: pnpm/action-setup@v6
-
-      - uses: actions/setup-node@v6
+      # Installs the pnpm from `packageManager` and the Node.js major in
+      # `.node-version`, restores the pnpm store cache, and runs
+      # `pnpm install --frozen-lockfile`. Only the build scripts allowed in
+      # pnpm-workspace.yaml run.
+      - uses: pnpm/setup@v3
         with:
-          node-version: '24'
-          cache: pnpm
+          node-version-file: .node-version
+          cache: true
+          require-lockfile: true
 
       - name: Install libsecret (Linux)
         if: runner.os == 'Linux'
@@ -33,11 +36,18 @@ jobs:
           sudo apt-get install -y -qq gnome-keyring dbus-x11 libsecret-tools
           echo "secret-tool path:" && which secret-tool || echo "  NOT FOUND"
 
-      - run: pnpm install --frozen-lockfile --ignore-scripts
+      - run: pnpm format:check
 
       - run: pnpm test
 
       - run: pnpm run typecheck
+
+      # Type-aware oxlint also reports TypeScript errors through tsgolint. The
+      # docs site's modules import `astro:content`, whose types `astro sync`
+      # generates into site/.astro/.
+      - run: pnpm -C site run docs:sync
+
+      - run: pnpm lint
 
       - run: pnpm run build
 

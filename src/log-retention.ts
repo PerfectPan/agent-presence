@@ -120,10 +120,7 @@ async function inspectExistingLock(path: string): Promise<OwnedLogLock | 'foreig
       return 'foreign';
     }
     return {
-      state:
-        Date.now() - metadata.mtimeMs > LOG_LOCK_STALE_MS && !isProcessAlive(ownerPid)
-          ? 'stale'
-          : 'active',
+      state: Date.now() - metadata.mtimeMs > LOG_LOCK_STALE_MS && !isProcessAlive(ownerPid) ? 'stale' : 'active',
       token: contents
     };
   } catch (error) {
@@ -196,7 +193,7 @@ function isProcessAlive(pid: number): boolean {
 
 async function removeOwnedLock(path: string, token: string): Promise<void> {
   try {
-    if (await readFile(path, 'utf8') === token) {
+    if ((await readFile(path, 'utf8')) === token) {
       await rm(path, { force: true });
     }
   } catch {

@@ -31,7 +31,9 @@ export async function hasLegacyHomeToMigrate(): Promise<boolean> {
   return (await entriesNeedingMigration(legacyHome, defaultHome)).length > 0;
 }
 
-export async function migrateLegacyHome(options: { confirm: () => Promise<boolean> }): Promise<LegacyHomeMigrationResult> {
+export async function migrateLegacyHome(options: {
+  confirm: () => Promise<boolean>;
+}): Promise<LegacyHomeMigrationResult> {
   const from = getLegacyHomeDir();
   const to = getDefaultHomeDir();
   if (!(await hasLegacyHomeToMigrate())) {

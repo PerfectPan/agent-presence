@@ -50,8 +50,18 @@ describe('resolvePricing', () => {
       cacheWrite1h: 20,
       cacheRead: 1
     });
-    expect(resolvePricing('DeepSeek-V4-Pro')).toEqual({ input: 0.435, output: 0.87, cacheWrite: 0, cacheRead: 0.003625 });
-    expect(resolvePricing('Gemini-3-Flash-Preview')).toEqual({ input: 0.5, output: 3, cacheWrite: 0.5, cacheRead: 0.05 });
+    expect(resolvePricing('DeepSeek-V4-Pro')).toEqual({
+      input: 0.435,
+      output: 0.87,
+      cacheWrite: 0,
+      cacheRead: 0.003625
+    });
+    expect(resolvePricing('Gemini-3-Flash-Preview')).toEqual({
+      input: 0.5,
+      output: 3,
+      cacheWrite: 0.5,
+      cacheRead: 0.05
+    });
   });
 
   it('uses exact LiteLLM prices for the current Codex and Claude model ids', () => {

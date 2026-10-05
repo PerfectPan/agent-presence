@@ -4,15 +4,35 @@
  * the clipboard. Paste it to the agent to tune that exact element. */
 (() => {
   const host = location.hostname;
-  if (host !== 'localhost' && host !== '127.0.0.1') return;
-  if (window.__apGrab) return;
+  if (host !== 'localhost' && host !== '127.0.0.1') {
+    return;
+  }
+  if (window.__apGrab) {
+    return;
+  }
   window.__apGrab = true;
 
   const PROPS = [
-    'color', 'background-color', 'border-top-width', 'border-style', 'border-color',
-    'border-radius', 'font-family', 'font-size', 'font-weight', 'line-height',
-    'letter-spacing', 'padding', 'margin', 'box-shadow', 'display', 'gap',
-    'width', 'height', 'text-align', 'opacity',
+    'color',
+    'background-color',
+    'border-top-width',
+    'border-style',
+    'border-color',
+    'border-radius',
+    'font-family',
+    'font-size',
+    'font-weight',
+    'line-height',
+    'letter-spacing',
+    'padding',
+    'margin',
+    'box-shadow',
+    'display',
+    'gap',
+    'width',
+    'height',
+    'text-align',
+    'opacity'
   ];
 
   const overlay = document.createElement('div');
@@ -33,46 +53,80 @@
   addEventListener('DOMContentLoaded', () => {
     document.body.append(overlay, hint, toast);
   });
-  if (document.body) document.body.append(overlay, hint, toast);
+  if (document.body) {
+    document.body.append(overlay, hint, toast);
+  }
 
   let target = null;
   const ignore = (el) => el === overlay || el === hint || el === toast;
 
-  addEventListener('mousemove', (e) => {
-    if (!e.altKey) { overlay.style.display = 'none'; target = null; hint.style.opacity = '.55'; return; }
-    hint.style.opacity = '1';
-    const el = document.elementFromPoint(e.clientX, e.clientY);
-    if (!el || ignore(el)) return;
-    target = el;
-    const r = el.getBoundingClientRect();
-    overlay.style.display = 'block';
-    overlay.style.left = r.left + 'px';
-    overlay.style.top = r.top + 'px';
-    overlay.style.width = r.width + 'px';
-    overlay.style.height = r.height + 'px';
-  }, true);
+  addEventListener(
+    'mousemove',
+    (e) => {
+      if (!e.altKey) {
+        overlay.style.display = 'none';
+        target = null;
+        hint.style.opacity = '.55';
+        return;
+      }
+      hint.style.opacity = '1';
+      const el = document.elementFromPoint(e.clientX, e.clientY);
+      if (!el || ignore(el)) {
+        return;
+      }
+      target = el;
+      const r = el.getBoundingClientRect();
+      overlay.style.display = 'block';
+      overlay.style.left = r.left + 'px';
+      overlay.style.top = r.top + 'px';
+      overlay.style.width = r.width + 'px';
+      overlay.style.height = r.height + 'px';
+    },
+    true
+  );
 
-  addEventListener('keyup', (e) => { if (e.key === 'Alt') { overlay.style.display = 'none'; hint.style.opacity = '.55'; } });
+  addEventListener('keyup', (e) => {
+    if (e.key === 'Alt') {
+      overlay.style.display = 'none';
+      hint.style.opacity = '.55';
+    }
+  });
 
-  addEventListener('click', (e) => {
-    if (!e.altKey) return;
-    const el = target || document.elementFromPoint(e.clientX, e.clientY);
-    if (!el || ignore(el)) return;
-    e.preventDefault();
-    e.stopPropagation();
-    copy(el);
-  }, true);
+  addEventListener(
+    'click',
+    (e) => {
+      if (!e.altKey) {
+        return;
+      }
+      const el = target || document.elementFromPoint(e.clientX, e.clientY);
+      if (!el || ignore(el)) {
+        return;
+      }
+      e.preventDefault();
+      e.stopPropagation();
+      void copy(el);
+    },
+    true
+  );
 
   function cssPath(el) {
     const parts = [];
     let n = el;
     while (n && n.nodeType === 1 && n.tagName !== 'BODY' && parts.length < 4) {
       let seg = n.tagName.toLowerCase();
-      if (n.id) { seg = '#' + n.id; parts.unshift(seg); break; }
-      const cls = (n.className && n.className.toString().trim().split(/\s+/).slice(0, 2).join('.'));
-      if (cls) seg += '.' + cls;
+      if (n.id) {
+        seg = '#' + n.id;
+        parts.unshift(seg);
+        break;
+      }
+      const cls = n.className && n.className.toString().trim().split(/\s+/).slice(0, 2).join('.');
+      if (cls) {
+        seg += '.' + cls;
+      }
       const sibs = n.parentElement ? [...n.parentElement.children].filter((c) => c.tagName === n.tagName) : [];
-      if (sibs.length > 1) seg += `:nth-of-type(${sibs.indexOf(n) + 1})`;
+      if (sibs.length > 1) {
+        seg += `:nth-of-type(${sibs.indexOf(n) + 1})`;
+      }
       parts.unshift(seg);
       n = n.parentElement;
     }
@@ -90,7 +144,8 @@
       `- selector: \`${cssPath(el)}\`\n` +
       `- tag: <${el.tagName.toLowerCase()}>` +
       (el.id ? ` id="${el.id}"` : '') +
-      (el.className ? ` class="${el.className.toString().trim()}"` : '') + `\n` +
+      (el.className ? ` class="${el.className.toString().trim()}"` : '') +
+      `\n` +
       `- box: ${Math.round(r.width)}×${Math.round(r.height)} @ (${Math.round(r.left)}, ${Math.round(r.top)})\n` +
       (text ? `- text: "${text}"\n` : '') +
       `- computed styles:\n${styles}\n`;

@@ -17,7 +17,7 @@ Codex / Claude Code / Gemini CLI / opencode / Pi / dsh
 
 ## 安装
 
-仅支持 macOS 和 Linux —— Windows 会直接报错退出。macOS 用 Keychain 存凭据并安装 LaunchAgent 电源 watcher；Linux 用 libsecret，并以 TTL 清理代替 watcher。
+需要 Node.js 22 或更高版本。仅支持 macOS 和 Linux —— Windows 会直接报错退出。macOS 用 Keychain 存凭据并安装 LaunchAgent 电源 watcher；Linux 用 libsecret，并以 TTL 清理代替 watcher。
 
 ```bash
 pnpm add -g @rivus/agent-presence
@@ -40,7 +40,7 @@ npx --yes --registry=https://registry.npmjs.org @rivus/agent-presence@latest set
 
 ```bash
 corepack enable
-pnpm install --frozen-lockfile --ignore-scripts
+pnpm install --frozen-lockfile
 pnpm run build
 pnpm link --global
 agent-presence setup

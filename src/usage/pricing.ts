@@ -65,6 +65,7 @@ export function resolvePricing(model: string, overrides: PricingOverrides = {}):
 
   const merged = overrideKey ? normalizedOverrides[bestKey] : table[bestKey];
   if (
+    merged === undefined ||
     merged.input === undefined ||
     merged.output === undefined ||
     merged.cacheWrite === undefined ||
@@ -126,10 +127,7 @@ export function resolveRecordCost(record: UsageRecord, overrides: PricingOverrid
   if (pricing === null) {
     return null;
   }
-  const cacheWrite1hTokens = Math.min(
-    record.cacheWriteTokens,
-    Math.max(0, record.cacheWrite1hTokens ?? 0)
-  );
+  const cacheWrite1hTokens = Math.min(record.cacheWriteTokens, Math.max(0, record.cacheWrite1hTokens ?? 0));
   const cacheWrite5mTokens = record.cacheWriteTokens - cacheWrite1hTokens;
   const bucketCost =
     (record.inputTokens * pricing.input +

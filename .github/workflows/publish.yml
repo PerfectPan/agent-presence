@@ -16,31 +16,44 @@ jobs:
   release:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
+          # changelog-github looks up the commit that added each changeset.
+          fetch-depth: 0
           persist-credentials: false
 
-      - uses: pnpm/action-setup@v6
-
-      - uses: actions/setup-node@v6
+      # Installs the pnpm from `packageManager` and the Node.js major in
+      # `.node-version`, and runs `pnpm install --frozen-lockfile`. This job
+      # skips the store cache.
+      - uses: pnpm/setup@v3
         with:
-          node-version: '24'
-          registry-url: 'https://registry.npmjs.org'
-          cache: pnpm
+          node-version-file: .node-version
+          require-lockfile: true
 
-      - run: pnpm install --frozen-lockfile --ignore-scripts
       - run: pnpm test
       - run: pnpm run typecheck
       - run: pnpm run build
 
-      - name: Create Release Pull Request
+      # With pending changesets, opens or updates the release PR. The PR is
+      # opened with GITHUB_TOKEN, and GitHub does not start workflows for events
+      # that token causes, so CI does not run on it by itself: before merging,
+      # close and reopen it as a person (`gh pr close <n> && gh pr reopen <n>`)
+      # or push an empty commit to its branch.
+      #
+      # Without pending changesets, `pnpm release` runs `changeset publish`,
+      # which runs `pnpm publish` for an unpublished version: pnpm sends it to
+      # publishConfig.registry with an npm trusted-publishing (OIDC) token from
+      # `id-token: write` and attaches provenance itself, so no .npmrc or npm
+      # token is needed. The action then pushes the tag and creates the GitHub
+      # Release. Commits and tags go through the GitHub API, so they are signed.
+      - name: Create release pull request or publish
         id: changesets
-        uses: changesets/action@v1
+        uses: changesets/action@v2
         with:
-          version: pnpm run version
-          publish: pnpm run release
-          title: 'chore: release package'
-          commit: 'chore: release package'
-          commitMode: github-api
+          version-script: pnpm version-packages
+          publish-script: pnpm release
+          commit-message: 'chore(release): version packages'
+          pr-title: 'chore(release): version packages'
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # changelog-github reads PR titles and authors through the API
+          GITHUB_TOKEN: ${{ github.token }}

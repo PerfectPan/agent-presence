@@ -3,7 +3,7 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-const publishValueMock = vi.hoisted(() => vi.fn());
+const publishValueMock = vi.hoisted(() => vi.fn<(value: string) => Promise<void>>());
 
 vi.mock('../src/providers/registry.js', () => ({
   createProvider: () => ({
@@ -13,7 +13,9 @@ vi.mock('../src/providers/registry.js', () => ({
 }));
 
 vi.mock('../src/secret.js', () => ({
-  readCredential: vi.fn().mockResolvedValue({ token: 'test-token', slotId: 'test-slot' })
+  readCredential: vi
+    .fn<typeof import('../src/secret.js').readCredential>()
+    .mockResolvedValue({ token: 'test-token', slotId: 'test-slot' })
 }));
 
 describe('flush command', () => {

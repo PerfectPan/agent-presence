@@ -24,11 +24,7 @@ describe('renderPresence', () => {
 
   it('renders multiple agents grouped by source in first-seen order', () => {
     expect(
-      renderPresence([
-        session('thread-1', 'codex'),
-        session('thread-2', 'claude'),
-        session('thread-3', 'codex')
-      ])
+      renderPresence([session('thread-1', 'codex'), session('thread-2', 'claude'), session('thread-3', 'codex')])
     ).toBe('3 个 AI 牛马正在搬砖 | codex 2 · claude 1');
   });
 
@@ -63,9 +59,9 @@ describe('renderPresence', () => {
   });
 
   it('collapses a referenced-but-unavailable window to empty', () => {
-    expect(
-      renderPresence([session('thread-1', 'codex')], { one: '{details}{usage_30d}' }, { usage_1d: '900K' })
-    ).toBe('codex 1');
+    expect(renderPresence([session('thread-1', 'codex')], { one: '{details}{usage_30d}' }, { usage_1d: '900K' })).toBe(
+      'codex 1'
+    );
   });
 
   it('omits the badge entirely when no vars and no auto-append', () => {

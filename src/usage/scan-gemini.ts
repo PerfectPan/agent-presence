@@ -1,4 +1,4 @@
-import { type Dirent } from 'node:fs';
+import type { Dirent } from 'node:fs';
 import { readdir, readFile, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
@@ -175,7 +175,7 @@ function extractRecord(
       // `tokens.tool` (toolUsePromptTokenCount) is intentionally not mapped: it
       // has no distinct pricing bucket and is a small, usually-zero component,
       // so the four buckets can slightly undercount Gemini's own `tokens.total`
-      // for tool-heavy turns. Documented tradeoff (see rfcs/source-usage.md).
+      // for tool-heavy turns. Documented tradeoff (see docs/architecture.md).
       costUsd: null
     },
     id: asString(message.id) || undefined

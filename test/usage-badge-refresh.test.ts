@@ -38,9 +38,9 @@ describe('refreshUsageBadgeCache', () => {
       statePath
     );
 
-    const codexScan = vi.fn(async () => [record('codex', 9_999, 99)]);
-    const claudeScan = vi.fn(async () => [record('claude', 9_999, 99)]);
-    const opencodeScan = vi.fn(async () => [record('opencode', 50, 0.5)]);
+    const codexScan = vi.fn<BillableSource['scanUsage']>(async () => [record('codex', 9_999, 99)]);
+    const claudeScan = vi.fn<BillableSource['scanUsage']>(async () => [record('claude', 9_999, 99)]);
+    const opencodeScan = vi.fn<BillableSource['scanUsage']>(async () => [record('opencode', 50, 0.5)]);
     const sources: BillableSource[] = [
       { id: 'codex', scanUsage: codexScan },
       { id: 'claude', scanUsage: claudeScan },
@@ -87,8 +87,8 @@ describe('refreshUsageBadgeCache', () => {
       statePath
     );
 
-    const codexScan = vi.fn(async () => [record('codex', 120, 1.2)]);
-    const claudeScan = vi.fn(async () => [record('claude', 230, 2.3)]);
+    const codexScan = vi.fn<BillableSource['scanUsage']>(async () => [record('codex', 120, 1.2)]);
+    const claudeScan = vi.fn<BillableSource['scanUsage']>(async () => [record('claude', 230, 2.3)]);
     await refreshUsageBadgeCache({
       statePath,
       now: NOW,
@@ -132,14 +132,14 @@ describe('refreshUsageBadgeCache', () => {
       statePath
     );
 
-    const opencodeScan = vi.fn(async () => [record('opencode', 50, 0.5)]);
+    const opencodeScan = vi.fn<BillableSource['scanUsage']>(async () => [record('opencode', 50, 0.5)]);
     await refreshUsageBadgeCache({
       statePath,
       now: NOW,
       windows: [1, 7],
       sources: [
-        { id: 'codex', scanUsage: vi.fn(async () => []) },
-        { id: 'claude', scanUsage: vi.fn(async () => []) },
+        { id: 'codex', scanUsage: vi.fn<BillableSource['scanUsage']>(async () => []) },
+        { id: 'claude', scanUsage: vi.fn<BillableSource['scanUsage']>(async () => []) },
         { id: 'opencode', scanUsage: opencodeScan }
       ],
       source: 'opencode'
@@ -178,8 +178,8 @@ describe('refreshUsageBadgeCache', () => {
       statePath
     );
 
-    const codexScan = vi.fn(async () => [record('codex', 20, 0.2)]);
-    const claudeScan = vi.fn(async () => [record('claude', 30, 0.3)]);
+    const codexScan = vi.fn<BillableSource['scanUsage']>(async () => [record('codex', 20, 0.2)]);
+    const claudeScan = vi.fn<BillableSource['scanUsage']>(async () => [record('claude', 30, 0.3)]);
     await refreshUsageBadgeCache({
       statePath,
       now: NOW,
@@ -226,9 +226,9 @@ describe('refreshUsageBadgeCache', () => {
       statePath
     );
 
-    const codexScan = vi.fn(async () => [record('codex', 20, 0.2)]);
-    const claudeScan = vi.fn(async () => [record('claude', 30, 0.3)]);
-    const opencodeScan = vi.fn(async () => []);
+    const codexScan = vi.fn<BillableSource['scanUsage']>(async () => [record('codex', 20, 0.2)]);
+    const claudeScan = vi.fn<BillableSource['scanUsage']>(async () => [record('claude', 30, 0.3)]);
+    const opencodeScan = vi.fn<BillableSource['scanUsage']>(async () => []);
     const sources: BillableSource[] = [
       { id: 'codex', scanUsage: codexScan },
       { id: 'claude', scanUsage: claudeScan },
@@ -273,8 +273,8 @@ describe('refreshUsageBadgeCache', () => {
       statePath
     );
 
-    const codexScan = vi.fn(async () => [record('codex', 20, 0.2)]);
-    const claudeScan = vi.fn(async () => {
+    const codexScan = vi.fn<BillableSource['scanUsage']>(async () => [record('codex', 20, 0.2)]);
+    const claudeScan = vi.fn<BillableSource['scanUsage']>(async () => {
       throw new Error('temporarily unreadable');
     });
     await refreshUsageBadgeCache({
@@ -322,7 +322,7 @@ describe('refreshUsageBadgeCache', () => {
 
     const oldScanStarted = deferred();
     const releaseOldScan = deferred();
-    const codexScan = vi.fn(async ({ untilMs }: { untilMs: number }) => {
+    const codexScan = vi.fn<BillableSource['scanUsage']>(async ({ untilMs }: { untilMs: number }) => {
       if (untilMs === olderBoundary) {
         oldScanStarted.resolve();
         await releaseOldScan.promise;
@@ -388,9 +388,9 @@ describe('refreshUsageBadgeCache', () => {
       statePath
     );
 
-    const codexScan = vi.fn(async () => [record('codex', 20, 0.2)]);
-    const claudeScan = vi.fn(async () => [record('claude', 30, 0.3)]);
-    const opencodeScan = vi.fn(async () => [] as UsageRecord[]);
+    const codexScan = vi.fn<BillableSource['scanUsage']>(async () => [record('codex', 20, 0.2)]);
+    const claudeScan = vi.fn<BillableSource['scanUsage']>(async () => [record('claude', 30, 0.3)]);
+    const opencodeScan = vi.fn<BillableSource['scanUsage']>(async () => [] as UsageRecord[]);
     const sources: BillableSource[] = [
       { id: 'codex', scanUsage: codexScan },
       { id: 'claude', scanUsage: claudeScan },

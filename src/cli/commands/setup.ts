@@ -11,7 +11,16 @@ import { LINUX_WATCHER_SKIP_MESSAGE, runSetupScripts } from '../../setup.js';
 import { hasFlag, optionValue } from '../args.js';
 import { hasCredential } from '../credential.js';
 import { MAGIC_TOKEN_HELP, publishMagicBuilderFaas } from '../magic-builder-setup.js';
-import { createSpinner, finishOutro, isInteractiveTerminal, promptConfirm, promptText, showInfo, showNote, startIntro } from '../ui.js';
+import {
+  createSpinner,
+  finishOutro,
+  isInteractiveTerminal,
+  promptConfirm,
+  promptText,
+  showInfo,
+  showNote,
+  startIntro
+} from '../ui.js';
 import { login } from './login.js';
 import { resolveSignatureUrl } from './url.js';
 
@@ -33,7 +42,8 @@ export async function setup(args: string[]): Promise<void> {
         promptConfirm('Move existing Agent Presence files from ~/.codex/agent-signature to ~/.agent-presence?')
     });
     if (migration.status === 'migrated') {
-      const skipped = migration.skipped.length > 0 ? `; kept existing destination files: ${migration.skipped.join(', ')}` : '';
+      const skipped =
+        migration.skipped.length > 0 ? `; kept existing destination files: ${migration.skipped.join(', ')}` : '';
       const removed = migration.removed.length > 0 ? `; removed legacy files: ${migration.removed.join(', ')}` : '';
       showInfo(`migrated local files: ${migration.copied.join(', ') || 'none'}${skipped}${removed}`);
     } else if (migration.status === 'skipped') {
@@ -96,7 +106,9 @@ export async function setup(args: string[]): Promise<void> {
         if (promptShown) {
           showInfo('magic-builder token saved to OS keyring');
         }
-        showInfo(`magic-builder token source: ${result.tokenSource}${result.tokenPath ? ` (${result.tokenPath})` : ''}`);
+        showInfo(
+          `magic-builder token source: ${result.tokenSource}${result.tokenPath ? ` (${result.tokenPath})` : ''}`
+        );
         showInfo(`magic-builder record_id: ${result.recordId}`);
         showInfo(result.isUpdate ? 'magic-builder FaaS updated' : 'magic-builder FaaS published');
         showNote(result.url, 'Signature URL');

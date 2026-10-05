@@ -1,9 +1,17 @@
 import { describe, expect, it, vi } from 'vitest';
-import { DEFAULT_SETUP_SCRIPT_NAMES, DEFAULT_UNINSTALL_SCRIPT_NAMES, LINUX_WATCHER_SKIP_MESSAGE, platformSetupScriptNames, platformUninstallScriptNames, runSetupScripts, runUninstallScripts } from '../src/setup.js';
+import {
+  DEFAULT_SETUP_SCRIPT_NAMES,
+  DEFAULT_UNINSTALL_SCRIPT_NAMES,
+  LINUX_WATCHER_SKIP_MESSAGE,
+  platformSetupScriptNames,
+  platformUninstallScriptNames,
+  runSetupScripts,
+  runUninstallScripts
+} from '../src/setup.js';
 
 describe('runSetupScripts', () => {
   it('runs every local installer script in setup order', async () => {
-    const runner = vi.fn().mockResolvedValue(undefined);
+    const runner = vi.fn<(scriptPath: string) => Promise<void>>().mockResolvedValue(undefined);
 
     const results = await runSetupScripts({
       runner,
@@ -34,7 +42,7 @@ describe('runSetupScripts', () => {
   });
 
   it('runs every local uninstaller script in uninstall order', async () => {
-    const runner = vi.fn().mockResolvedValue(undefined);
+    const runner = vi.fn<(scriptPath: string) => Promise<void>>().mockResolvedValue(undefined);
 
     const results = await runUninstallScripts({
       runner,
@@ -120,7 +128,7 @@ describe('platform-aware script filtering', () => {
   });
 
   it('skips watcher when running setup on Linux (via runSetupScripts)', async () => {
-    const runner = vi.fn().mockResolvedValue(undefined);
+    const runner = vi.fn<(scriptPath: string) => Promise<void>>().mockResolvedValue(undefined);
 
     const results = await runSetupScripts({
       runner,
