@@ -41,7 +41,7 @@ export interface SourcePlugin {
    * usage in the window. A source that implements it is billable; one that omits
    * it contributes presence only. This is after-the-fact and read-only, and is
    * only invoked from the `usage` command and the signature-badge refresh —
-   * never from the hook write path. See `rfcs/source-usage.md`.
+   * never from the hook write path. See `docs/architecture.md`.
    */
   scanUsage?(window: ScanWindow): Promise<UsageRecord[]>;
 }

@@ -49,7 +49,9 @@
   },
   "files": [
     "dist",
-    "docs",
+    "docs/architecture.md",
+    "docs/assets",
+    "!docs/README.md",
     "skills",
     "README.md",
     "README.zh-CN.md"

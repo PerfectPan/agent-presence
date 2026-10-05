@@ -1,6 +1,6 @@
 /**
  * A usage source id. Once billability became a capability of the merged source
- * table (see `rfcs/source-usage.md`), the set is open: any built-in or JS
+ * table (see `docs/architecture.md`), the set is open: any built-in or JS
  * `handler` source that implements `scanUsage` is billable, so this is a plain
  * string rather than the former `'claude' | 'codex' | 'pi'` union.
  */

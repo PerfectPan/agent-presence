@@ -292,7 +292,7 @@ async function resolveHandlerSpecifier(source: string, handler: string): Promise
     // A writable parent dir lets another user swap the (otherwise fine) file, so
     // narrow the swap window by requiring the directory be owned and not
     // group/world-writable too. This does not fully close the check-to-import
-    // TOCTOU gap (see the RFC), but removes the easy directory-swap vector.
+    // TOCTOU gap (see docs/architecture.md), but removes the easy directory-swap vector.
     const parent = lstatSync(dirname(handler));
     if (typeof process.getuid === 'function' && parent.uid !== process.getuid()) {
       await writeLog(`source refused source=${source} reason=handler-dir-not-owned`);
