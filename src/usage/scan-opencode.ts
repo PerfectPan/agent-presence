@@ -26,8 +26,9 @@ function defaultOpenCodeDir(): string {
  * cost, so we trust it (like Pi) rather than repricing — even a `0` cost.
  *
  * Preference order, all read-only and fail-soft:
- * 1. SQLite via node's builtin `node:sqlite` (Node >=22). Imported dynamically
- *    so a Node <22 runtime — `engines.node` allows `>=20` — never fails at load.
+ * 1. SQLite via node's builtin `node:sqlite`, which Node.js 22.0-22.12 only
+ *    exposes behind `--experimental-sqlite` while `engines.node` allows `>=22`.
+ *    Imported dynamically so such a runtime never fails at load.
  * 2. Legacy (<1.2) JSON at `<dir>/storage/message/{sessionId}/*.json`, same
  *    per-message shape.
  * 3. Nothing present -> `[]`.
@@ -53,7 +54,7 @@ async function scanSqlite(dbPath: string, options: ScanOptions): Promise<UsageRe
   try {
     ({ DatabaseSync } = await import('node:sqlite'));
   } catch {
-    return null; // Node <22 or sqlite disabled — try the legacy JSON store.
+    return null; // Node.js <22.13 without the flag, or sqlite disabled — try the legacy JSON store.
   }
 
   let db: import('node:sqlite').DatabaseSync;
