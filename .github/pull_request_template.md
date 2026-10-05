@@ -14,7 +14,7 @@ Allowed types: `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `buil
 
 - [ ] Repository checks: `gh repo-checks repository`
 - [ ] PR title and description: `gh repo-checks pr-title "<title>"`, `gh repo-checks pr-body <body-file>`
-- [ ] Install: `pnpm install --frozen-lockfile --ignore-scripts`
+- [ ] Install: `pnpm install --frozen-lockfile`
 - [ ] Test: `pnpm test`
 - [ ] Typecheck: `pnpm run typecheck`
 - [ ] Build: `pnpm run build`

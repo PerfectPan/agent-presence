@@ -624,7 +624,7 @@ remote value is wrong but local is correct      -> provider sync path bug or del
 
 ## Package And Release Safety
 
-The repository is managed with pnpm and pins the package manager through `packageManager`.
+The repository is managed with pnpm and pins the package manager through `packageManager`; CI and the release job install that pnpm and the Node.js major in `.node-version` through `pnpm/setup`.
 
 Supply-chain settings live in `pnpm-workspace.yaml`:
 
@@ -634,12 +634,12 @@ minimumReleaseAgeStrict: fail instead of falling back to too-new versions
 minimumReleaseAgeIgnoreMissingTime: require registry publish-time metadata
 blockExoticSubdeps: block transitive git or tarball URL dependencies
 strictDepBuilds: fail on unreviewed dependency build scripts
-pmOnFail: require the declared pnpm version
 engineStrict: enforce Node engine compatibility
 verifyDepsBeforeRun: do not auto-install before scripts
+allowBuilds: the only dependency build scripts that may run
 ```
 
-CI installs with a frozen pnpm lockfile and `--ignore-scripts`. Release uses Changesets plus npm Trusted Publishing, so the GitHub workflow gets an OIDC token and does not need an npm token secret.
+Every install runs the pnpm version in `packageManager`: another pnpm downloads it first (pnpm's default `pmOnFail`). CI installs with a frozen pnpm lockfile; dependency build scripts run only for packages `allowBuilds` sets to `true`. Release uses Changesets plus npm Trusted Publishing, so the GitHub workflow gets an OIDC token and does not need an npm token secret.
 
 ## Extension Points
 

@@ -4,7 +4,7 @@
 
 ```bash
 corepack enable
-pnpm install --frozen-lockfile --ignore-scripts
+pnpm install --frozen-lockfile
 gh extension install PerfectPan/gh-repo-checks
 ./scripts/install-git-hooks.sh
 pnpm test
@@ -12,6 +12,8 @@ pnpm run typecheck
 pnpm run build
 node dist/src/cli.js --help
 ```
+
+Use the Node.js major in `.node-version` (the current Active LTS line; CI reads the same file) and the pnpm version pinned in `packageManager` (pnpm 12). pnpm runs dependency build scripts only for packages listed in `allowBuilds` in `pnpm-workspace.yaml`; when an install fails with `ERR_PNPM_IGNORED_BUILDS`, add the package there with `true` or `false` and a comment saying why. The same file keeps `minimumReleaseAge: 1440` and the other supply-chain settings explicit. If an install fails with `ERR_PNPM_MINIMUM_RELEASE_AGE_VIOLATION`, pick an older version instead of lowering the setting. `site/` is a project of the root workspace and shares its lockfile and settings.
 
 The installer scripts (`pnpm run install:*` / `uninstall:*`) and `agent-presence setup` write to the real agent configs, Keychain, and LaunchAgents under your home directory. When trying them from a checkout, run them with `HOME="$(mktemp -d)"` unless you mean to change your own setup.
 
@@ -43,7 +45,7 @@ gh repo-checks pr-title "docs: update contributing guide"
 gh repo-checks pr-body pr-body.md
 
 # Install and CI gates:
-pnpm install --frozen-lockfile --ignore-scripts
+pnpm install --frozen-lockfile
 pnpm test
 pnpm run typecheck
 pnpm run build
@@ -166,7 +168,7 @@ The review checks come from [`PerfectPan/gh-repo-checks`](https://github.com/Per
 
 Run `gh repo-checks repository` locally before opening review. It does not replace the pnpm gates, but it catches missing template files, tracked local artifacts, obvious secrets, private paths, and drift between the GitHub PR and GitLab MR templates.
 
-Workflows reference actions by their latest major version tag, such as `actions/checkout@v7`, not by commit SHA. Workflow files copied from the project template take action upgrades from the template rather than local edits.
+Workflows reference actions by their latest major version tag, such as `actions/checkout@v7`, not by commit SHA. The runtime follows the current Node.js Active LTS major in `.node-version`, and moves to the next LTS line in one change when it starts. Workflow files copied from the project template take action upgrades from the template rather than local edits.
 
 ## Local Git Hooks
 

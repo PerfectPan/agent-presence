@@ -4,17 +4,25 @@ packages:
 
 # Supply-chain safety policy. Keep these explicit so dependency-risk changes are
 # reviewable in PRs instead of being hidden in a local package-manager default.
+
+# Keep pnpm's one-day delay for newly published dependencies. If an install
+# fails with ERR_PNPM_MINIMUM_RELEASE_AGE_VIOLATION, pick an older version
+# instead of lowering this.
 minimumReleaseAge: 1440
 minimumReleaseAgeStrict: true
 minimumReleaseAgeIgnoreMissingTime: false
 blockExoticSubdeps: true
 strictDepBuilds: true
-pmOnFail: error
 engineStrict: true
 verifyDepsBeforeRun: error
+# pmOnFail stays at pnpm's default, download: a pnpm whose version differs from
+# packageManager, such as a pnpm 12 that a build image ships (Vercel), downloads
+# and runs the pinned version. `error` fails those installs with
+# ERR_PNPM_BAD_PM_VERSION.
 
-# Build scripts explicitly allowed to run (required by strictDepBuilds). Used by
-# the docs site under site/ (esbuild also via vitest).
-onlyBuiltDependencies:
-  - esbuild
-  - sharp
+# pnpm runs no dependency build scripts unless listed here.
+allowBuilds:
+  # Its postinstall verifies the platform binary that Vite and Astro run.
+  esbuild: true
+  # Prebuilt @img/sharp-* binaries cover every CI, dev and Vercel platform; the script only matters for a source build.
+  sharp: false

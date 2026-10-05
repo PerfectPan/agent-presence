@@ -36,7 +36,7 @@ gh repo-checks pr-title "docs: update contributing guide"
 gh repo-checks pr-body pr-body.md
 
 # Install, then the CI gates:
-pnpm install --frozen-lockfile --ignore-scripts
+pnpm install --frozen-lockfile
 pnpm test
 pnpm run typecheck
 pnpm run build
