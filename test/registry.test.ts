@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vite-plus/test';
 import type { AppConfig } from '../src/config.js';
 import { createProvider, registeredProviderIds } from '../src/providers/registry.js';
 import {

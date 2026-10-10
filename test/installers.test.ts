@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vite-plus/test';
 import {
   PI_EXTENSION_FILE_NAME,
   PI_EXTENSION_MARKER,

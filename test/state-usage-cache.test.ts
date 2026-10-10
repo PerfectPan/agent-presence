@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vite-plus/test';
 import { createEmptyState, isSessionBoundaryEvent, normalizeState } from '../src/state.js';
 import type { PresenceState } from '../src/state.js';
 
