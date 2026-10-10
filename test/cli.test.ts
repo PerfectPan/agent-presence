@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vite-plus/test';
 import { hasAnyOption, hasFlag, optionValue, parseArgs } from '../src/cli/args.js';
 import { resolveHookContext } from '../src/cli/hook-context.js';
 import { assertMacOS, assertSupportedPlatform, isMacOS, isSupportedPlatform } from '../src/platform.js';

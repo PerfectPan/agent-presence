@@ -60,9 +60,9 @@ pnpm pack --dry-run
 
 Shared rules come from [`@perfectpan/lint-config`](https://github.com/PerfectPan/lint-config), installed as a git dependency pinned to a tag. This repository keeps only its own settings:
 
-- `.oxlintrc.json` extends the shared oxlint config (type-aware, warnings fail, `curly: all`, kebab-case file names, at most 1000 lines per non-test file) and ignores build output. It lints the docs site's scripts and `.astro` frontmatter too.
-- `oxfmt.config.ts` spreads the shared oxfmt options and keeps single quotes, the style the existing code used. It skips the files copied verbatim from the project template and the generated `CHANGELOG.md` and `src/usage/litellm-pricing.json`.
-- `tsconfig.json` extends the shared `node` tsconfig (strict, `noUncheckedIndexedAccess`, `verbatimModuleSyntax`) and adds only `types`, the output settings, and `include`; `tsconfig.build.json` narrows `include` for the build.
+- The `lint` block in `vite.config.ts` spreads the shared oxlint config (type-aware, warnings fail, `curly: all`, kebab-case file names, at most 1000 lines per non-test file) and ignores build output. It lints the docs site's scripts and `.astro` frontmatter too. `pnpm lint` runs it through Vite+ (`vp lint`).
+- The `fmt` block in `vite.config.ts` spreads the shared oxfmt options and keeps single quotes, the style the existing code used. It skips the files copied verbatim from the project template and the generated `CHANGELOG.md` and `src/usage/litellm-pricing.json`. `pnpm format` runs it through Vite+ (`vp fmt`).
+- `tsconfig.json` extends the shared `node` tsconfig (strict, `noUncheckedIndexedAccess`, `verbatimModuleSyntax`) and adds only `types`, the output settings, and `include`. `pnpm run typecheck` is `tsc -p tsconfig.json --noEmit`. `pnpm run build` is `vp pack`: one output file per source file, so `dist/src/**/*.js` and `dist/scripts/*.js` stay on the paths already-installed hooks call, and the two shipped JSON files are copied next to the modules that read them.
 
 Upgrade the shared rules by bumping the tag in `package.json`, then fix or explicitly override what the new release reports.
 
@@ -97,7 +97,7 @@ Trusted Publishing cannot be configured until the package exists on npm. To boot
 
 ### Pricing Snapshot
 
-`src/usage/litellm-pricing.json` is generated, not hand-edited. `pnpm run update-pricing` regenerates it from LiteLLM for the supported model allowlist in `scripts/update-pricing.mjs`; add a model id to that allowlist when a source starts recording it. `.github/workflows/update-pricing.yml` runs the same script weekly and opens the PR `chore(usage): update LiteLLM pricing snapshot` when prices drift. Like the release PR, it is opened with `GITHUB_TOKEN`, so close and reopen it before merging to get CI. The snapshot is generated output, so `oxfmt` skips it.
+`src/usage/litellm-pricing.json` is generated, not hand-edited. `pnpm run update-pricing` regenerates it from LiteLLM for the supported model allowlist in `scripts/update-pricing.mjs`; add a model id to that allowlist when a source starts recording it. `.github/workflows/update-pricing.yml` runs the same script weekly and opens the PR `chore(usage): update LiteLLM pricing snapshot` when prices drift. Like the release PR, it is opened with `GITHUB_TOKEN`, so close and reopen it before merging to get CI. The snapshot is generated output, so `vp fmt` skips it.
 
 ## SDD Workflow And Document Lifecycle
 

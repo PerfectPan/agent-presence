@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vite-plus/test';
 import { resolveClaudeHookContext } from '../src/hooks/claude.js';
 import { resolveCodexHookContext } from '../src/hooks/codex.js';
 import { mapOpenCodeEvent, resolveOpenCodeHookContext } from '../src/hooks/opencode.js';

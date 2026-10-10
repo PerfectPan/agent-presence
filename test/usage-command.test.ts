@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vite-plus/test';
 
 import { orderedSources, renderUsageTable } from '../src/cli/commands/usage.js';
 import type { SourceUsage, WindowUsage } from '../src/usage/index.js';

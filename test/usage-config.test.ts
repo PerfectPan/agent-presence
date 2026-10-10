@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vite-plus/test';
 import { usagePricingOverrides, usageShowInSignature, usageSignatureWindowDays } from '../src/config.js';
 
 const ENV_KEYS = ['AGENT_PRESENCE_USAGE_IN_SIGNATURE', 'AGENT_PRESENCE_USAGE_WINDOW_DAYS'];

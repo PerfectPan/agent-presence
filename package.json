@@ -18,7 +18,7 @@
     "agent-signature": "./dist/src/cli.js"
   },
   "scripts": {
-    "build": "rm -rf dist && tsc -p tsconfig.build.json && cp src/sources.default.json dist/src/sources.default.json && cp src/usage/litellm-pricing.json dist/src/usage/litellm-pricing.json && chmod +x dist/src/cli.js dist/scripts/*.js",
+    "build": "vp pack",
     "install:all-hooks": "pnpm run install:codex-hook && pnpm run install:claude-hook && pnpm run install:opencode-plugin && pnpm run install:gemini-hook && pnpm run install:pi-extension && pnpm run install:shutdown-watcher",
     "install:claude-hook": "node dist/scripts/install-claude-hook.js",
     "install:codex-hook": "node dist/scripts/install-codex-hook.js",
@@ -36,12 +36,12 @@
     "uninstall:pi-extension": "node dist/scripts/uninstall-pi-extension.js",
     "uninstall:shutdown-watcher": "node dist/scripts/uninstall-shutdown-watcher.js",
     "changeset": "changeset",
-    "format": "oxfmt",
-    "format:check": "oxfmt --check",
+    "format": "vp fmt",
+    "format:check": "vp fmt --check",
     "prepack": "pnpm test && pnpm run typecheck && pnpm run build",
-    "lint": "oxlint",
+    "lint": "vp lint",
     "release": "changeset publish",
-    "test": "vitest run",
+    "test": "vp test",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "update-pricing": "node scripts/update-pricing.mjs",
     "version-packages": "changeset version"
@@ -67,11 +67,8 @@
     "@changesets/cli": "^3.0.3",
     "@perfectpan/lint-config": "github:PerfectPan/lint-config#v0.6.0",
     "@types/node": "^24.19.1",
-    "oxfmt": "0.71.0",
-    "oxlint": "^1.86.0",
-    "oxlint-tsgolint": "^7.0.2003",
     "typescript": "^7.0.2",
-    "vitest": "^5.0.3"
+    "vite-plus": "1.1.0"
   },
   "dependencies": {
     "@clack/prompts": "1.8.1"

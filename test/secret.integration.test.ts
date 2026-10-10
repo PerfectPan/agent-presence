@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vite-plus/test';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { createCredentialStore, readCredential, type CredentialStore } from '../src/secret.js';

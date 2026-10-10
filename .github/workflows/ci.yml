@@ -42,7 +42,7 @@ jobs:
 
       - run: pnpm run typecheck
 
-      # Type-aware oxlint also reports TypeScript errors through tsgolint. The
+      # Type-aware lint (`pnpm lint`, Vite+) also reports TypeScript errors through tsgolint. The
       # docs site's modules import `astro:content`, whose types `astro sync`
       # generates into site/.astro/.
       - run: pnpm -C site run docs:sync

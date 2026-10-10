@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vite-plus/test';
 import {
   DEFAULT_SETUP_SCRIPT_NAMES,
   DEFAULT_UNINSTALL_SCRIPT_NAMES,
