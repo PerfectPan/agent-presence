@@ -1,17 +1,6 @@
 import { parseArgs } from './args.js';
-import { configure } from './commands/config.js';
-import { flush } from './commands/flush.js';
-import { hook } from './commands/hook.js';
-import { login } from './commands/login.js';
-import { reset } from './commands/reset.js';
-import { setup } from './commands/setup.js';
-import { printStatus } from './commands/status.js';
-import { source } from './commands/source.js';
-import { uninstall } from './commands/uninstall.js';
-import { update } from './commands/update.js';
-import { printUsage } from './commands/usage.js';
-import { printSignatureUrl } from './commands/url.js';
 import { printHelp } from './help.js';
+import { writeHookLoadFailure } from './hook-output.js';
 import { assertSupportedPlatform } from '../platform.js';
 
 export async function runCli(argv: string[]): Promise<void> {
@@ -28,43 +17,76 @@ export async function runCli(argv: string[]): Promise<void> {
       break;
   }
 
+  // Command implementations load lazily so a hook run never loads the setup,
+  // installer, and login modules; the hook path's static graph must stay free
+  // of them (guarded by test/hook-graph.test.ts).
   switch (parsed.command) {
-    case 'login':
+    case 'login': {
+      const { login } = await import('./commands/login.js');
       await login(parsed.args);
       return;
-    case 'setup':
+    }
+    case 'setup': {
+      const { setup } = await import('./commands/setup.js');
       await setup(parsed.args);
       return;
-    case 'uninstall':
+    }
+    case 'uninstall': {
+      const { uninstall } = await import('./commands/uninstall.js');
       await uninstall(parsed.args);
       return;
-    case 'url':
+    }
+    case 'url': {
+      const { printSignatureUrl } = await import('./commands/url.js');
       await printSignatureUrl(parsed.args);
       return;
-    case 'config':
+    }
+    case 'config': {
+      const { configure } = await import('./commands/config.js');
       await configure(parsed.args);
       return;
-    case 'source':
+    }
+    case 'source': {
+      const { source } = await import('./commands/source.js');
       await source(parsed.args);
       return;
-    case 'status':
+    }
+    case 'status': {
+      const { printStatus } = await import('./commands/status.js');
       await printStatus(parsed.args);
       return;
-    case 'usage':
+    }
+    case 'usage': {
+      const { printUsage } = await import('./commands/usage.js');
       await printUsage(parsed.args);
       return;
-    case 'update':
+    }
+    case 'update': {
+      const { update } = await import('./commands/update.js');
       await update(parsed.args);
       return;
-    case 'flush':
+    }
+    case 'flush': {
+      const { flush } = await import('./commands/flush.js');
       await flush(parsed.args);
       return;
-    case 'reset':
+    }
+    case 'reset': {
+      const { reset } = await import('./commands/reset.js');
       await reset(parsed.args);
       return;
-    case 'hook':
-      await hook(parsed.args);
+    }
+    case 'hook': {
+      // A rejected load of the hook command module fails open exactly like a
+      // failure inside it: same log line, same hook output, exit code 0.
+      try {
+        const { hook } = await import('./commands/hook.js');
+        await hook(parsed.args);
+      } catch (error) {
+        await writeHookLoadFailure(parsed.args, error);
+      }
       return;
+    }
   }
 
   printHelp();
