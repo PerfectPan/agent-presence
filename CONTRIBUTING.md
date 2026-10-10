@@ -62,7 +62,7 @@ Shared rules come from [`@perfectpan/lint-config`](https://github.com/PerfectPan
 
 - The `lint` block in `vite.config.ts` spreads the shared oxlint config (type-aware, warnings fail, `curly: all`, kebab-case file names, at most 1000 lines per non-test file) and ignores build output. It lints the docs site's scripts and `.astro` frontmatter too. `pnpm lint` runs it through Vite+ (`vp lint`).
 - The `fmt` block in `vite.config.ts` spreads the shared oxfmt options and keeps single quotes, the style the existing code used. It skips the files copied verbatim from the project template and the generated `CHANGELOG.md` and `src/usage/litellm-pricing.json`. `pnpm format` runs it through Vite+ (`vp fmt`).
-- `tsconfig.json` extends the shared `node` tsconfig (strict, `noUncheckedIndexedAccess`, `verbatimModuleSyntax`) and adds only `types`, the output settings, and `include`; `tsconfig.build.json` narrows `include` for the build.
+- `tsconfig.json` extends the shared `node` tsconfig (strict, `noUncheckedIndexedAccess`, `verbatimModuleSyntax`) and adds only `types`, the output settings, and `include`. `pnpm run typecheck` is `tsc -p tsconfig.json --noEmit`. `pnpm run build` is `vp pack`: one output file per source file, so `dist/src/**/*.js` and `dist/scripts/*.js` stay on the paths already-installed hooks call, and the two shipped JSON files are copied next to the modules that read them.
 
 Upgrade the shared rules by bumping the tag in `package.json`, then fix or explicitly override what the new release reports.
 
