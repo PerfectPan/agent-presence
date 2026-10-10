@@ -2,6 +2,7 @@ import type { StringEnv } from '../hooks/context.js';
 import { resolveGeminiHookContext } from '../hooks/gemini.js';
 import { resolveClaudeHookContext } from '../hooks/claude.js';
 import { resolveCodexHookContext } from '../hooks/codex.js';
+import { resolveGrokHookContext } from '../hooks/grok.js';
 import { resolveOpenCodeHookContext } from '../hooks/opencode.js';
 import { resolvePiHookContext } from '../hooks/pi.js';
 import { resolveDshHookContext } from '../hooks/dsh.js';
@@ -50,8 +51,9 @@ export interface SourcePlugin {
 /**
  * The sources that ship in core, registered by id. A registry — not an
  * `if`-chain — so built-ins and config sources resolve through the same shape.
- * Built-ins always take precedence over a same-id config source. Every built-in
- * is billable: it pairs a presence resolver with a `scanUsage` transcript scanner.
+ * Built-ins always take precedence over a same-id config source. A built-in is
+ * billable when it pairs its presence resolver with a `scanUsage` transcript
+ * scanner; the ones without one (`grok`) contribute presence only.
  */
 export const BUILTIN_SOURCE_PLUGINS: Record<string, SourcePlugin> = {
   codex: { id: 'codex', resolveHookContext: resolveCodexHookContext, scanUsage: scanCodex },
@@ -59,6 +61,9 @@ export const BUILTIN_SOURCE_PLUGINS: Record<string, SourcePlugin> = {
   gemini: { id: 'gemini', resolveHookContext: resolveGeminiHookContext, scanUsage: scanGemini },
   opencode: { id: 'opencode', resolveHookContext: resolveOpenCodeHookContext, scanUsage: scanOpenCode },
   pi: { id: 'pi', resolveHookContext: resolvePiHookContext, scanUsage: scanPi },
+  // Grok contributes presence only for now; hooks are driven by explicit
+  // --event names (its installer and transcript scanner are not wired yet).
+  grok: { id: 'grok', resolveHookContext: resolveGrokHookContext },
   // dsh has no managed hook installer; presence is opt-in via dsh's own
   // `dsh-hooks-claude-code` bridge (see src/hooks/dsh.ts). Usage scanning is
   // independent and always active.

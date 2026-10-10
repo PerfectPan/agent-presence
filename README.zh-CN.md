@@ -5,7 +5,7 @@
 Agent Presence 会把本机编码智能体的「在线/工作状态」和 token 用量同步到飞书个性签名的链接预览里。
 
 ```text
-Codex / Claude Code / Gemini CLI / opencode / Pi / dsh
+Codex / Claude Code / Gemini CLI / opencode / Pi / Grok / dsh
   -> 本地 presence 状态
   -> 防抖渲染
   -> 托管 slot（值存储）
@@ -114,7 +114,7 @@ hook 由 `setup` 自动安装，也可直接调用，如 `agent-presence hook --
 
 ## Sources
 
-被统计的智能体（`codex`、`claude`、`gemini`、`opencode`、`pi`、`dsh`）是一张**源表**，你的配置可以扩展、覆盖或禁用它。新增一个源可用纯配置的 `match` 规则、本地 `handler` 模块，或直接安装一个包：
+被统计的智能体（`codex`、`claude`、`gemini`、`opencode`、`pi`、`grok`、`dsh`）是一张**源表**，你的配置可以扩展、覆盖或禁用它。新增一个源可用纯配置的 `match` 规则、本地 `handler` 模块，或直接安装一个包：
 
 ```bash
 agent-presence source add @your-scope/agent-presence-youragent --yes   # 内网源加 --registry <url>

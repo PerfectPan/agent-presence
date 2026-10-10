@@ -3,7 +3,7 @@ title: Sources
 description: 添加、覆盖或禁用被 presence 统计的编码智能体。
 ---
 
-**源(source)** 就是被统计在线状态的编码智能体。内置五个 —— `codex`、`claude`、`gemini`、`opencode`、`pi` —— 它们和你的配置项一起构成一张**源表(source table)**,你可以扩展、覆盖或禁用其中任意一项。什么都不配也没关系:不写配置时,这五个内置源即为默认。
+**源(source)** 就是被统计在线状态的编码智能体。内置七个 —— `codex`、`claude`、`gemini`、`opencode`、`pi`、`grok`、`dsh` —— 它们和你的配置项一起构成一张**源表(source table)**,你可以扩展、覆盖或禁用其中任意一项。什么都不配也没关系:不写配置时,这七个内置源即为默认。
 
 源表就是 `~/.agent-presence/config.json` 里的 `plugins.sources`,按源 id 索引。同 id 条目**覆盖**内置,新 id **新增**一个源,`enabled: false` **禁用**一个源。随时查看生效的表:
 

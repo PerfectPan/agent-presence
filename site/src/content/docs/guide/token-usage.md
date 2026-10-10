@@ -17,7 +17,7 @@ Windows are **calendar-day aligned** (since local midnight, inclusive of today).
 
 ## Sources
 
-Usage is a capability of the same source table that drives presence: a source that implements `scanUsage` is billable. All five built-ins are, and a third-party source plugin can be too.
+Usage is a capability of the same source table that drives presence: a source that implements `scanUsage` is billable. Every built-in except `grok` is, and a third-party source plugin can be too.
 
 | Source      | Token tracking                                                                                   |
 | ----------- | ------------------------------------------------------------------------------------------------ |
@@ -26,6 +26,7 @@ Usage is a capability of the same source table that drives presence: a source th
 | Pi          | yes — uses the cost Pi records                                                                   |
 | opencode    | yes — reads the local SQLite store; uses the cost opencode records                               |
 | Gemini CLI  | yes — reads the local chat transcripts; priced from the table                                    |
+| Grok        | no — presence only for now; no transcript scanner yet                                            |
 | dsh         | yes — the managed dsh plugin reports each model call's usage in real time; priced from the table |
 
 Cost shows `n/a` for models with no pricing entry; token counts are always exact. Pi and opencode log a real cost, so those are used as-is. Other sources are priced from the bundled LiteLLM snapshot for supported models (for example `gpt-5.5`, `claude-fable-5`, `deepseek-v4-pro`, and `gemini-3-flash-preview`), with a small fallback table for older aliases. Override pricing per model in `~/.agent-presence/config.json` when your deployment uses a private or unlisted model.

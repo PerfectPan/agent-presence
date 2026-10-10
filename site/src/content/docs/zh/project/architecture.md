@@ -4,7 +4,7 @@ description: presence 如何从智能体 hook 流到你的签名。
 ---
 
 ```text
-Codex / Claude Code / Gemini CLI / opencode / Pi hooks
+Codex / Claude Code / Gemini CLI / opencode / Pi / Grok hooks
 -> 本地 presence 状态(加锁 JSON,TTL 清理)
 -> 防抖渲染(模板 + usage 徽章)
 -> l.garyyang slot(值存储;magic-builder FaaS 在其前面做预览)
@@ -23,4 +23,4 @@ CLI 命令通过一个小的注册表(`createProvider`)解析 provider,只断言
 
 ## Sources
 
-哪些智能体贡献 presence,由一张**源表(source table)**决定。五个内置源作为默认表随包发布(每个通过 `builtin:<id>` handler 引用一个代码内解析器);用户配置里的 `plugins.sources` 按 id 合并覆盖其上——同 id 覆盖内置,新 id 新增,`enabled: false` 禁用。一个源可通过 `builtin:<id>`(可信、原始环境变量)、零代码的声明式 `match` 规则、或一个 JS `handler` 模块来解析。`agent-presence source add` 会把源插件 npm 包装进一个独立的 plugins 目录并注册;handler 在进程内带护栏运行(剥离凭据的环境、路径/配置属主校验)且 fail-open,坏掉的源永远不会阻塞 hook。见 [Sources 指南](/zh/guide/sources/)。
+哪些智能体贡献 presence,由一张**源表(source table)**决定。七个内置源作为默认表随包发布(每个通过 `builtin:<id>` handler 引用一个代码内解析器);用户配置里的 `plugins.sources` 按 id 合并覆盖其上——同 id 覆盖内置,新 id 新增,`enabled: false` 禁用。一个源可通过 `builtin:<id>`(可信、原始环境变量)、零代码的声明式 `match` 规则、或一个 JS `handler` 模块来解析。`agent-presence source add` 会把源插件 npm 包装进一个独立的 plugins 目录并注册;handler 在进程内带护栏运行(剥离凭据的环境、路径/配置属主校验)且 fail-open,坏掉的源永远不会阻塞 hook。见 [Sources 指南](/zh/guide/sources/)。

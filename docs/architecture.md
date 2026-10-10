@@ -3,7 +3,7 @@
 `@rivus/agent-presence` turns local coding-agent lifecycle events into a Feishu signature link-preview value. The important boundary is that it models active work from agent hooks, not from process scans.
 
 ```text
-Codex / Claude Code / Gemini CLI / opencode / Pi Coding Agent lifecycle hooks
+Codex / Claude Code / Gemini CLI / opencode / Pi Coding Agent / Grok lifecycle hooks
 -> CLI hook normalizer
 -> locked JSON state
 -> TTL pruning
@@ -202,16 +202,19 @@ Claude Code SessionStart, UserPromptSubmit, PreToolUse, PostToolUse, Stop, StopF
 Gemini CLI  SessionStart, UserPromptSubmit, PreToolUse, PostToolUse, Stop, SessionEnd
 opencode    session.created, command.executed, file.edited, message.*, permission.*, session.*, todo.updated, tool.execute.*
 Pi          before_agent_start, turn_start, tool_execution_start, tool_execution_end, agent_end, session_shutdown
+Grok        session_start, user_prompt_submit, pre_tool_use, post_tool_use, stop, stop_failure, session_end, subagent_start, subagent_stop (driven with an explicit presence `--event` name)
 dsh         agent/session-start, agent/pre-step, tools/pre-execute, tools/result, agent/turn-stopping (via managed dsh plugin)
 ```
 
 Codex hooks always print `{}` so they remain valid pass-through hooks. Claude Code, Gemini CLI, opencode, and Pi hooks run with `--silent`.
 
-The six sources above are built in. They live in a source table that a user's config can extend, override, or disable without a core change; see [Source Table](#source-table).
+The seven sources above are built in. They live in a source table that a user's config can extend, override, or disable without a core change; see [Source Table](#source-table).
 
 For Pi specifically, the extension intentionally does **not** treat the Pi `session_start` event as an active-session signal — that event fires whenever the Pi TUI opens, including when the user has not yet submitted a task. Activation is gated on `before_agent_start`, which only fires after the user submits a prompt. Heartbeats come from `turn_start` and `tool_execution_*`. Finishes come from `agent_end` (turn done) and `session_shutdown` (Pi quit, reload, or session switch).
 
 For dsh, there is no managed hook installer: `setup` prompts to install a single-file Cordis plugin into `~/.dsh/plugins/` and registers it in the home-level `~/.dsh/cordis.patch.yml` (which applies to every profile). The plugin bridges dsh lifecycle events to `agent-presence hook --source dsh` and reports each model call's token usage in the hook payload, which the hook command appends to a local usage log (`~/.agent-presence/usage-events.log`). The dsh `scanUsage` reads that log back, so dsh contributes to the same usage windows and totals as the transcript-scraping sources without scraping dsh's zstd transcripts.
+
+For Grok, there is no managed hook installer yet: the source is registered in the table (it appears in `source list`) and accepts Grok hook payloads through `agent-presence hook --source grok --event <presence event name>`. The `--event` name is what drives the lifecycle mapping; Grok's native snake_case event names are not normalized here, so a payload whose `hookEventName` says `stop` without `--event Stop` counts as a heartbeat. The payload carries its snake_case event name in `hookEventName`/`hook_event_name`, the session id in `sessionId`/`session_id` (env fallbacks `GROK_HOOK_EVENT`/`GROK_SESSION_ID`), and the project in `cwd`. Subagent events compose the session id the same way Claude's resolver does, from `subagentId`/`subagentType`. Grok has no transcript scanner yet, so it contributes presence only.
 
 Hook commands are managed entries. Installers identify them by the `agent-presence hook` or legacy `agent-signature hook` command shape, remove the old managed entries, and then add the current managed entry. This keeps reruns from accumulating duplicate hooks.
 
@@ -308,7 +311,7 @@ The capability layer is deliberately generic (`publishValue`, not `updateSlot`) 
 
 ### Source Table
 
-Sources (which agents feed presence) are modelled as a single **source table**, so first-party and third-party agents are handled uniformly. `src/cli/hook-context.ts` defines one `SourcePlugin` interface (`{ id, resolveHookContext(payload, env) }`) and keeps the five built-in resolvers (`codex`, `claude`, `gemini`, `opencode`, `pi`) as its reference implementations in `BUILTIN_SOURCE_PLUGINS`. `src/sources.default.json` ships a default table that lists those built-ins as `builtin:<id>` handlers.
+Sources (which agents feed presence) are modelled as a single **source table**, so first-party and third-party agents are handled uniformly. `src/cli/hook-context.ts` defines one `SourcePlugin` interface (`{ id, resolveHookContext(payload, env) }`) and keeps the six built-in resolvers (`codex`, `claude`, `gemini`, `opencode`, `pi`, `grok`) as its reference implementations in `BUILTIN_SOURCE_PLUGINS`. `src/sources.default.json` ships a default table that lists those built-ins as `builtin:<id>` handlers.
 
 `src/sources.ts` computes the **effective table** by merging the user's `config.plugins.sources` over the shipped defaults by id (`mergedSources`): a same-id entry **overrides** a built-in, a new id **adds** a source, and `enabled: false` **disables** one. `resolveHookContextForSource(source, payload, config)` then resolves an id from that table. Not writing a `plugins.sources` (or a given id) leaves the shipped default in effect. Downstream of context resolution the pipeline is already source-agnostic — `AgentSession.source` is a plain string, `renderDetails` groups by it verbatim, and `normalizeEvent` understands the PascalCase lifecycle events — so a source only needs to turn its hook payload into `{ sessionId, project, event }`.
 
@@ -337,7 +340,7 @@ Source table invariants:
 
 #### Token usage (`scanUsage`)
 
-Token/cost accounting is a **capability of the same source table**, not a separate subsystem: `SourcePlugin` carries an optional `scanUsage(window)` method, so a source is one thing that declares all its capabilities. A source that implements `scanUsage` is billable; one that omits it (any `match` source) contributes presence only. All five built-ins are billable — each pairs its presence resolver with a transcript scanner (`src/usage/scan-*.ts`) registered on its `BUILTIN_SOURCE_PLUGINS` entry — and a JS `handler` source can implement `scanUsage` too.
+Token/cost accounting is a **capability of the same source table**, not a separate subsystem: `SourcePlugin` carries an optional `scanUsage(window)` method, so a source is one thing that declares all its capabilities. A source that implements `scanUsage` is billable; one that omits it (any `match` source) contributes presence only. Every built-in except `grok` is billable — each pairs its presence resolver with a transcript scanner (`src/usage/scan-*.ts`) registered on its `BUILTIN_SOURCE_PLUGINS` entry (`grok` contributes presence only until its scanner ships) — and a JS `handler` source can implement `scanUsage` too.
 
 `billableSources(config)` (`src/sources.ts`) enumerates the merged table's billable sources, in table order, through the **same** trust/resolution path as presence (`builtin:` → trusted shipped plugin; JS `handler` → the guarded, cached loader; `match` → skipped). `collectWindowUsage()` iterates that list — no hardcoded source set — so `agent-presence usage` and the signature badge both cover every billable source dynamically. Usage stays **after-the-fact transcript scanning** (ccusage-style), independent of the hook payload; hook events never carry token counts.
 
