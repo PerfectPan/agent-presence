@@ -126,7 +126,7 @@ describe('resolveHookContextForSource — declarative match', () => {
       sessionId: { envKeys: ['OTHER_SESSION_ID'], payloadKeys: ['session_id'] }
     });
     const context = source.resolveHookContext({}, { OTHER_SESSION_ID: 'from-env' });
-    expect(context.sessionId).toBe('from-env');
+    expect(context?.sessionId).toBe('from-env');
   });
 
   it('skips a source entry with neither handler nor match', async () => {

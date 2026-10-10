@@ -4,30 +4,6 @@ import { formatCost, formatTokens } from '../../usage/format.js';
 import { collectWindowUsage, type WindowUsage } from '../../usage/index.js';
 import { hasFlag, optionValue } from '../args.js';
 
-export async function printUsage(args: string[]): Promise<void> {
-  const config = await loadConfig();
-  const pricing = usagePricingOverrides(config);
-  const now = Date.now();
-
-  // Resolve the billable sources once (handlers included — the standalone
-  // command is the interactive path), so every window shares the same set and
-  // order.
-  const sources = await billableSources(config);
-
-  const explicitDays = readDays(optionValue(args, '--days'));
-  const windowDays = explicitDays !== undefined ? [explicitDays] : [1, 7];
-
-  const windows = await Promise.all(windowDays.map((days) => collectWindowUsage({ days, now, pricing, sources })));
-
-  if (hasFlag(args, '--json')) {
-    const payload = windowDays.map((days, index) => ({ days, ...windows[index] }));
-    console.log(JSON.stringify(payload, null, 2));
-    return;
-  }
-
-  console.log(renderUsageTable(windowDays, windows));
-}
-
 function readDays(value: string | undefined): number | undefined {
   if (value === undefined) {
     return undefined;
@@ -37,6 +13,38 @@ function readDays(value: string | undefined): number | undefined {
     throw new Error(`invalid --days value: ${value}`);
   }
   return parsed;
+}
+
+/** Union of source ids across windows, in first-seen (merged-table) order. */
+export function orderedSources(windows: WindowUsage[]): string[] {
+  const seen = new Set<string>();
+  for (const window of windows) {
+    for (const entry of window.bySource) {
+      seen.add(entry.source);
+    }
+  }
+  return [...seen];
+}
+
+function columnWidths(rows: string[][]): number[] {
+  const widths: number[] = [];
+  for (const row of rows) {
+    row.forEach((cell, index) => {
+      widths[index] = Math.max(widths[index] ?? 0, cell.length);
+    });
+  }
+  return widths;
+}
+
+function formatRow(row: string[], widths: number[]): string {
+  return row
+    .map((cell, index) => cell.padEnd(widths[index] ?? 0))
+    .join('  ')
+    .trimEnd();
+}
+
+function divider(widths: number[]): string {
+  return widths.map((width) => '─'.repeat(width)).join('  ');
 }
 
 /**
@@ -83,34 +91,26 @@ export function renderUsageTable(windowDays: number[], windows: WindowUsage[]): 
   return lines.join('\n');
 }
 
-/** Union of source ids across windows, in first-seen (merged-table) order. */
-export function orderedSources(windows: WindowUsage[]): string[] {
-  const seen = new Set<string>();
-  for (const window of windows) {
-    for (const entry of window.bySource) {
-      seen.add(entry.source);
-    }
+export async function printUsage(args: string[]): Promise<void> {
+  const config = await loadConfig();
+  const pricing = usagePricingOverrides(config);
+  const now = Date.now();
+
+  // Resolve the billable sources once (handlers included — the standalone
+  // command is the interactive path), so every window shares the same set and
+  // order.
+  const sources = await billableSources(config);
+
+  const explicitDays = readDays(optionValue(args, '--days'));
+  const windowDays = explicitDays !== undefined ? [explicitDays] : [1, 7];
+
+  const windows = await Promise.all(windowDays.map((days) => collectWindowUsage({ days, now, pricing, sources })));
+
+  if (hasFlag(args, '--json')) {
+    const payload = windowDays.map((days, index) => ({ days, ...windows[index] }));
+    console.log(JSON.stringify(payload, null, 2));
+    return;
   }
-  return [...seen];
-}
 
-function columnWidths(rows: string[][]): number[] {
-  const widths: number[] = [];
-  for (const row of rows) {
-    row.forEach((cell, index) => {
-      widths[index] = Math.max(widths[index] ?? 0, cell.length);
-    });
-  }
-  return widths;
-}
-
-function formatRow(row: string[], widths: number[]): string {
-  return row
-    .map((cell, index) => cell.padEnd(widths[index] ?? 0))
-    .join('  ')
-    .trimEnd();
-}
-
-function divider(widths: number[]): string {
-  return widths.map((width) => '─'.repeat(width)).join('  ');
+  console.log(renderUsageTable(windowDays, windows));
 }

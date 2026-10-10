@@ -5,16 +5,16 @@ import { withGeminiAgentSignatureHooks, type HookSettings } from '../src/install
 import { readJsonFile, writeJsonAtomic } from '../src/json-file.js';
 import { assertSupportedPlatform } from '../src/platform.js';
 
+async function loadSettings(path: string): Promise<Partial<HookSettings>> {
+  return readJsonFile(path, { hooks: {} });
+}
+
 async function main(): Promise<void> {
   assertSupportedPlatform();
   const settingsPath = process.env.GEMINI_SETTINGS_FILE || join(homedir(), '.gemini', 'settings.json');
   const settings = await loadSettings(settingsPath);
   await writeJsonAtomic(settingsPath, withGeminiAgentSignatureHooks(settings));
   console.log('installed gemini hooks: ' + settingsPath);
-}
-
-async function loadSettings(path: string): Promise<Partial<HookSettings>> {
-  return readJsonFile(path, { hooks: {} });
 }
 
 main().catch((error) => {

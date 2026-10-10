@@ -33,9 +33,10 @@ export interface SourcePlugin {
   /**
    * Turn a hook payload (and environment) into presence context. MUST be
    * synchronous and do no I/O: it runs on the hook hot path and the only hard
-   * bound is the agent-side hook timeout.
+   * bound is the agent-side hook timeout. May return undefined: a configured
+   * `handler` source is third-party code, and the hook path fails open to `{}`.
    */
-  resolveHookContext(payload: unknown, env?: StringEnv): SourceContext;
+  resolveHookContext(payload: unknown, env?: StringEnv): SourceContext | undefined;
   /**
    * OPTIONAL usage capability. Scan this source's local transcripts for token
    * usage in the window. A source that implements it is billable; one that omits
@@ -77,7 +78,7 @@ export function isBuiltinSource(source: string): boolean {
  */
 export function resolveBuiltinHookContext(source: string, payload: unknown): HookContext {
   const plugin = BUILTIN_SOURCE_PLUGINS[source];
-  return plugin ? plugin.resolveHookContext(payload) : {};
+  return (plugin && plugin.resolveHookContext(payload)) ?? {};
 }
 
 /**

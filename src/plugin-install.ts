@@ -26,33 +26,14 @@ export interface InstalledPlugin {
 }
 
 /**
- * Install a source-plugin npm package into the isolated plugins dir. The
- * package lands under `<pluginsDir>/node_modules`, separate from the CLI's own
- * install and from any project the user is in. Returns the installed package's
- * name and version so the caller can record the source entry.
+ * The package name npm would install for a spec, minus any version/tag/range
+ * (e.g. `@scope/pkg@1.2.3` -> `@scope/pkg`, `pkg@next` -> `pkg`). Used to key
+ * config entries and locate the installed package.json.
  */
-export async function installPluginPackage(spec: string, options: InstallPluginOptions = {}): Promise<InstalledPlugin> {
-  if (!isSupportedPackageSpec(spec)) {
-    throw new Error(
-      `unsupported package spec "${spec}"; source add accepts a registry package name only ` +
-        '(e.g. `pkg`, `pkg@1.2.3`, `@scope/pkg`, `@scope/pkg@next`). ' +
-        'For a git/url/tarball/alias package, install it into the plugins dir yourself and point config at it.'
-    );
-  }
-
-  const pluginsDir = options.pluginsDir ?? getPluginsDir();
-  const registry = options.registry ?? DEFAULT_PLUGIN_REGISTRY;
-  const runner = options.runner ?? defaultNpmRunner;
-
-  await mkdir(pluginsDir, { recursive: true, mode: 0o700 });
-  await ensurePluginsPackageJson(pluginsDir);
-
-  await runner(
-    ['install', spec, '--save', '--registry', registry, '--no-audit', '--no-fund', '--ignore-scripts'],
-    pluginsDir
-  );
-
-  return readInstalledPackage(pluginsDir, spec);
+export function packageNameFromSpec(spec: string): string {
+  const scoped = spec.startsWith('@');
+  const at = spec.indexOf('@', scoped ? 1 : 0);
+  return at > 0 ? spec.slice(0, at) : spec;
 }
 
 /**
@@ -70,24 +51,6 @@ export function isSupportedPackageSpec(spec: string): boolean {
   // A version/tag range may follow the name; the name itself must be a valid
   // npm package name (optionally scoped) with no path separators beyond a scope.
   return /^(?:@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*$/.test(name);
-}
-
-/** Remove an installed source-plugin package from the plugins dir. */
-export async function uninstallPluginPackage(packageName: string, options: InstallPluginOptions = {}): Promise<void> {
-  const pluginsDir = options.pluginsDir ?? getPluginsDir();
-  const runner = options.runner ?? defaultNpmRunner;
-  await runner(['uninstall', packageName, '--no-audit', '--no-fund', '--ignore-scripts'], pluginsDir);
-}
-
-/**
- * The package name npm would install for a spec, minus any version/tag/range
- * (e.g. `@scope/pkg@1.2.3` -> `@scope/pkg`, `pkg@next` -> `pkg`). Used to key
- * config entries and locate the installed package.json.
- */
-export function packageNameFromSpec(spec: string): string {
-  const scoped = spec.startsWith('@');
-  const at = spec.indexOf('@', scoped ? 1 : 0);
-  return at > 0 ? spec.slice(0, at) : spec;
 }
 
 async function ensurePluginsPackageJson(pluginsDir: string): Promise<void> {
@@ -125,6 +88,43 @@ async function defaultNpmRunner(args: string[], cwd: string): Promise<void> {
     }
     throw new Error(`npm ${args[0]} failed: ${error instanceof Error ? error.message : String(error)}`);
   }
+}
+
+/**
+ * Install a source-plugin npm package into the isolated plugins dir. The
+ * package lands under `<pluginsDir>/node_modules`, separate from the CLI's own
+ * install and from any project the user is in. Returns the installed package's
+ * name and version so the caller can record the source entry.
+ */
+export async function installPluginPackage(spec: string, options: InstallPluginOptions = {}): Promise<InstalledPlugin> {
+  if (!isSupportedPackageSpec(spec)) {
+    throw new Error(
+      `unsupported package spec "${spec}"; source add accepts a registry package name only ` +
+        '(e.g. `pkg`, `pkg@1.2.3`, `@scope/pkg`, `@scope/pkg@next`). ' +
+        'For a git/url/tarball/alias package, install it into the plugins dir yourself and point config at it.'
+    );
+  }
+
+  const pluginsDir = options.pluginsDir ?? getPluginsDir();
+  const registry = options.registry ?? DEFAULT_PLUGIN_REGISTRY;
+  const runner = options.runner ?? defaultNpmRunner;
+
+  await mkdir(pluginsDir, { recursive: true, mode: 0o700 });
+  await ensurePluginsPackageJson(pluginsDir);
+
+  await runner(
+    ['install', spec, '--save', '--registry', registry, '--no-audit', '--no-fund', '--ignore-scripts'],
+    pluginsDir
+  );
+
+  return readInstalledPackage(pluginsDir, spec);
+}
+
+/** Remove an installed source-plugin package from the plugins dir. */
+export async function uninstallPluginPackage(packageName: string, options: InstallPluginOptions = {}): Promise<void> {
+  const pluginsDir = options.pluginsDir ?? getPluginsDir();
+  const runner = options.runner ?? defaultNpmRunner;
+  await runner(['uninstall', packageName, '--no-audit', '--no-fund', '--ignore-scripts'], pluginsDir);
 }
 
 /** Remove the whole plugins dir (used by `uninstall --all`). */

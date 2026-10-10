@@ -43,27 +43,21 @@ export interface OpenCodeConfig {
   [key: string]: unknown;
 }
 
-export function withClaudeAgentSignatureHooks(input: Partial<HookSettings>): HookSettings {
-  const settings: HookSettings = {
-    ...input,
-    hooks: { ...input.hooks }
-  };
+export function isAgentSignatureCommand(command: string): boolean {
+  return (
+    command.includes('agent-presence hook') ||
+    command.includes('@rivus/agent-presence') ||
+    command.includes(`${LEGACY_CLI_COMMAND} hook`) ||
+    command.includes(`${LEGACY_CLI_COMMAND}.mjs hook`) ||
+    command.includes('dist/src/cli.js hook')
+  );
+}
 
-  for (const event of CLAUDE_EVENTS) {
-    const groups = settings.hooks[event] ?? [];
-    settings.hooks[event] = withoutAgentSignatureHookGroups(groups);
-    settings.hooks[event].push({
-      hooks: [
-        {
-          type: 'command',
-          command: `${buildAgentPresenceShellCommand(['hook', '--source', 'claude', '--event', event, '--silent'])} >/dev/null 2>/dev/null || true`,
-          timeout: 5000
-        }
-      ]
-    });
-  }
-
-  return settings;
+export function withoutAgentSignatureHookGroups(groups: HookGroup[]): HookGroup[] {
+  return groups.flatMap((group) => {
+    const hooks = (group.hooks ?? []).filter((hook) => !isAgentSignatureCommand(hook.command));
+    return hooks.length > 0 ? [{ ...group, hooks }] : [];
+  });
 }
 
 export function withoutAgentSignatureHooks(input: Partial<HookSettings>): HookSettings {
@@ -82,21 +76,303 @@ export function withoutAgentSignatureHooks(input: Partial<HookSettings>): HookSe
   return settings;
 }
 
-export function withoutAgentSignatureHookGroups(groups: HookGroup[]): HookGroup[] {
-  return groups.flatMap((group) => {
-    const hooks = (group.hooks ?? []).filter((hook) => !isAgentSignatureCommand(hook.command));
-    return hooks.length > 0 ? [{ ...group, hooks }] : [];
-  });
+function normalizeOpenCodePlugins(plugin: string | string[] | undefined): string[] {
+  if (Array.isArray(plugin)) {
+    return [...plugin];
+  }
+  if (typeof plugin === 'string' && plugin.length > 0) {
+    return [plugin];
+  }
+  return [];
 }
 
-export function isAgentSignatureCommand(command: string): boolean {
-  return (
-    command.includes('agent-presence hook') ||
-    command.includes('@rivus/agent-presence') ||
-    command.includes(`${LEGACY_CLI_COMMAND} hook`) ||
-    command.includes(`${LEGACY_CLI_COMMAND}.mjs hook`) ||
-    command.includes('dist/src/cli.js hook')
+export function withOpenCodeAgentSignaturePluginConfig(input: OpenCodeConfig): OpenCodeConfig {
+  const plugins = normalizeOpenCodePlugins(input.plugin).filter((plugin) => plugin !== LEGACY_OPENCODE_PLUGIN_REF);
+  if (!plugins.includes(OPENCODE_PLUGIN_REF)) {
+    plugins.push(OPENCODE_PLUGIN_REF);
+  }
+  return { ...input, plugin: plugins };
+}
+
+export function withoutOpenCodeAgentSignaturePluginConfig(input: OpenCodeConfig): OpenCodeConfig {
+  const plugins = normalizeOpenCodePlugins(input.plugin).filter(
+    (plugin) => plugin !== OPENCODE_PLUGIN_REF && plugin !== LEGACY_OPENCODE_PLUGIN_REF
   );
+  const next = { ...input };
+  if (plugins.length > 0) {
+    next.plugin = plugins;
+  } else {
+    delete next.plugin;
+  }
+  return next;
+}
+
+export interface PiSettings {
+  extensions?: string[];
+  [key: string]: unknown;
+}
+
+function normalizePiExtensions(extensions: unknown): string[] {
+  if (Array.isArray(extensions)) {
+    return extensions.filter((entry): entry is string => typeof entry === 'string' && entry.length > 0);
+  }
+  return [];
+}
+
+export function withPiAgentPresenceExtension(input: PiSettings, extensionPath: string): PiSettings {
+  const extensions = normalizePiExtensions(input.extensions).filter((entry) => entry !== extensionPath);
+  // Auto-discovery already picks up files in ~/.pi/agent/extensions/, so we
+  // do not append a duplicate entry by default. We still scrub any prior
+  // explicit entry so reruns stay idempotent.
+  const next = { ...input };
+  if (extensions.length > 0) {
+    next.extensions = extensions;
+  } else {
+    delete next.extensions;
+  }
+  return next;
+}
+
+export function withoutPiAgentPresenceExtension(input: PiSettings, extensionPath: string): PiSettings {
+  const extensions = normalizePiExtensions(input.extensions).filter((entry) => entry !== extensionPath);
+  const next = { ...input };
+  if (extensions.length > 0) {
+    next.extensions = extensions;
+  } else {
+    delete next.extensions;
+  }
+  return next;
+}
+
+export interface PiExtensionPaths {
+  extensionPath: string;
+  settingsPath: string;
+}
+
+export interface PiInstallResult {
+  status: 'installed' | 'refused';
+  extensionPath: string;
+  settingsPath: string;
+  settingsUpdated: boolean;
+  settingsError?: string;
+}
+
+export interface PiUninstallResult {
+  status: 'removed' | 'skipped';
+  extensionPath: string;
+  settingsPath: string;
+  settingsUpdated: boolean;
+  settingsError?: string;
+}
+
+async function readManagedExtension(
+  path: string,
+  marker: string = PI_EXTENSION_MARKER
+): Promise<{ status: 'missing' | 'managed' | 'unmanaged' }> {
+  try {
+    const contents = await readFile(path, 'utf8');
+    return { status: contents.includes(marker) ? 'managed' : 'unmanaged' };
+  } catch (error) {
+    if (hasNodeErrorCode(error, 'ENOENT')) {
+      return { status: 'missing' };
+    }
+    throw error;
+  }
+}
+
+function describeInstallerError(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+export async function uninstallPiExtension(paths: PiExtensionPaths): Promise<PiUninstallResult> {
+  const existing = await readManagedExtension(paths.extensionPath);
+  let status: PiUninstallResult['status'] = 'skipped';
+  if (existing.status === 'managed') {
+    await rm(paths.extensionPath, { force: true });
+    status = 'removed';
+  }
+
+  let settingsUpdated = false;
+  let settingsError: string | undefined;
+  try {
+    const settings = await readJsonFile<PiSettings>(paths.settingsPath, {});
+    await writeJsonAtomic(paths.settingsPath, withoutPiAgentPresenceExtension(settings, paths.extensionPath));
+    settingsUpdated = true;
+  } catch (error) {
+    settingsError = describeInstallerError(error);
+  }
+
+  return {
+    status,
+    extensionPath: paths.extensionPath,
+    settingsPath: paths.settingsPath,
+    settingsUpdated,
+    settingsError
+  };
+}
+
+// ---------------------------------------------------------------------------
+// dsh (DeepSeek harness) plugin
+//
+// dsh has no managed hook settings of its own; its extension surface is
+// Cordis plugins. We ship a single-file plugin that bridges dsh lifecycle
+// events and per-call token usage into `agent-presence hook --source dsh`,
+// and register it in the home-level `~/.dsh/cordis.patch.yml` (which applies
+// to every profile). The patch is a top-level YAML array; we merge our entry
+// as a marker-delimited block so uninstall is a clean text removal.
+// ---------------------------------------------------------------------------
+
+export const DSH_PLUGIN_FILE_NAME = 'agent-presence.mjs';
+export const DSH_PLUGIN_MARKER = '@rivus/agent-presence dsh plugin';
+
+const DSH_PATCH_START = '# agent-presence-dsh-plugin:start';
+const DSH_PATCH_END = '# agent-presence-dsh-plugin:end';
+
+export interface DshPluginPaths {
+  /** Where the single-file plugin is written (e.g. `~/.dsh/plugins/agent-presence.mjs`). */
+  pluginPath: string;
+  /** The home-level cordis patch that registers it (e.g. `~/.dsh/cordis.patch.yml`). */
+  patchPath: string;
+}
+
+/** Resolve the dsh plugin + patch paths, honouring `DSH_HOME` and test overrides. */
+export function resolveDshPluginPaths(): DshPluginPaths {
+  const dshHome = process.env.DSH_HOME?.trim() || join(homedir(), '.dsh');
+  return {
+    pluginPath: process.env.DSH_AGENT_PRESENCE_PLUGIN_FILE ?? join(dshHome, 'plugins', DSH_PLUGIN_FILE_NAME),
+    patchPath: process.env.DSH_AGENT_PRESENCE_PATCH_FILE ?? join(dshHome, 'cordis.patch.yml')
+  };
+}
+
+export interface DshInstallResult {
+  status: 'installed';
+  pluginPath: string;
+  patchPath: string;
+  patchUpdated: boolean;
+  patchError?: string;
+}
+
+export interface DshUninstallResult {
+  status: 'removed' | 'skipped';
+  pluginPath: string;
+  patchPath: string;
+  patchUpdated: boolean;
+  patchError?: string;
+}
+
+/** Remove the agent-presence entry from a cordis.patch.yml body. */
+export function withoutDshAgentPresencePatch(input: string): string {
+  const startIdx = input.indexOf(DSH_PATCH_START);
+  if (startIdx === -1) {
+    return input;
+  }
+  const endIdx = input.indexOf(DSH_PATCH_END, startIdx);
+  if (endIdx === -1) {
+    return input;
+  }
+  const before = input.slice(0, startIdx);
+  const after = input.slice(endIdx + DSH_PATCH_END.length);
+  // Only normalize the gap left by the removed block, not the file's own spacing.
+  const result = `${before.replace(/\n+$/, '')}\n\n${after.replace(/^\n+/, '')}`.trim();
+  return result ? `${result}\n` : '';
+}
+
+function dshPluginBlock(pluginPath: string): string {
+  return `${DSH_PATCH_START}
+- insert:
+    - id: agent-presence
+      name: ${pluginPath}
+${DSH_PATCH_END}`;
+}
+
+/** Merge the agent-presence entry into a home-level cordis.patch.yml body. */
+export function withDshAgentPresencePatch(input: string, pluginPath: string): string {
+  const block = dshPluginBlock(pluginPath);
+  const startIdx = input.indexOf(DSH_PATCH_START);
+  if (startIdx === -1) {
+    const trimmed = input.trimEnd();
+    return trimmed ? `${trimmed}\n${block}\n` : `${block}\n`;
+  }
+  // Replace from the start marker to the end marker (or EOF if the end marker
+  // is missing — a crash mid-write left an orphaned start).
+  const endIdx = input.indexOf(DSH_PATCH_END, startIdx);
+  const endSlice = endIdx === -1 ? input.length : endIdx + DSH_PATCH_END.length;
+  return `${input.slice(0, startIdx)}${block}${input.slice(endSlice)}`;
+}
+
+async function readTextFile(path: string, fallback: string): Promise<string> {
+  try {
+    return await readFile(path, 'utf8');
+  } catch (error) {
+    if (hasNodeErrorCode(error, 'ENOENT')) {
+      return fallback;
+    }
+    throw error;
+  }
+}
+
+export async function uninstallDshPlugin(paths: DshPluginPaths): Promise<DshUninstallResult> {
+  const existing = await readManagedExtension(paths.pluginPath, DSH_PLUGIN_MARKER);
+  let status: DshUninstallResult['status'] = 'skipped';
+  if (existing.status === 'managed') {
+    await rm(paths.pluginPath, { force: true });
+    status = 'removed';
+  }
+
+  let patchUpdated = false;
+  let patchError: string | undefined;
+  try {
+    const patch = await readTextFile(paths.patchPath, '');
+    const next = withoutDshAgentPresencePatch(patch);
+    if (next) {
+      await writeFile(paths.patchPath, next, { mode: 0o600 });
+    } else {
+      await rm(paths.patchPath, { force: true });
+    }
+    patchUpdated = true;
+  } catch (error) {
+    patchError = describeInstallerError(error);
+  }
+
+  return { status, pluginPath: paths.pluginPath, patchPath: paths.patchPath, patchUpdated, patchError };
+}
+
+function resolveCliPath(): string {
+  if (process.env.AGENT_PRESENCE_CLI_PATH) {
+    return process.env.AGENT_PRESENCE_CLI_PATH;
+  }
+  for (const url of [
+    new URL('./cli.js', import.meta.url),
+    new URL('../cli.js', import.meta.url),
+    new URL('../dist/src/cli.js', import.meta.url)
+  ]) {
+    const resolved = fileURLToPath(url);
+    if (existsSync(resolved)) {
+      return resolved;
+    }
+  }
+  throw new Error('unable to resolve @rivus/agent-presence CLI path');
+}
+
+function packageVersion(): string {
+  for (const url of [new URL('../package.json', import.meta.url), new URL('../../package.json', import.meta.url)]) {
+    try {
+      const parsed = JSON.parse(readFileSync(url, 'utf8')) as { version?: unknown };
+      if (typeof parsed.version === 'string' && parsed.version.length > 0) {
+        return parsed.version;
+      }
+    } catch {
+      // Source and dist builds resolve package.json from different depths.
+    }
+  }
+  throw new Error('unable to resolve @rivus/agent-presence package version');
+}
+
+function agentPresenceCommandParts(): string[] {
+  if (process.env.AGENT_PRESENCE_HOOK_COMMAND === 'absolute') {
+    return [process.execPath, resolveCliPath()];
+  }
+  return ['npx', '--yes', '--registry=https://registry.npmjs.org', `@rivus/agent-presence@${packageVersion()}`];
 }
 
 export function buildOpenCodePluginSource(commandParts = agentPresenceCommandParts()): string {
@@ -224,37 +500,6 @@ export default AgentSignaturePlugin
 `;
 }
 
-export function withOpenCodeAgentSignaturePluginConfig(input: OpenCodeConfig): OpenCodeConfig {
-  const plugins = normalizeOpenCodePlugins(input.plugin).filter((plugin) => plugin !== LEGACY_OPENCODE_PLUGIN_REF);
-  if (!plugins.includes(OPENCODE_PLUGIN_REF)) {
-    plugins.push(OPENCODE_PLUGIN_REF);
-  }
-  return { ...input, plugin: plugins };
-}
-
-export function withoutOpenCodeAgentSignaturePluginConfig(input: OpenCodeConfig): OpenCodeConfig {
-  const plugins = normalizeOpenCodePlugins(input.plugin).filter(
-    (plugin) => plugin !== OPENCODE_PLUGIN_REF && plugin !== LEGACY_OPENCODE_PLUGIN_REF
-  );
-  const next = { ...input };
-  if (plugins.length > 0) {
-    next.plugin = plugins;
-  } else {
-    delete next.plugin;
-  }
-  return next;
-}
-
-function normalizeOpenCodePlugins(plugin: string | string[] | undefined): string[] {
-  if (Array.isArray(plugin)) {
-    return [...plugin];
-  }
-  if (typeof plugin === 'string' && plugin.length > 0) {
-    return [plugin];
-  }
-  return [];
-}
-
 export function buildPiExtensionSource(commandParts = agentPresenceCommandParts()): string {
   return `// ${PI_EXTENSION_MARKER}
 //
@@ -353,64 +598,6 @@ export default function (pi: ExtensionAPI) {
 `;
 }
 
-export interface PiSettings {
-  extensions?: string[];
-  [key: string]: unknown;
-}
-
-export function withPiAgentPresenceExtension(input: PiSettings, extensionPath: string): PiSettings {
-  const extensions = normalizePiExtensions(input.extensions).filter((entry) => entry !== extensionPath);
-  // Auto-discovery already picks up files in ~/.pi/agent/extensions/, so we
-  // do not append a duplicate entry by default. We still scrub any prior
-  // explicit entry so reruns stay idempotent.
-  const next = { ...input };
-  if (extensions.length > 0) {
-    next.extensions = extensions;
-  } else {
-    delete next.extensions;
-  }
-  return next;
-}
-
-export function withoutPiAgentPresenceExtension(input: PiSettings, extensionPath: string): PiSettings {
-  const extensions = normalizePiExtensions(input.extensions).filter((entry) => entry !== extensionPath);
-  const next = { ...input };
-  if (extensions.length > 0) {
-    next.extensions = extensions;
-  } else {
-    delete next.extensions;
-  }
-  return next;
-}
-
-function normalizePiExtensions(extensions: unknown): string[] {
-  if (Array.isArray(extensions)) {
-    return extensions.filter((entry): entry is string => typeof entry === 'string' && entry.length > 0);
-  }
-  return [];
-}
-
-export interface PiExtensionPaths {
-  extensionPath: string;
-  settingsPath: string;
-}
-
-export interface PiInstallResult {
-  status: 'installed' | 'refused';
-  extensionPath: string;
-  settingsPath: string;
-  settingsUpdated: boolean;
-  settingsError?: string;
-}
-
-export interface PiUninstallResult {
-  status: 'removed' | 'skipped';
-  extensionPath: string;
-  settingsPath: string;
-  settingsUpdated: boolean;
-  settingsError?: string;
-}
-
 export async function installPiExtension(paths: PiExtensionPaths): Promise<PiInstallResult> {
   await mkdir(dirname(paths.extensionPath), { recursive: true, mode: 0o700 });
   const existing = await readManagedExtension(paths.extensionPath);
@@ -439,101 +626,6 @@ export async function installPiExtension(paths: PiExtensionPaths): Promise<PiIns
     settingsUpdated,
     settingsError
   };
-}
-
-export async function uninstallPiExtension(paths: PiExtensionPaths): Promise<PiUninstallResult> {
-  const existing = await readManagedExtension(paths.extensionPath);
-  let status: PiUninstallResult['status'] = 'skipped';
-  if (existing.status === 'managed') {
-    await rm(paths.extensionPath, { force: true });
-    status = 'removed';
-  }
-
-  let settingsUpdated = false;
-  let settingsError: string | undefined;
-  try {
-    const settings = await readJsonFile<PiSettings>(paths.settingsPath, {});
-    await writeJsonAtomic(paths.settingsPath, withoutPiAgentPresenceExtension(settings, paths.extensionPath));
-    settingsUpdated = true;
-  } catch (error) {
-    settingsError = describeInstallerError(error);
-  }
-
-  return {
-    status,
-    extensionPath: paths.extensionPath,
-    settingsPath: paths.settingsPath,
-    settingsUpdated,
-    settingsError
-  };
-}
-
-async function readManagedExtension(
-  path: string,
-  marker: string = PI_EXTENSION_MARKER
-): Promise<{ status: 'missing' | 'managed' | 'unmanaged' }> {
-  try {
-    const contents = await readFile(path, 'utf8');
-    return { status: contents.includes(marker) ? 'managed' : 'unmanaged' };
-  } catch (error) {
-    if (hasNodeErrorCode(error, 'ENOENT')) {
-      return { status: 'missing' };
-    }
-    throw error;
-  }
-}
-
-function describeInstallerError(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
-// ---------------------------------------------------------------------------
-// dsh (DeepSeek harness) plugin
-//
-// dsh has no managed hook settings of its own; its extension surface is
-// Cordis plugins. We ship a single-file plugin that bridges dsh lifecycle
-// events and per-call token usage into `agent-presence hook --source dsh`,
-// and register it in the home-level `~/.dsh/cordis.patch.yml` (which applies
-// to every profile). The patch is a top-level YAML array; we merge our entry
-// as a marker-delimited block so uninstall is a clean text removal.
-// ---------------------------------------------------------------------------
-
-export const DSH_PLUGIN_FILE_NAME = 'agent-presence.mjs';
-export const DSH_PLUGIN_MARKER = '@rivus/agent-presence dsh plugin';
-
-const DSH_PATCH_START = '# agent-presence-dsh-plugin:start';
-const DSH_PATCH_END = '# agent-presence-dsh-plugin:end';
-
-export interface DshPluginPaths {
-  /** Where the single-file plugin is written (e.g. `~/.dsh/plugins/agent-presence.mjs`). */
-  pluginPath: string;
-  /** The home-level cordis patch that registers it (e.g. `~/.dsh/cordis.patch.yml`). */
-  patchPath: string;
-}
-
-/** Resolve the dsh plugin + patch paths, honouring `DSH_HOME` and test overrides. */
-export function resolveDshPluginPaths(): DshPluginPaths {
-  const dshHome = process.env.DSH_HOME?.trim() || join(homedir(), '.dsh');
-  return {
-    pluginPath: process.env.DSH_AGENT_PRESENCE_PLUGIN_FILE ?? join(dshHome, 'plugins', DSH_PLUGIN_FILE_NAME),
-    patchPath: process.env.DSH_AGENT_PRESENCE_PATCH_FILE ?? join(dshHome, 'cordis.patch.yml')
-  };
-}
-
-export interface DshInstallResult {
-  status: 'installed';
-  pluginPath: string;
-  patchPath: string;
-  patchUpdated: boolean;
-  patchError?: string;
-}
-
-export interface DshUninstallResult {
-  status: 'removed' | 'skipped';
-  pluginPath: string;
-  patchPath: string;
-  patchUpdated: boolean;
-  patchError?: string;
 }
 
 export function buildDshPluginSource(commandParts = agentPresenceCommandParts()): string {
@@ -655,46 +747,6 @@ export function apply(ctx) {
 `;
 }
 
-/** Merge the agent-presence entry into a home-level cordis.patch.yml body. */
-export function withDshAgentPresencePatch(input: string, pluginPath: string): string {
-  const block = dshPluginBlock(pluginPath);
-  const startIdx = input.indexOf(DSH_PATCH_START);
-  if (startIdx === -1) {
-    const trimmed = input.trimEnd();
-    return trimmed ? `${trimmed}\n${block}\n` : `${block}\n`;
-  }
-  // Replace from the start marker to the end marker (or EOF if the end marker
-  // is missing — a crash mid-write left an orphaned start).
-  const endIdx = input.indexOf(DSH_PATCH_END, startIdx);
-  const endSlice = endIdx === -1 ? input.length : endIdx + DSH_PATCH_END.length;
-  return `${input.slice(0, startIdx)}${block}${input.slice(endSlice)}`;
-}
-
-/** Remove the agent-presence entry from a cordis.patch.yml body. */
-export function withoutDshAgentPresencePatch(input: string): string {
-  const startIdx = input.indexOf(DSH_PATCH_START);
-  if (startIdx === -1) {
-    return input;
-  }
-  const endIdx = input.indexOf(DSH_PATCH_END, startIdx);
-  if (endIdx === -1) {
-    return input;
-  }
-  const before = input.slice(0, startIdx);
-  const after = input.slice(endIdx + DSH_PATCH_END.length);
-  // Only normalize the gap left by the removed block, not the file's own spacing.
-  const result = `${before.replace(/\n+$/, '')}\n\n${after.replace(/^\n+/, '')}`.trim();
-  return result ? `${result}\n` : '';
-}
-
-function dshPluginBlock(pluginPath: string): string {
-  return `${DSH_PATCH_START}
-- insert:
-    - id: agent-presence
-      name: ${pluginPath}
-${DSH_PATCH_END}`;
-}
-
 export async function installDshPlugin(paths: DshPluginPaths): Promise<DshInstallResult> {
   await mkdir(dirname(paths.pluginPath), { recursive: true, mode: 0o700 });
   const existing = await readManagedExtension(paths.pluginPath, DSH_PLUGIN_MARKER);
@@ -719,90 +771,38 @@ export async function installDshPlugin(paths: DshPluginPaths): Promise<DshInstal
   return { status: 'installed', pluginPath: paths.pluginPath, patchPath: paths.patchPath, patchUpdated, patchError };
 }
 
-export async function uninstallDshPlugin(paths: DshPluginPaths): Promise<DshUninstallResult> {
-  const existing = await readManagedExtension(paths.pluginPath, DSH_PLUGIN_MARKER);
-  let status: DshUninstallResult['status'] = 'skipped';
-  if (existing.status === 'managed') {
-    await rm(paths.pluginPath, { force: true });
-    status = 'removed';
+function shellQuote(value: string): string {
+  if (/^[A-Za-z0-9_/:=@.-]+$/.test(value)) {
+    return value;
   }
-
-  let patchUpdated = false;
-  let patchError: string | undefined;
-  try {
-    const patch = await readTextFile(paths.patchPath, '');
-    const next = withoutDshAgentPresencePatch(patch);
-    if (next) {
-      await writeFile(paths.patchPath, next, { mode: 0o600 });
-    } else {
-      await rm(paths.patchPath, { force: true });
-    }
-    patchUpdated = true;
-  } catch (error) {
-    patchError = describeInstallerError(error);
-  }
-
-  return { status, pluginPath: paths.pluginPath, patchPath: paths.patchPath, patchUpdated, patchError };
-}
-
-async function readTextFile(path: string, fallback: string): Promise<string> {
-  try {
-    return await readFile(path, 'utf8');
-  } catch (error) {
-    if (hasNodeErrorCode(error, 'ENOENT')) {
-      return fallback;
-    }
-    throw error;
-  }
+  return `'${value.replaceAll("'", "'\\''")}'`;
 }
 
 export function buildAgentPresenceShellCommand(args: string[]): string {
   return [...agentPresenceCommandParts(), ...args].map(shellQuote).join(' ');
 }
 
-function agentPresenceCommandParts(): string[] {
-  if (process.env.AGENT_PRESENCE_HOOK_COMMAND === 'absolute') {
-    return [process.execPath, resolveCliPath()];
-  }
-  return ['npx', '--yes', '--registry=https://registry.npmjs.org', `@rivus/agent-presence@${packageVersion()}`];
-}
+export function withClaudeAgentSignatureHooks(input: Partial<HookSettings>): HookSettings {
+  const settings: HookSettings = {
+    ...input,
+    hooks: { ...input.hooks }
+  };
 
-function resolveCliPath(): string {
-  if (process.env.AGENT_PRESENCE_CLI_PATH) {
-    return process.env.AGENT_PRESENCE_CLI_PATH;
+  for (const event of CLAUDE_EVENTS) {
+    const groups = settings.hooks[event] ?? [];
+    settings.hooks[event] = withoutAgentSignatureHookGroups(groups);
+    settings.hooks[event].push({
+      hooks: [
+        {
+          type: 'command',
+          command: `${buildAgentPresenceShellCommand(['hook', '--source', 'claude', '--event', event, '--silent'])} >/dev/null 2>/dev/null || true`,
+          timeout: 5000
+        }
+      ]
+    });
   }
-  for (const url of [
-    new URL('./cli.js', import.meta.url),
-    new URL('../cli.js', import.meta.url),
-    new URL('../dist/src/cli.js', import.meta.url)
-  ]) {
-    const resolved = fileURLToPath(url);
-    if (existsSync(resolved)) {
-      return resolved;
-    }
-  }
-  throw new Error('unable to resolve @rivus/agent-presence CLI path');
-}
 
-function packageVersion(): string {
-  for (const url of [new URL('../package.json', import.meta.url), new URL('../../package.json', import.meta.url)]) {
-    try {
-      const parsed = JSON.parse(readFileSync(url, 'utf8')) as { version?: unknown };
-      if (typeof parsed.version === 'string' && parsed.version.length > 0) {
-        return parsed.version;
-      }
-    } catch {
-      // Source and dist builds resolve package.json from different depths.
-    }
-  }
-  throw new Error('unable to resolve @rivus/agent-presence package version');
-}
-
-function shellQuote(value: string): string {
-  if (/^[A-Za-z0-9_/:=@.-]+$/.test(value)) {
-    return value;
-  }
-  return `'${value.replaceAll("'", "'\\''")}'`;
+  return settings;
 }
 
 const GEMINI_EVENTS = ['SessionStart', 'UserPromptSubmit', 'PreToolUse', 'PostToolUse', 'Stop', 'SessionEnd'];

@@ -11,22 +11,36 @@ const LOG_LOCK_RETRY_MS = 10;
 const LOG_LOCK_WAIT_ATTEMPTS = 250;
 const LOG_LOCK_STALE_MS = 2_000;
 
-export async function appendRetainedLogLine(path: string, line: string): Promise<void> {
-  const lock = await acquireLogLock(path);
-  if (lock === 'unavailable') {
-    await appendFile(path, line, { mode: 0o600 });
-    return;
-  }
-  if (lock === 'contended') {
-    return;
-  }
+interface AcquiredLogLock {
+  release(): Promise<void>;
+}
 
-  try {
-    await appendFile(path, line, { mode: 0o600 });
-    await compactLogFile(path).catch(() => undefined);
-  } finally {
-    await lock.release();
+interface OwnedLogLock {
+  state: 'active' | 'stale';
+  token: string;
+}
+
+function parseLockOwnerPid(token: string): number | undefined {
+  const match = new RegExp(`^${LOG_LOCK_MARKER}:(\\d+):[0-9a-f-]+\\n$`).exec(token);
+  if (!match) {
+    return undefined;
   }
+  const pid = Number(match[1]);
+  return Number.isSafeInteger(pid) && pid > 0 ? pid : undefined;
+}
+
+async function removeOwnedLock(path: string, token: string): Promise<void> {
+  try {
+    if ((await readFile(path, 'utf8')) === token) {
+      await rm(path, { force: true });
+    }
+  } catch {
+    // Lock cleanup is best-effort; a verified stale lock is reclaimed later.
+  }
+}
+
+function hasNodeErrorCode(error: unknown, code: string): error is NodeJS.ErrnoException {
+  return error instanceof Error && 'code' in error && error.code === code;
 }
 
 async function compactLogFile(path: string): Promise<void> {
@@ -58,58 +72,13 @@ async function compactLogFile(path: string): Promise<void> {
   }
 }
 
-interface AcquiredLogLock {
-  release(): Promise<void>;
-}
-
-async function acquireLogLock(path: string): Promise<AcquiredLogLock | 'contended' | 'unavailable'> {
-  const lockPath = `${path}${LOG_LOCK_SUFFIX}`;
-  const token = `${LOG_LOCK_MARKER}:${process.pid}:${randomUUID()}\n`;
-  const candidatePath = `${lockPath}.${randomUUID()}.tmp`;
+function isProcessAlive(pid: number): boolean {
   try {
-    await writeFile(candidatePath, token, { flag: 'wx', mode: 0o600 });
-  } catch {
-    return 'unavailable';
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return hasNodeErrorCode(error, 'EPERM');
   }
-
-  try {
-    for (let attempt = 0; attempt < LOG_LOCK_WAIT_ATTEMPTS; attempt += 1) {
-      try {
-        await link(candidatePath, lockPath);
-        return {
-          release: async () => {
-            await removeOwnedLock(lockPath, token);
-          }
-        };
-      } catch (error) {
-        if (!hasNodeErrorCode(error, 'EEXIST')) {
-          return 'unavailable';
-        }
-
-        const existingLock = await inspectExistingLock(lockPath);
-        if (existingLock === 'foreign') {
-          return 'unavailable';
-        }
-        if (existingLock.state === 'stale') {
-          const reclaimResult = await reclaimStaleLock(lockPath, existingLock.token);
-          if (reclaimResult === 'reclaimed') {
-            continue;
-          }
-          await delay(LOG_LOCK_RETRY_MS);
-          continue;
-        }
-        await delay(LOG_LOCK_RETRY_MS);
-      }
-    }
-    return 'contended';
-  } finally {
-    await rm(candidatePath, { force: true }).catch(() => undefined);
-  }
-}
-
-interface OwnedLogLock {
-  state: 'active' | 'stale';
-  token: string;
 }
 
 async function inspectExistingLock(path: string): Promise<OwnedLogLock | 'foreign'> {
@@ -173,34 +142,65 @@ async function reclaimStaleLock(path: string, expectedToken: string): Promise<'b
   }
 }
 
-function parseLockOwnerPid(token: string): number | undefined {
-  const match = new RegExp(`^${LOG_LOCK_MARKER}:(\\d+):[0-9a-f-]+\\n$`).exec(token);
-  if (!match) {
-    return undefined;
-  }
-  const pid = Number(match[1]);
-  return Number.isSafeInteger(pid) && pid > 0 ? pid : undefined;
-}
-
-function isProcessAlive(pid: number): boolean {
+async function acquireLogLock(path: string): Promise<AcquiredLogLock | 'contended' | 'unavailable'> {
+  const lockPath = `${path}${LOG_LOCK_SUFFIX}`;
+  const token = `${LOG_LOCK_MARKER}:${process.pid}:${randomUUID()}\n`;
+  const candidatePath = `${lockPath}.${randomUUID()}.tmp`;
   try {
-    process.kill(pid, 0);
-    return true;
-  } catch (error) {
-    return hasNodeErrorCode(error, 'EPERM');
-  }
-}
-
-async function removeOwnedLock(path: string, token: string): Promise<void> {
-  try {
-    if ((await readFile(path, 'utf8')) === token) {
-      await rm(path, { force: true });
-    }
+    await writeFile(candidatePath, token, { flag: 'wx', mode: 0o600 });
   } catch {
-    // Lock cleanup is best-effort; a verified stale lock is reclaimed later.
+    return 'unavailable';
+  }
+
+  try {
+    for (let attempt = 0; attempt < LOG_LOCK_WAIT_ATTEMPTS; attempt += 1) {
+      try {
+        await link(candidatePath, lockPath);
+        return {
+          release: async () => {
+            await removeOwnedLock(lockPath, token);
+          }
+        };
+      } catch (error) {
+        if (!hasNodeErrorCode(error, 'EEXIST')) {
+          return 'unavailable';
+        }
+
+        const existingLock = await inspectExistingLock(lockPath);
+        if (existingLock === 'foreign') {
+          return 'unavailable';
+        }
+        if (existingLock.state === 'stale') {
+          const reclaimResult = await reclaimStaleLock(lockPath, existingLock.token);
+          if (reclaimResult === 'reclaimed') {
+            continue;
+          }
+          await delay(LOG_LOCK_RETRY_MS);
+          continue;
+        }
+        await delay(LOG_LOCK_RETRY_MS);
+      }
+    }
+    return 'contended';
+  } finally {
+    await rm(candidatePath, { force: true }).catch(() => undefined);
   }
 }
 
-function hasNodeErrorCode(error: unknown, code: string): error is NodeJS.ErrnoException {
-  return error instanceof Error && 'code' in error && error.code === code;
+export async function appendRetainedLogLine(path: string, line: string): Promise<void> {
+  const lock = await acquireLogLock(path);
+  if (lock === 'unavailable') {
+    await appendFile(path, line, { mode: 0o600 });
+    return;
+  }
+  if (lock === 'contended') {
+    return;
+  }
+
+  try {
+    await appendFile(path, line, { mode: 0o600 });
+    await compactLogFile(path).catch(() => undefined);
+  } finally {
+    await lock.release();
+  }
 }

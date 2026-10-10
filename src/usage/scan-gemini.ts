@@ -17,58 +17,6 @@ function defaultGeminiRoot(): string {
   return join(base, 'tmp');
 }
 
-/**
- * Scan Gemini CLI transcripts for assistant turns inside the window.
- *
- * Gemini CLI automatically records sessions under `~/.gemini/tmp/<hash>/chats/`.
- * The current format is JSONL: a metadata line, then per-message records
- * `{ id, timestamp (ISO), type: 'user' | 'gemini', model?, tokens? }`, where an
- * assistant (`gemini`) message carries
- * `tokens: { input, output, cached, thoughts?, tool?, total }`. A legacy
- * single-object `.json` form (`{ ..., messages: [...] }`) also exists.
- *
- * Gemini records tokens but no cost, so records reprice via the pricing table
- * (like Codex). The CLI re-appends the same message id when it attaches tokens,
- * so we de-duplicate by `id`, keeping the largest-total occurrence — the final,
- * token-bearing copy — rather than double-counting.
- */
-export async function scanGemini(options: ScanOptions): Promise<UsageRecord[]> {
-  const root = options.root ?? defaultGeminiRoot();
-  const files = await listChatFiles(root, options.sinceMs);
-  const deduped = new Map<string, UsageRecord>();
-  const unkeyed: UsageRecord[] = [];
-
-  const consider = (record: UsageRecord | null, id: string | undefined): void => {
-    if (!record) {
-      return;
-    }
-    if (!id) {
-      unkeyed.push(record);
-      return;
-    }
-    const existing = deduped.get(id);
-    if (!existing || total(record) > total(existing)) {
-      deduped.set(id, record);
-    }
-  };
-
-  for (const file of files) {
-    if (file.endsWith('.jsonl')) {
-      await forEachJsonl(file, (raw) => {
-        const parsed = extractRecord(raw, options.sinceMs, options.untilMs);
-        consider(parsed?.record ?? null, parsed?.id);
-      });
-    } else {
-      for (const raw of await readLegacyMessages(file)) {
-        const parsed = extractRecord(raw, options.sinceMs, options.untilMs);
-        consider(parsed?.record ?? null, parsed?.id);
-      }
-    }
-  }
-
-  return [...deduped.values(), ...unkeyed];
-}
-
 // Ordering within a source is immaterial: `summarise` aggregates a source's
 // records into one row and only the per-source total is surfaced, so emitting
 // deduped (id-bearing) records before any unkeyed ones is fine. Every real
@@ -76,13 +24,6 @@ export async function scanGemini(options: ScanOptions): Promise<UsageRecord[]> {
 
 function total(record: UsageRecord): number {
   return record.inputTokens + record.outputTokens + record.cacheWriteTokens + record.cacheReadTokens;
-}
-
-/** Recursively collect `*.jsonl` (current) and `*.json` (legacy) chat files under `root`. */
-async function listChatFiles(root: string, sinceMs: number): Promise<string[]> {
-  const found: string[] = [];
-  await walk(root, sinceMs, found);
-  return found;
 }
 
 async function walk(dir: string, sinceMs: number, out: string[]): Promise<void> {
@@ -112,6 +53,13 @@ async function walk(dir: string, sinceMs: number, out: string[]): Promise<void> 
   }
 }
 
+/** Recursively collect `*.jsonl` (current) and `*.json` (legacy) chat files under `root`. */
+async function listChatFiles(root: string, sinceMs: number): Promise<string[]> {
+  const found: string[] = [];
+  await walk(root, sinceMs, found);
+  return found;
+}
+
 /** Read a legacy single-object session file and return its `messages` array. */
 async function readLegacyMessages(file: string): Promise<unknown[]> {
   let raw: string;
@@ -131,6 +79,14 @@ async function readLegacyMessages(file: string): Promise<unknown[]> {
   }
   const messages = (parsed as Record<string, unknown>).messages;
   return Array.isArray(messages) ? messages : [];
+}
+
+function asNumber(value: unknown): number {
+  return typeof value === 'number' && Number.isFinite(value) ? value : 0;
+}
+
+function asString(value: unknown): string {
+  return typeof value === 'string' ? value : '';
 }
 
 function extractRecord(
@@ -182,10 +138,54 @@ function extractRecord(
   };
 }
 
-function asNumber(value: unknown): number {
-  return typeof value === 'number' && Number.isFinite(value) ? value : 0;
-}
+/**
+ * Scan Gemini CLI transcripts for assistant turns inside the window.
+ *
+ * Gemini CLI automatically records sessions under `~/.gemini/tmp/<hash>/chats/`.
+ * The current format is JSONL: a metadata line, then per-message records
+ * `{ id, timestamp (ISO), type: 'user' | 'gemini', model?, tokens? }`, where an
+ * assistant (`gemini`) message carries
+ * `tokens: { input, output, cached, thoughts?, tool?, total }`. A legacy
+ * single-object `.json` form (`{ ..., messages: [...] }`) also exists.
+ *
+ * Gemini records tokens but no cost, so records reprice via the pricing table
+ * (like Codex). The CLI re-appends the same message id when it attaches tokens,
+ * so we de-duplicate by `id`, keeping the largest-total occurrence — the final,
+ * token-bearing copy — rather than double-counting.
+ */
+export async function scanGemini(options: ScanOptions): Promise<UsageRecord[]> {
+  const root = options.root ?? defaultGeminiRoot();
+  const files = await listChatFiles(root, options.sinceMs);
+  const deduped = new Map<string, UsageRecord>();
+  const unkeyed: UsageRecord[] = [];
 
-function asString(value: unknown): string {
-  return typeof value === 'string' ? value : '';
+  const consider = (record: UsageRecord | null, id: string | undefined): void => {
+    if (!record) {
+      return;
+    }
+    if (!id) {
+      unkeyed.push(record);
+      return;
+    }
+    const existing = deduped.get(id);
+    if (!existing || total(record) > total(existing)) {
+      deduped.set(id, record);
+    }
+  };
+
+  for (const file of files) {
+    if (file.endsWith('.jsonl')) {
+      await forEachJsonl(file, (raw) => {
+        const parsed = extractRecord(raw, options.sinceMs, options.untilMs);
+        consider(parsed?.record ?? null, parsed?.id);
+      });
+    } else {
+      for (const raw of await readLegacyMessages(file)) {
+        const parsed = extractRecord(raw, options.sinceMs, options.untilMs);
+        consider(parsed?.record ?? null, parsed?.id);
+      }
+    }
+  }
+
+  return [...deduped.values(), ...unkeyed];
 }

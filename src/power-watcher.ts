@@ -18,6 +18,46 @@ export interface PowerEventWatcherOptions {
   logPath?: string;
 }
 
+function escapePlist(value: string): string {
+  return value
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&apos;');
+}
+
+export function buildPowerWatcherPlist(options: PowerWatcherPlistOptions): string {
+  const logPath = options.logPath ?? '/tmp/agent-presence-power-watch.log';
+  const errorLogPath = options.errorLogPath ?? logPath;
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "https://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>${escapePlist(options.label)}</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/zsh</string>
+    <string>${escapePlist(options.scriptPath)}</string>
+  </array>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>StandardOutPath</key>
+  <string>${escapePlist(logPath)}</string>
+  <key>StandardErrorPath</key>
+  <string>${escapePlist(errorLogPath)}</string>
+</dict>
+</plist>
+`;
+}
+
+function escapeShellDoubleQuoted(value: string): string {
+  return value.replaceAll('\\', '\\\\').replaceAll('"', '\\"').replaceAll('$', '\\$').replaceAll('`', '\\`');
+}
+
 export function buildPowerWatcherScript(options: PowerWatcherScriptOptions = {}): string {
   const pathEntries = (options.pathEntries ?? []).filter((entry) => entry.length > 0);
   const pathExport =
@@ -90,6 +130,10 @@ trap cleanup TERM HUP INT EXIT
 
 ${powerWatcherLoop}
 `;
+}
+
+function escapeSwiftString(value: string): string {
+  return value.replaceAll('\\', '\\\\').replaceAll('"', '\\"');
 }
 
 export function buildPowerEventWatcherSwift(options: PowerEventWatcherOptions = {}): string {
@@ -165,48 +209,4 @@ ${logMaintenanceSetup}
 
 RunLoop.main.run()
 `;
-}
-
-export function buildPowerWatcherPlist(options: PowerWatcherPlistOptions): string {
-  const logPath = options.logPath ?? '/tmp/agent-presence-power-watch.log';
-  const errorLogPath = options.errorLogPath ?? logPath;
-  return `<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "https://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-  <key>Label</key>
-  <string>${escapePlist(options.label)}</string>
-  <key>ProgramArguments</key>
-  <array>
-    <string>/bin/zsh</string>
-    <string>${escapePlist(options.scriptPath)}</string>
-  </array>
-  <key>RunAtLoad</key>
-  <true/>
-  <key>KeepAlive</key>
-  <true/>
-  <key>StandardOutPath</key>
-  <string>${escapePlist(logPath)}</string>
-  <key>StandardErrorPath</key>
-  <string>${escapePlist(errorLogPath)}</string>
-</dict>
-</plist>
-`;
-}
-
-function escapePlist(value: string): string {
-  return value
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&apos;');
-}
-
-function escapeShellDoubleQuoted(value: string): string {
-  return value.replaceAll('\\', '\\\\').replaceAll('"', '\\"').replaceAll('$', '\\$').replaceAll('`', '\\`');
-}
-
-function escapeSwiftString(value: string): string {
-  return value.replaceAll('\\', '\\\\').replaceAll('"', '\\"');
 }

@@ -131,6 +131,17 @@
       caret.remove();
     }
 
+    async function countTo(el: HTMLElement, target: number, suffix: string) {
+      if (reduce) { el.textContent = target + suffix; return; }
+      const start = Number((el.textContent || '0').replace(/[^\d.]/g, '')) || 0;
+      const steps = 14;
+      for (let i = 1; i <= steps; i++) {
+        const v = Math.round(start + ((target - start) * i) / steps);
+        el.textContent = v + suffix;
+        await sleep(26);
+      }
+    }
+
     async function run() {
       body.innerHTML = '';
       sig.classList.remove('show');
@@ -164,17 +175,6 @@
         await sleep(900);
       }
       await sleep(2600);
-    }
-
-    async function countTo(el: HTMLElement, target: number, suffix: string) {
-      if (reduce) { el.textContent = target + suffix; return; }
-      const start = Number((el.textContent || '0').replace(/[^\d.]/g, '')) || 0;
-      const steps = 14;
-      for (let i = 1; i <= steps; i++) {
-        const v = Math.round(start + ((target - start) * i) / steps);
-        el.textContent = v + suffix;
-        await sleep(26);
-      }
     }
 
     if (reduce) {

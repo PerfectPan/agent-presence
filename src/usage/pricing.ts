@@ -40,7 +40,39 @@ interface LiteLLMSnapshot {
   prices?: Record<string, ModelPricing>;
 }
 
+function bestPricingKey(model: string, table: Record<string, Partial<ModelPricing>>): string | undefined {
+  let bestKey: string | undefined;
+  for (const key of Object.keys(table)) {
+    if (model.includes(key.toLowerCase()) && (bestKey === undefined || key.length > bestKey.length)) {
+      bestKey = key;
+    }
+  }
+  return bestKey;
+}
+
+function loadLiteLLMPricing(): Record<string, ModelPricing> {
+  try {
+    const path = new URL('./litellm-pricing.json', import.meta.url);
+    const parsed = JSON.parse(readFileSync(path, 'utf8')) as LiteLLMSnapshot;
+    return parsed.prices ?? {};
+  } catch {
+    // Source checkouts before `pnpm run update-pricing` and broken package
+    // installs should degrade to the small fallback table, not crash `usage`.
+    return {};
+  }
+}
+
 const LITELLM_PRICING: Record<string, ModelPricing> = loadLiteLLMPricing();
+
+function mergeOverrides(overrides: PricingOverrides): Record<string, Partial<ModelPricing>> {
+  const merged: Record<string, Partial<ModelPricing>> = {};
+  for (const [key, value] of Object.entries(overrides)) {
+    const normalized = key.toLowerCase();
+    const base = LITELLM_PRICING[normalized] ?? DEFAULT_PRICING[normalized] ?? {};
+    merged[normalized] = { ...base, ...value };
+  }
+  return merged;
+}
 
 /**
  * Resolve pricing for a model id. Matches the longest pricing key that is a
@@ -80,38 +112,6 @@ export function resolvePricing(model: string, overrides: PricingOverrides = {}):
     ...(merged.cacheWrite1h === undefined ? {} : { cacheWrite1h: merged.cacheWrite1h }),
     cacheRead: merged.cacheRead
   };
-}
-
-function mergeOverrides(overrides: PricingOverrides): Record<string, Partial<ModelPricing>> {
-  const merged: Record<string, Partial<ModelPricing>> = {};
-  for (const [key, value] of Object.entries(overrides)) {
-    const normalized = key.toLowerCase();
-    const base = LITELLM_PRICING[normalized] ?? DEFAULT_PRICING[normalized] ?? {};
-    merged[normalized] = { ...base, ...value };
-  }
-  return merged;
-}
-
-function bestPricingKey(model: string, table: Record<string, Partial<ModelPricing>>): string | undefined {
-  let bestKey: string | undefined;
-  for (const key of Object.keys(table)) {
-    if (model.includes(key.toLowerCase()) && (bestKey === undefined || key.length > bestKey.length)) {
-      bestKey = key;
-    }
-  }
-  return bestKey;
-}
-
-function loadLiteLLMPricing(): Record<string, ModelPricing> {
-  try {
-    const path = new URL('./litellm-pricing.json', import.meta.url);
-    const parsed = JSON.parse(readFileSync(path, 'utf8')) as LiteLLMSnapshot;
-    return parsed.prices ?? {};
-  } catch {
-    // Source checkouts before `pnpm run update-pricing` and broken package
-    // installs should degrade to the small fallback table, not crash `usage`.
-    return {};
-  }
 }
 
 /**

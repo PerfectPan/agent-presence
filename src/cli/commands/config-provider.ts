@@ -12,6 +12,43 @@ import { isInteractiveTerminal, promptText } from '../ui.js';
 
 const PROVIDER_OPTIONS = ['--base-url', '--preview-base-url', '--image-key', '--target-url'];
 
+async function promptOptionalText(message: string, initialValue?: string): Promise<string | undefined> {
+  const value = await promptText({
+    message,
+    initialValue,
+    placeholder: initialValue
+  });
+  return value.trim() || undefined;
+}
+
+function setOptionalValue(target: Record<string, string>, key: string, value: string | undefined): void {
+  if (value !== undefined) {
+    target[key] = value;
+  }
+}
+
+async function promptProviderConfig(
+  target: Record<string, string>,
+  current: FeishuSignatureProviderConfig
+): Promise<void> {
+  setOptionalValue(
+    target,
+    'baseUrl',
+    await promptOptionalText('Slot API base URL', current.baseUrl ?? 'https://l.garyyang.work')
+  );
+  setOptionalValue(
+    target,
+    'previewBaseUrl',
+    await promptOptionalText('Signature preview base URL', current.previewBaseUrl ?? 'https://l.garyyang.work/')
+  );
+  setOptionalValue(target, 'previewImageKey', await promptOptionalText('Preview image key', current.previewImageKey));
+  setOptionalValue(
+    target,
+    'previewTargetUrl',
+    await promptOptionalText('Preview target URL', current.previewTargetUrl)
+  );
+}
+
 export async function configureProvider(args: string[]): Promise<void> {
   const config = await loadConfig();
   const explicitProvider = args[0]?.startsWith('--')
@@ -53,41 +90,4 @@ export async function configureProvider(args: string[]): Promise<void> {
       2
     )
   );
-}
-
-async function promptProviderConfig(
-  target: Record<string, string>,
-  current: FeishuSignatureProviderConfig
-): Promise<void> {
-  setOptionalValue(
-    target,
-    'baseUrl',
-    await promptOptionalText('Slot API base URL', current.baseUrl ?? 'https://l.garyyang.work')
-  );
-  setOptionalValue(
-    target,
-    'previewBaseUrl',
-    await promptOptionalText('Signature preview base URL', current.previewBaseUrl ?? 'https://l.garyyang.work/')
-  );
-  setOptionalValue(target, 'previewImageKey', await promptOptionalText('Preview image key', current.previewImageKey));
-  setOptionalValue(
-    target,
-    'previewTargetUrl',
-    await promptOptionalText('Preview target URL', current.previewTargetUrl)
-  );
-}
-
-async function promptOptionalText(message: string, initialValue?: string): Promise<string | undefined> {
-  const value = await promptText({
-    message,
-    initialValue,
-    placeholder: initialValue
-  });
-  return value.trim() || undefined;
-}
-
-function setOptionalValue(target: Record<string, string>, key: string, value: string | undefined): void {
-  if (value !== undefined) {
-    target[key] = value;
-  }
 }

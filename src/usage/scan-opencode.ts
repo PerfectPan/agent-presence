@@ -16,32 +16,113 @@ function defaultOpenCodeDir(): string {
   return join(base, 'opencode');
 }
 
-/**
- * Scan opencode transcripts for assistant messages inside the window.
- *
- * opencode (>=1.2) records usage in a SQLite DB at `<dir>/opencode.db`: the
- * `message` table has one row per message with a `data` JSON column carrying,
- * for assistant messages, `{ role, tokens:{input,output,reasoning,cache:{read,write}},
- * cost, modelID, time:{created,completed} }`. opencode logs a real per-message
- * cost, so we trust it (like Pi) rather than repricing — even a `0` cost.
- *
- * Preference order, all read-only and fail-soft:
- * 1. SQLite via node's builtin `node:sqlite`. `engines.node` allows `>=22`, but
- *    the builtin does not exist on Node.js 22.0-22.4, needs
- *    `--experimental-sqlite` on 22.5-22.12, and is unflagged from 22.13.
- *    Imported dynamically so such a runtime never fails at load.
- * 2. Legacy (<1.2) JSON at `<dir>/storage/message/{sessionId}/*.json`, same
- *    per-message shape.
- * 3. Nothing present -> `[]`.
- */
-export async function scanOpenCode(options: ScanOptions): Promise<UsageRecord[]> {
-  const dir = options.root ?? defaultOpenCodeDir();
-
-  const fromDb = await scanSqlite(join(dir, 'opencode.db'), options);
-  if (fromDb !== null) {
-    return fromDb;
+async function listJsonFiles(root: string): Promise<string[]> {
+  let sessions: string[];
+  try {
+    sessions = await readdir(root);
+  } catch {
+    return []; // No legacy store — nothing to scan.
   }
-  return scanLegacyJson(join(dir, 'storage', 'message'), options);
+  const found: string[] = [];
+  for (const session of sessions) {
+    const sessionDir = join(root, session);
+    let names: string[];
+    try {
+      const info = await stat(sessionDir);
+      if (!info.isDirectory()) {
+        continue;
+      }
+      names = await readdir(sessionDir);
+    } catch {
+      continue;
+    }
+    for (const name of names) {
+      if (name.endsWith('.json')) {
+        found.push(join(sessionDir, name));
+      }
+    }
+  }
+  return found;
+}
+
+function asNumber(value: unknown): number;
+function asNumber(value: unknown, fallback: null): number | null;
+function asNumber(value: unknown, fallback: number | null = 0): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+}
+
+/** Prefer the message's completion time, then its create time, then the DB row's. */
+function messageTimestamp(time: unknown, rowCreatedMs: number | undefined): number | null {
+  if (typeof time === 'object' && time !== null) {
+    const record = time as Record<string, unknown>;
+    const completed = asNumber(record.completed, null);
+    if (completed !== null) {
+      return completed;
+    }
+    const created = asNumber(record.created, null);
+    if (created !== null) {
+      return created;
+    }
+  }
+  return rowCreatedMs ?? null;
+}
+
+function asString(value: unknown): string {
+  return typeof value === 'string' ? value : '';
+}
+
+/**
+ * Turn one message `data` blob into a usage record, or `null` when it is not a
+ * billable assistant message or falls outside the window. `rowCreatedMs` is the
+ * SQLite `time_created` fallback when the JSON carries no completion time.
+ */
+function extractRecord(
+  data: string,
+  rowCreatedMs: number | undefined,
+  sinceMs: number,
+  untilMs: number
+): UsageRecord | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(data);
+  } catch {
+    return null;
+  }
+  if (typeof parsed !== 'object' || parsed === null) {
+    return null;
+  }
+  const message = parsed as Record<string, unknown>;
+  if (message.role !== 'assistant') {
+    return null;
+  }
+
+  const tokens = message.tokens;
+  if (typeof tokens !== 'object' || tokens === null) {
+    return null;
+  }
+  const t = tokens as Record<string, unknown>;
+  const cache = typeof t.cache === 'object' && t.cache !== null ? (t.cache as Record<string, unknown>) : {};
+
+  const timestamp = messageTimestamp(message.time, rowCreatedMs);
+  if (timestamp === null || timestamp < sinceMs || timestamp >= untilMs) {
+    return null;
+  }
+
+  const cost = asNumber(message.cost, null);
+
+  return {
+    source: 'opencode',
+    model: asString(message.modelID) || 'unknown',
+    timestamp,
+    inputTokens: asNumber(t.input),
+    // opencode bills reasoning as output; folding it in keeps our four-bucket
+    // total equal to opencode's own `tokens.total`.
+    outputTokens: asNumber(t.output) + asNumber(t.reasoning),
+    cacheWriteTokens: asNumber(cache.write),
+    cacheReadTokens: asNumber(cache.read),
+    // opencode records a resolved cost, so we trust it (like Pi), including 0.
+    costUsd: cost
+  };
 }
 
 /**
@@ -112,111 +193,30 @@ async function scanLegacyJson(messageRoot: string, options: ScanOptions): Promis
   return records;
 }
 
-async function listJsonFiles(root: string): Promise<string[]> {
-  let sessions: string[];
-  try {
-    sessions = await readdir(root);
-  } catch {
-    return []; // No legacy store — nothing to scan.
-  }
-  const found: string[] = [];
-  for (const session of sessions) {
-    const sessionDir = join(root, session);
-    let names: string[];
-    try {
-      const info = await stat(sessionDir);
-      if (!info.isDirectory()) {
-        continue;
-      }
-      names = await readdir(sessionDir);
-    } catch {
-      continue;
-    }
-    for (const name of names) {
-      if (name.endsWith('.json')) {
-        found.push(join(sessionDir, name));
-      }
-    }
-  }
-  return found;
-}
-
 /**
- * Turn one message `data` blob into a usage record, or `null` when it is not a
- * billable assistant message or falls outside the window. `rowCreatedMs` is the
- * SQLite `time_created` fallback when the JSON carries no completion time.
+ * Scan opencode transcripts for assistant messages inside the window.
+ *
+ * opencode (>=1.2) records usage in a SQLite DB at `<dir>/opencode.db`: the
+ * `message` table has one row per message with a `data` JSON column carrying,
+ * for assistant messages, `{ role, tokens:{input,output,reasoning,cache:{read,write}},
+ * cost, modelID, time:{created,completed} }`. opencode logs a real per-message
+ * cost, so we trust it (like Pi) rather than repricing — even a `0` cost.
+ *
+ * Preference order, all read-only and fail-soft:
+ * 1. SQLite via node's builtin `node:sqlite`. `engines.node` allows `>=22`, but
+ *    the builtin does not exist on Node.js 22.0-22.4, needs
+ *    `--experimental-sqlite` on 22.5-22.12, and is unflagged from 22.13.
+ *    Imported dynamically so such a runtime never fails at load.
+ * 2. Legacy (<1.2) JSON at `<dir>/storage/message/{sessionId}/*.json`, same
+ *    per-message shape.
+ * 3. Nothing present -> `[]`.
  */
-function extractRecord(
-  data: string,
-  rowCreatedMs: number | undefined,
-  sinceMs: number,
-  untilMs: number
-): UsageRecord | null {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(data);
-  } catch {
-    return null;
+export async function scanOpenCode(options: ScanOptions): Promise<UsageRecord[]> {
+  const dir = options.root ?? defaultOpenCodeDir();
+
+  const fromDb = await scanSqlite(join(dir, 'opencode.db'), options);
+  if (fromDb !== null) {
+    return fromDb;
   }
-  if (typeof parsed !== 'object' || parsed === null) {
-    return null;
-  }
-  const message = parsed as Record<string, unknown>;
-  if (message.role !== 'assistant') {
-    return null;
-  }
-
-  const tokens = message.tokens;
-  if (typeof tokens !== 'object' || tokens === null) {
-    return null;
-  }
-  const t = tokens as Record<string, unknown>;
-  const cache = typeof t.cache === 'object' && t.cache !== null ? (t.cache as Record<string, unknown>) : {};
-
-  const timestamp = messageTimestamp(message.time, rowCreatedMs);
-  if (timestamp === null || timestamp < sinceMs || timestamp >= untilMs) {
-    return null;
-  }
-
-  const cost = asNumber(message.cost, null);
-
-  return {
-    source: 'opencode',
-    model: asString(message.modelID) || 'unknown',
-    timestamp,
-    inputTokens: asNumber(t.input),
-    // opencode bills reasoning as output; folding it in keeps our four-bucket
-    // total equal to opencode's own `tokens.total`.
-    outputTokens: asNumber(t.output) + asNumber(t.reasoning),
-    cacheWriteTokens: asNumber(cache.write),
-    cacheReadTokens: asNumber(cache.read),
-    // opencode records a resolved cost, so we trust it (like Pi), including 0.
-    costUsd: cost
-  };
-}
-
-/** Prefer the message's completion time, then its create time, then the DB row's. */
-function messageTimestamp(time: unknown, rowCreatedMs: number | undefined): number | null {
-  if (typeof time === 'object' && time !== null) {
-    const record = time as Record<string, unknown>;
-    const completed = asNumber(record.completed, null);
-    if (completed !== null) {
-      return completed;
-    }
-    const created = asNumber(record.created, null);
-    if (created !== null) {
-      return created;
-    }
-  }
-  return rowCreatedMs ?? null;
-}
-
-function asNumber(value: unknown): number;
-function asNumber(value: unknown, fallback: null): number | null;
-function asNumber(value: unknown, fallback: number | null = 0): number | null {
-  return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
-}
-
-function asString(value: unknown): string {
-  return typeof value === 'string' ? value : '';
+  return scanLegacyJson(join(dir, 'storage', 'message'), options);
 }

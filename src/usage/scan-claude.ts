@@ -19,43 +19,20 @@ export function defaultClaudeRoot(): string {
 /** Claude marks internal (non-billable) turns with this model id; ccusage skips them. */
 const SYNTHETIC_MODEL = '<synthetic>';
 
-/**
- * Scan Claude Code transcripts for assistant turns inside the window.
- *
- * De-duplication matches ccusage: entries sharing `message.id` + `requestId`
- * are the same turn (resume/fork copies it verbatim, and streaming rewrites it
- * with growing `output_tokens`). We keep the occurrence with the largest total
- * — i.e. the final, complete turn — rather than the first, which would
- * under-count output for streamed turns. Synthetic turns are excluded.
- */
-export async function scanClaude(options: ScanOptions): Promise<UsageRecord[]> {
-  const root = options.root ?? defaultClaudeRoot();
-  const files = await listJsonlFiles(root, options.sinceMs);
-  const deduped = new Map<string, UsageRecord>();
-  const unkeyed: UsageRecord[] = [];
-
-  for (const file of files) {
-    await forEachJsonl(file, (raw) => {
-      const parsed = extractRecord(raw, options.sinceMs, options.untilMs);
-      if (!parsed) {
-        return;
-      }
-      const { record, dedupKey } = parsed;
-      if (dedupKey === null) {
-        unkeyed.push(record);
-        return;
-      }
-      const existing = deduped.get(dedupKey);
-      if (!existing || total(record) > total(existing)) {
-        deduped.set(dedupKey, record);
-      }
-    });
-  }
-  return [...deduped.values(), ...unkeyed];
-}
-
 function total(record: UsageRecord): number {
   return record.inputTokens + record.outputTokens + record.cacheWriteTokens + record.cacheReadTokens;
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : null;
+}
+
+function asNumber(value: unknown): number {
+  return typeof value === 'number' && Number.isFinite(value) ? value : 0;
+}
+
+function asString(value: unknown): string {
+  return typeof value === 'string' ? value : '';
 }
 
 function extractRecord(
@@ -119,14 +96,37 @@ function extractRecord(
   };
 }
 
-function asRecord(value: unknown): Record<string, unknown> | null {
-  return typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : null;
-}
+/**
+ * Scan Claude Code transcripts for assistant turns inside the window.
+ *
+ * De-duplication matches ccusage: entries sharing `message.id` + `requestId`
+ * are the same turn (resume/fork copies it verbatim, and streaming rewrites it
+ * with growing `output_tokens`). We keep the occurrence with the largest total
+ * — i.e. the final, complete turn — rather than the first, which would
+ * under-count output for streamed turns. Synthetic turns are excluded.
+ */
+export async function scanClaude(options: ScanOptions): Promise<UsageRecord[]> {
+  const root = options.root ?? defaultClaudeRoot();
+  const files = await listJsonlFiles(root, options.sinceMs);
+  const deduped = new Map<string, UsageRecord>();
+  const unkeyed: UsageRecord[] = [];
 
-function asNumber(value: unknown): number {
-  return typeof value === 'number' && Number.isFinite(value) ? value : 0;
-}
-
-function asString(value: unknown): string {
-  return typeof value === 'string' ? value : '';
+  for (const file of files) {
+    await forEachJsonl(file, (raw) => {
+      const parsed = extractRecord(raw, options.sinceMs, options.untilMs);
+      if (!parsed) {
+        return;
+      }
+      const { record, dedupKey } = parsed;
+      if (dedupKey === null) {
+        unkeyed.push(record);
+        return;
+      }
+      const existing = deduped.get(dedupKey);
+      if (!existing || total(record) > total(existing)) {
+        deduped.set(dedupKey, record);
+      }
+    });
+  }
+  return [...deduped.values(), ...unkeyed];
 }
