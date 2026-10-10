@@ -42,6 +42,58 @@ export interface MagicBuilderInfoResult {
   raw: unknown;
 }
 
+function stripTrailingSlash(value: string): string {
+  return value.replace(/\/+$/u, '');
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function describeError(parsed: unknown): string | undefined {
+  if (!isRecord(parsed)) {
+    return undefined;
+  }
+  if (typeof parsed.msg === 'string' && parsed.msg.length > 0) {
+    return parsed.msg;
+  }
+  if (typeof parsed.message === 'string' && parsed.message.length > 0) {
+    return parsed.message;
+  }
+  if (typeof parsed.error === 'string' && parsed.error.length > 0) {
+    return parsed.error;
+  }
+  return undefined;
+}
+
+function pickFirstString(value: unknown, keys: string[]): string | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  for (const key of keys) {
+    const candidate = value[key];
+    if (typeof candidate === 'string' && candidate.length > 0) {
+      return candidate;
+    }
+  }
+  return undefined;
+}
+
+function logRequest(method: string, path: string, status: number | undefined, startedAt: number, result: string): void {
+  void log
+    .event({
+      type: 'provider.request',
+      method,
+      path,
+      status,
+      durationMs: Date.now() - startedAt,
+      result
+    })
+    .catch(() => {
+      // diagnostic only
+    });
+}
+
 export class MagicBuilderProvider {
   constructor(
     private readonly baseUrl: string,
@@ -235,56 +287,4 @@ module.exports = async function (request, context) {
     }
     return this.token;
   }
-}
-
-function stripTrailingSlash(value: string): string {
-  return value.replace(/\/+$/u, '');
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
-}
-
-function describeError(parsed: unknown): string | undefined {
-  if (!isRecord(parsed)) {
-    return undefined;
-  }
-  if (typeof parsed.msg === 'string' && parsed.msg.length > 0) {
-    return parsed.msg;
-  }
-  if (typeof parsed.message === 'string' && parsed.message.length > 0) {
-    return parsed.message;
-  }
-  if (typeof parsed.error === 'string' && parsed.error.length > 0) {
-    return parsed.error;
-  }
-  return undefined;
-}
-
-function pickFirstString(value: unknown, keys: string[]): string | undefined {
-  if (!isRecord(value)) {
-    return undefined;
-  }
-  for (const key of keys) {
-    const candidate = value[key];
-    if (typeof candidate === 'string' && candidate.length > 0) {
-      return candidate;
-    }
-  }
-  return undefined;
-}
-
-function logRequest(method: string, path: string, status: number | undefined, startedAt: number, result: string): void {
-  void log
-    .event({
-      type: 'provider.request',
-      method,
-      path,
-      status,
-      durationMs: Date.now() - startedAt,
-      result
-    })
-    .catch(() => {
-      // diagnostic only
-    });
 }

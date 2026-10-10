@@ -22,6 +22,13 @@ describe('log timestamps', () => {
     expect(formatLogTime(new Date('2026-05-16T13:59:49.227Z'))).toBe('2026-05-16T21:59:49.227+08:00');
   });
 
+  async function useTempLogFile(): Promise<string> {
+    tempDir = await mkdtemp(join(tmpdir(), 'agent-presence-log-test-'));
+    const logPath = join(tempDir, 'agent-presence.log');
+    process.env.AGENT_PRESENCE_LOG_FILE = logPath;
+    return logPath;
+  }
+
   it('writes text and structured log lines with China-time timestamps', async () => {
     const logPath = await useTempLogFile();
     vi.useFakeTimers();
@@ -158,11 +165,4 @@ describe('log timestamps', () => {
       'type=hook.event status=200 hasSessionId=true project=/tmp/project payloadKeys=[cwd,session_id] message="missing slot credential"'
     );
   });
-
-  async function useTempLogFile(): Promise<string> {
-    tempDir = await mkdtemp(join(tmpdir(), 'agent-presence-log-test-'));
-    const logPath = join(tempDir, 'agent-presence.log');
-    process.env.AGENT_PRESENCE_LOG_FILE = logPath;
-    return logPath;
-  }
 });

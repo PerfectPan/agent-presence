@@ -17,6 +17,10 @@ interface HooksFile {
   hooks?: Record<string, HookGroup[]>;
 }
 
+async function loadHooks(path: string): Promise<HooksFile> {
+  return readJsonFile<HooksFile>(path, { hooks: {} });
+}
+
 async function main(): Promise<void> {
   assertSupportedPlatform();
   const hooksPath = process.env.CODEX_HOOKS_FILE ?? join(homedir(), '.codex', 'hooks.json');
@@ -37,10 +41,6 @@ async function main(): Promise<void> {
 
   await writeJsonAtomic(hooksPath, doc);
   console.log(`removed agent-presence codex hooks: ${hooksPath}`);
-}
-
-async function loadHooks(path: string): Promise<HooksFile> {
-  return readJsonFile<HooksFile>(path, { hooks: {} });
 }
 
 main().catch((error: unknown) => {

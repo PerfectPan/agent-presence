@@ -18,6 +18,27 @@ afterEach(async () => {
   }
 });
 
+function record(source: string, totalTokens: number, costUsd: number): UsageRecord {
+  return {
+    source,
+    model: 'test-model',
+    timestamp: NOW - 1,
+    inputTokens: totalTokens,
+    outputTokens: 0,
+    cacheWriteTokens: 0,
+    cacheReadTokens: 0,
+    costUsd
+  };
+}
+
+function deferred(): { promise: Promise<void>; resolve: () => void } {
+  let resolve!: () => void;
+  const promise = new Promise<void>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+}
+
 describe('refreshUsageBadgeCache', () => {
   it('refreshes only the hook source and preserves the other source contributions', async () => {
     dir = await mkdtemp(join(tmpdir(), 'agent-presence-usage-badge-'));
@@ -456,24 +477,3 @@ describe('refreshUsageBadgeCache', () => {
     });
   });
 });
-
-function record(source: string, totalTokens: number, costUsd: number): UsageRecord {
-  return {
-    source,
-    model: 'test-model',
-    timestamp: NOW - 1,
-    inputTokens: totalTokens,
-    outputTokens: 0,
-    cacheWriteTokens: 0,
-    cacheReadTokens: 0,
-    costUsd
-  };
-}
-
-function deferred(): { promise: Promise<void>; resolve: () => void } {
-  let resolve!: () => void;
-  const promise = new Promise<void>((done) => {
-    resolve = done;
-  });
-  return { promise, resolve };
-}

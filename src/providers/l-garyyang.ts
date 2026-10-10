@@ -41,6 +41,142 @@ interface ProviderRequestLogBase {
   value?: string;
 }
 
+const BASE62_ALPHABET = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
+
+export function base62Encode(value: string): string {
+  const bytes = new TextEncoder().encode(value);
+  if (bytes.length === 0) {
+    return '';
+  }
+
+  const digits = [0];
+  for (const byte of bytes) {
+    let carry = byte;
+    for (let index = 0; index < digits.length; index += 1) {
+      const next = digits[index]! * 256 + carry;
+      digits[index] = next % 62;
+      carry = Math.floor(next / 62);
+    }
+    while (carry > 0) {
+      digits.push(carry % 62);
+      carry = Math.floor(carry / 62);
+    }
+  }
+
+  let output = '';
+  for (const byte of bytes) {
+    if (byte === 0) {
+      output += BASE62_ALPHABET[0];
+    } else {
+      break;
+    }
+  }
+  for (let index = digits.length - 1; index >= 0; index -= 1) {
+    output += BASE62_ALPHABET[digits[index]!];
+  }
+  return output;
+}
+
+function parseJson(text: string): unknown {
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new Error('l.garyyang provider returned non-json response');
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function pickString(root: Record<string, unknown>, directKeys: string[], nestedKeys: string[]): string | undefined {
+  for (const key of directKeys) {
+    if (typeof root[key] === 'string') {
+      return root[key];
+    }
+  }
+
+  for (const nestedKey of nestedKeys) {
+    const nested = root[nestedKey];
+    if (!isRecord(nested)) {
+      continue;
+    }
+    for (const key of directKeys) {
+      if (typeof nested[key] === 'string') {
+        return nested[key];
+      }
+    }
+  }
+
+  return undefined;
+}
+
+function pickFirstString(value: unknown): string | undefined {
+  return Array.isArray(value)
+    ? value.find((item): item is string => typeof item === 'string' && item.length > 0)
+    : undefined;
+}
+
+function pickSlotId(root: Record<string, unknown>): string | undefined {
+  const direct = pickString(root, ['slotId', 'slot_id'], ['data', 'slot']);
+  if (direct) {
+    return direct;
+  }
+
+  for (const parent of [root, root.data, root.user]) {
+    if (!isRecord(parent)) {
+      continue;
+    }
+
+    const fromParent = pickFirstString(parent.slotIds) ?? pickFirstString(parent.slot_ids);
+    if (fromParent) {
+      return fromParent;
+    }
+
+    if (isRecord(parent.user)) {
+      const fromNestedUser = pickFirstString(parent.user.slotIds) ?? pickFirstString(parent.user.slot_ids);
+      if (fromNestedUser) {
+        return fromNestedUser;
+      }
+    }
+  }
+
+  return undefined;
+}
+
+function readRetryAfter(value: string | null): number | undefined {
+  if (!value) {
+    return undefined;
+  }
+  const seconds = Number.parseInt(value, 10);
+  return Number.isFinite(seconds) ? seconds * 1000 : undefined;
+}
+
+function createProviderRequestLogger(
+  base: ProviderRequestLogBase
+): (event: { status?: number; result: string; retryAfterMs?: number; success?: boolean }) => void {
+  return (event) => {
+    if (event.success && !base.logSuccess) {
+      return;
+    }
+    void log
+      .event({
+        type: 'provider.request',
+        method: base.method,
+        path: base.path,
+        status: event.status,
+        durationMs: Date.now() - base.startedAt,
+        slotId: redactSlotId(base.slotId),
+        valueLength: valueLength(base.value),
+        retryAfterMs: event.retryAfterMs,
+        result: event.result
+      })
+      .catch(() => {
+        // Request logging is diagnostic only and must not affect provider behavior.
+      });
+  };
+}
+
 export class LGaryYangSlotBackend implements SlotBackend {
   constructor(
     private readonly baseUrl: string,
@@ -173,140 +309,4 @@ export class LGaryYangSlotBackend implements SlotBackend {
 
     return json;
   }
-}
-
-const BASE62_ALPHABET = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
-
-export function base62Encode(value: string): string {
-  const bytes = new TextEncoder().encode(value);
-  if (bytes.length === 0) {
-    return '';
-  }
-
-  const digits = [0];
-  for (const byte of bytes) {
-    let carry = byte;
-    for (let index = 0; index < digits.length; index += 1) {
-      const next = digits[index]! * 256 + carry;
-      digits[index] = next % 62;
-      carry = Math.floor(next / 62);
-    }
-    while (carry > 0) {
-      digits.push(carry % 62);
-      carry = Math.floor(carry / 62);
-    }
-  }
-
-  let output = '';
-  for (const byte of bytes) {
-    if (byte === 0) {
-      output += BASE62_ALPHABET[0];
-    } else {
-      break;
-    }
-  }
-  for (let index = digits.length - 1; index >= 0; index -= 1) {
-    output += BASE62_ALPHABET[digits[index]!];
-  }
-  return output;
-}
-
-function parseJson(text: string): unknown {
-  try {
-    return JSON.parse(text);
-  } catch {
-    throw new Error('l.garyyang provider returned non-json response');
-  }
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
-}
-
-function pickString(root: Record<string, unknown>, directKeys: string[], nestedKeys: string[]): string | undefined {
-  for (const key of directKeys) {
-    if (typeof root[key] === 'string') {
-      return root[key];
-    }
-  }
-
-  for (const nestedKey of nestedKeys) {
-    const nested = root[nestedKey];
-    if (!isRecord(nested)) {
-      continue;
-    }
-    for (const key of directKeys) {
-      if (typeof nested[key] === 'string') {
-        return nested[key];
-      }
-    }
-  }
-
-  return undefined;
-}
-
-function pickSlotId(root: Record<string, unknown>): string | undefined {
-  const direct = pickString(root, ['slotId', 'slot_id'], ['data', 'slot']);
-  if (direct) {
-    return direct;
-  }
-
-  for (const parent of [root, root.data, root.user]) {
-    if (!isRecord(parent)) {
-      continue;
-    }
-
-    const fromParent = pickFirstString(parent.slotIds) ?? pickFirstString(parent.slot_ids);
-    if (fromParent) {
-      return fromParent;
-    }
-
-    if (isRecord(parent.user)) {
-      const fromNestedUser = pickFirstString(parent.user.slotIds) ?? pickFirstString(parent.user.slot_ids);
-      if (fromNestedUser) {
-        return fromNestedUser;
-      }
-    }
-  }
-
-  return undefined;
-}
-
-function pickFirstString(value: unknown): string | undefined {
-  return Array.isArray(value)
-    ? value.find((item): item is string => typeof item === 'string' && item.length > 0)
-    : undefined;
-}
-
-function readRetryAfter(value: string | null): number | undefined {
-  if (!value) {
-    return undefined;
-  }
-  const seconds = Number.parseInt(value, 10);
-  return Number.isFinite(seconds) ? seconds * 1000 : undefined;
-}
-
-function createProviderRequestLogger(
-  base: ProviderRequestLogBase
-): (event: { status?: number; result: string; retryAfterMs?: number; success?: boolean }) => void {
-  return (event) => {
-    if (event.success && !base.logSuccess) {
-      return;
-    }
-    void log
-      .event({
-        type: 'provider.request',
-        method: base.method,
-        path: base.path,
-        status: event.status,
-        durationMs: Date.now() - base.startedAt,
-        slotId: redactSlotId(base.slotId),
-        valueLength: valueLength(base.value),
-        retryAfterMs: event.retryAfterMs,
-        result: event.result
-      })
-      .catch(() => {
-        // Request logging is diagnostic only and must not affect provider behavior.
-      });
-  };
 }

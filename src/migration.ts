@@ -19,6 +19,55 @@ export interface LegacyHomeCleanupResult {
   removed: string[];
 }
 
+async function exists(path: string): Promise<boolean> {
+  try {
+    await stat(path);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function existingEntries(home: string): Promise<string[]> {
+  const entries: string[] = [];
+  for (const entry of MIGRATED_ENTRIES) {
+    if (await exists(join(home, entry))) {
+      entries.push(entry);
+    }
+  }
+  return entries;
+}
+
+export async function cleanupMigratedLegacyHome(): Promise<LegacyHomeCleanupResult> {
+  const from = getLegacyHomeDir();
+  const to = getDefaultHomeDir();
+  const removed: string[] = [];
+  if (from === to || !(await exists(from))) {
+    return { from, to, removed };
+  }
+
+  for (const entry of await existingEntries(from)) {
+    if (!(await exists(join(to, entry)))) {
+      continue;
+    }
+    await rm(join(from, entry), { recursive: true, force: true });
+    removed.push(entry);
+  }
+
+  await rmdir(from).catch(() => undefined);
+  return { from, to, removed };
+}
+
+async function entriesNeedingMigration(from: string, to: string): Promise<string[]> {
+  const entries: string[] = [];
+  for (const entry of await existingEntries(from)) {
+    if (!(await exists(join(to, entry)))) {
+      entries.push(entry);
+    }
+  }
+  return entries;
+}
+
 export async function hasLegacyHomeToMigrate(): Promise<boolean> {
   if (process.env.AGENT_PRESENCE_HOME || process.env.AGENT_SIGNATURE_HOME) {
     return false;
@@ -63,53 +112,4 @@ export async function migrateLegacyHome(options: {
   const cleanup = await cleanupMigratedLegacyHome();
 
   return { status: 'migrated', from, to, copied, skipped, removed: cleanup.removed };
-}
-
-export async function cleanupMigratedLegacyHome(): Promise<LegacyHomeCleanupResult> {
-  const from = getLegacyHomeDir();
-  const to = getDefaultHomeDir();
-  const removed: string[] = [];
-  if (from === to || !(await exists(from))) {
-    return { from, to, removed };
-  }
-
-  for (const entry of await existingEntries(from)) {
-    if (!(await exists(join(to, entry)))) {
-      continue;
-    }
-    await rm(join(from, entry), { recursive: true, force: true });
-    removed.push(entry);
-  }
-
-  await rmdir(from).catch(() => undefined);
-  return { from, to, removed };
-}
-
-async function existingEntries(home: string): Promise<string[]> {
-  const entries: string[] = [];
-  for (const entry of MIGRATED_ENTRIES) {
-    if (await exists(join(home, entry))) {
-      entries.push(entry);
-    }
-  }
-  return entries;
-}
-
-async function entriesNeedingMigration(from: string, to: string): Promise<string[]> {
-  const entries: string[] = [];
-  for (const entry of await existingEntries(from)) {
-    if (!(await exists(join(to, entry)))) {
-      entries.push(entry);
-    }
-  }
-  return entries;
-}
-
-async function exists(path: string): Promise<boolean> {
-  try {
-    await stat(path);
-    return true;
-  } catch {
-    return false;
-  }
 }

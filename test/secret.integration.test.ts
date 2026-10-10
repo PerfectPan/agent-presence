@@ -51,6 +51,77 @@ async function secretToolFunctional(): Promise<boolean> {
   }
 }
 
+function saveCredentialEnv(): Record<string, string | undefined> {
+  const saved: Record<string, string | undefined> = {};
+  for (const key of credentialEnvKeys) {
+    saved[key] = process.env[key];
+  }
+  return saved;
+}
+
+function clearCredentialEnv(): void {
+  for (const key of credentialEnvKeys) {
+    delete process.env[key];
+  }
+}
+
+function restoreCredentialEnv(saved: Record<string, string | undefined>): void {
+  for (const key of credentialEnvKeys) {
+    if (saved[key] === undefined) {
+      delete process.env[key];
+    } else {
+      process.env[key] = saved[key];
+    }
+  }
+}
+
+async function deleteKeychain(service: string, account: string): Promise<void> {
+  await execFileAsync('security', ['delete-generic-password', '-s', service, '-a', account]).catch(() => undefined);
+}
+
+async function cleanupIsolatedStores(
+  keychainService: string,
+  keychainLegacyService: string,
+  libsecretService: string
+): Promise<void> {
+  if (macOs) {
+    await Promise.all([
+      deleteKeychain(keychainService, 'token'),
+      deleteKeychain(keychainService, 'slotId'),
+      deleteKeychain(keychainLegacyService, process.env.USER ?? 'agent-presence')
+    ]);
+  }
+
+  if (linux && (await hasSecretTool())) {
+    await Promise.all([
+      execFileAsync('secret-tool', ['clear', 'service', libsecretService, 'account', 'token']).catch(() => undefined),
+      execFileAsync('secret-tool', ['clear', 'service', libsecretService, 'account', 'slotId']).catch(() => undefined)
+    ]);
+  }
+}
+
+async function withIsolatedCredentialStore(run: (store: CredentialStore) => Promise<void>): Promise<void> {
+  const savedEnv = saveCredentialEnv();
+  const suffix = `${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const keychainService = `agent-presence-test:${suffix}`;
+  const keychainLegacyService = `agent-presence-test-legacy:${suffix}`;
+  const libsecretService = `agent-presence-test-${suffix}`;
+
+  clearCredentialEnv();
+  const store = createCredentialStore({
+    keychainService,
+    keychainLegacyService,
+    libsecretService
+  });
+
+  try {
+    await run(store);
+  } finally {
+    await cleanupIsolatedStores(keychainService, keychainLegacyService, libsecretService);
+    restoreCredentialEnv(savedEnv);
+  }
+}
+
 describe('credential storage integration', () => {
   const testToken = 'integration-test-token-' + Date.now();
   const testSlotId = 'integration-test-slot-' + Date.now();
@@ -121,74 +192,3 @@ describe('credential storage integration', () => {
     });
   });
 });
-
-async function withIsolatedCredentialStore(run: (store: CredentialStore) => Promise<void>): Promise<void> {
-  const savedEnv = saveCredentialEnv();
-  const suffix = `${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-  const keychainService = `agent-presence-test:${suffix}`;
-  const keychainLegacyService = `agent-presence-test-legacy:${suffix}`;
-  const libsecretService = `agent-presence-test-${suffix}`;
-
-  clearCredentialEnv();
-  const store = createCredentialStore({
-    keychainService,
-    keychainLegacyService,
-    libsecretService
-  });
-
-  try {
-    await run(store);
-  } finally {
-    await cleanupIsolatedStores(keychainService, keychainLegacyService, libsecretService);
-    restoreCredentialEnv(savedEnv);
-  }
-}
-
-function saveCredentialEnv(): Record<string, string | undefined> {
-  const saved: Record<string, string | undefined> = {};
-  for (const key of credentialEnvKeys) {
-    saved[key] = process.env[key];
-  }
-  return saved;
-}
-
-function clearCredentialEnv(): void {
-  for (const key of credentialEnvKeys) {
-    delete process.env[key];
-  }
-}
-
-function restoreCredentialEnv(saved: Record<string, string | undefined>): void {
-  for (const key of credentialEnvKeys) {
-    if (saved[key] === undefined) {
-      delete process.env[key];
-    } else {
-      process.env[key] = saved[key];
-    }
-  }
-}
-
-async function cleanupIsolatedStores(
-  keychainService: string,
-  keychainLegacyService: string,
-  libsecretService: string
-): Promise<void> {
-  if (macOs) {
-    await Promise.all([
-      deleteKeychain(keychainService, 'token'),
-      deleteKeychain(keychainService, 'slotId'),
-      deleteKeychain(keychainLegacyService, process.env.USER ?? 'agent-presence')
-    ]);
-  }
-
-  if (linux && (await hasSecretTool())) {
-    await Promise.all([
-      execFileAsync('secret-tool', ['clear', 'service', libsecretService, 'account', 'token']).catch(() => undefined),
-      execFileAsync('secret-tool', ['clear', 'service', libsecretService, 'account', 'slotId']).catch(() => undefined)
-    ]);
-  }
-}
-
-async function deleteKeychain(service: string, account: string): Promise<void> {
-  await execFileAsync('security', ['delete-generic-password', '-s', service, '-a', account]).catch(() => undefined);
-}

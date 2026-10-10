@@ -37,6 +37,185 @@ interface Cumulative {
 
 const REPLAY_PREFIX_BYTES = 16 * 1024;
 
+function subtractCumulative(current: Cumulative, previous: Cumulative): Cumulative {
+  return {
+    input: Math.max(0, current.input - previous.input),
+    cached: Math.max(0, current.cached - previous.cached),
+    output: Math.max(0, current.output - previous.output),
+    total: Math.max(0, current.total - previous.total)
+  };
+}
+
+async function hasReplayMarker(file: string): Promise<boolean> {
+  let handle: Awaited<ReturnType<typeof open>> | undefined;
+  try {
+    handle = await open(file, 'r');
+    const buffer = Buffer.alloc(REPLAY_PREFIX_BYTES);
+    const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0);
+    const prefix = buffer.subarray(0, bytesRead).toString('utf8');
+    return prefix.includes('"thread_spawn"') || prefix.includes('"forked_from_id"');
+  } catch {
+    return false;
+  } finally {
+    await handle?.close().catch(() => {});
+  }
+}
+
+function timestampSecond(value: unknown): string | null {
+  const timestamp = parseTimestamp(value);
+  return timestamp === null ? null : new Date(timestamp).toISOString().slice(0, 19);
+}
+
+async function readConfiguredPricingMultiplier(configPath?: string): Promise<number> {
+  let config: string;
+  try {
+    config = await readFile(configPath ?? join(homedir(), '.codex', 'config.toml'), 'utf8');
+  } catch {
+    return 1;
+  }
+  const serviceTier = /^\s*service_tier\s*=\s*["']([^"']+)["']/m.exec(config)?.[1]?.toLowerCase() ?? '';
+  if (serviceTier === 'priority' || serviceTier === 'fast') {
+    return 2;
+  }
+  return 1;
+}
+
+function asNumber(value: unknown): number {
+  return typeof value === 'number' && Number.isFinite(value) ? value : 0;
+}
+
+function readUsageObject(value: unknown): Cumulative | null {
+  if (typeof value !== 'object' || value === null) {
+    return null;
+  }
+  const t = value as Record<string, unknown>;
+  return {
+    input: asNumber(t.input_tokens),
+    cached: asNumber(t.cached_input_tokens),
+    output: asNumber(t.output_tokens),
+    total: asNumber(t.total_tokens)
+  };
+}
+
+function readCumulative(entry: Record<string, unknown>): Cumulative | null {
+  const payload = entry.payload;
+  if (typeof payload !== 'object' || payload === null) {
+    return null;
+  }
+  const p = payload as Record<string, unknown>;
+  if (p.type !== 'token_count') {
+    return null;
+  }
+  const info = p.info;
+  if (typeof info !== 'object' || info === null) {
+    return null;
+  }
+  return readUsageObject((info as Record<string, unknown>).total_token_usage);
+}
+
+/**
+ * Return the timestamp second occupied by a replay prefix, or `null` for a
+ * normal session. Codex marks replay-capable files in `session_meta`; a real
+ * replay has its first two token events collapsed into the same second.
+ */
+async function detectReplaySecond(file: string): Promise<string | null> {
+  if (!(await hasReplayMarker(file))) {
+    return null;
+  }
+
+  let stream: ReturnType<typeof createReadStream>;
+  try {
+    stream = createReadStream(file, { encoding: 'utf8' });
+  } catch {
+    return null;
+  }
+
+  const lines = createInterface({ input: stream, crlfDelay: Infinity });
+  let firstSecond: string | null = null;
+  try {
+    for await (const line of lines) {
+      let raw: unknown;
+      try {
+        raw = JSON.parse(line);
+      } catch {
+        continue;
+      }
+      if (typeof raw !== 'object' || raw === null || !readCumulative(raw as Record<string, unknown>)) {
+        continue;
+      }
+      const second = timestampSecond((raw as Record<string, unknown>).timestamp);
+      if (second === null) {
+        continue;
+      }
+      if (firstSecond === null) {
+        firstSecond = second;
+        continue;
+      }
+      return firstSecond === second ? firstSecond : null;
+    }
+  } catch {
+    return null;
+  } finally {
+    lines.close();
+    stream.destroy();
+  }
+  return null;
+}
+
+function readLastUsage(entry: Record<string, unknown>): Cumulative | null {
+  const payload = entry.payload;
+  if (typeof payload !== 'object' || payload === null) {
+    return null;
+  }
+  const info = (payload as Record<string, unknown>).info;
+  if (typeof info !== 'object' || info === null) {
+    return null;
+  }
+  return readUsageObject((info as Record<string, unknown>).last_token_usage);
+}
+
+function asString(value: unknown): string {
+  return typeof value === 'string' ? value : '';
+}
+
+/** Find a model id on a Codex line, checking common locations. */
+function findModel(entry: Record<string, unknown>): string {
+  const direct = asString(entry.model);
+  if (direct) {
+    return direct;
+  }
+  const payload = entry.payload;
+  if (typeof payload === 'object' && payload !== null) {
+    const p = payload as Record<string, unknown>;
+    const fromPayload = asString(p.model);
+    if (fromPayload) {
+      return fromPayload;
+    }
+    const threadSettings = p.thread_settings;
+    if (typeof threadSettings === 'object' && threadSettings !== null) {
+      const fromThreadSettings = asString((threadSettings as Record<string, unknown>).model);
+      if (fromThreadSettings) {
+        return fromThreadSettings;
+      }
+    }
+    const ctx = p.turn_context;
+    if (typeof ctx === 'object' && ctx !== null) {
+      const fromCtx = asString((ctx as Record<string, unknown>).model);
+      if (fromCtx) {
+        return fromCtx;
+      }
+    }
+    const info = p.info;
+    if (typeof info === 'object' && info !== null) {
+      const fromInfo = asString((info as Record<string, unknown>).model);
+      if (fromInfo) {
+        return fromInfo;
+      }
+    }
+  }
+  return '';
+}
+
 /**
  * Scan Codex transcripts.
  *
@@ -115,183 +294,4 @@ export async function scanCodex(options: CodexScanOptions): Promise<UsageRecord[
     });
   }
   return records;
-}
-
-function readCumulative(entry: Record<string, unknown>): Cumulative | null {
-  const payload = entry.payload;
-  if (typeof payload !== 'object' || payload === null) {
-    return null;
-  }
-  const p = payload as Record<string, unknown>;
-  if (p.type !== 'token_count') {
-    return null;
-  }
-  const info = p.info;
-  if (typeof info !== 'object' || info === null) {
-    return null;
-  }
-  return readUsageObject((info as Record<string, unknown>).total_token_usage);
-}
-
-function readLastUsage(entry: Record<string, unknown>): Cumulative | null {
-  const payload = entry.payload;
-  if (typeof payload !== 'object' || payload === null) {
-    return null;
-  }
-  const info = (payload as Record<string, unknown>).info;
-  if (typeof info !== 'object' || info === null) {
-    return null;
-  }
-  return readUsageObject((info as Record<string, unknown>).last_token_usage);
-}
-
-function readUsageObject(value: unknown): Cumulative | null {
-  if (typeof value !== 'object' || value === null) {
-    return null;
-  }
-  const t = value as Record<string, unknown>;
-  return {
-    input: asNumber(t.input_tokens),
-    cached: asNumber(t.cached_input_tokens),
-    output: asNumber(t.output_tokens),
-    total: asNumber(t.total_tokens)
-  };
-}
-
-function subtractCumulative(current: Cumulative, previous: Cumulative): Cumulative {
-  return {
-    input: Math.max(0, current.input - previous.input),
-    cached: Math.max(0, current.cached - previous.cached),
-    output: Math.max(0, current.output - previous.output),
-    total: Math.max(0, current.total - previous.total)
-  };
-}
-
-/**
- * Return the timestamp second occupied by a replay prefix, or `null` for a
- * normal session. Codex marks replay-capable files in `session_meta`; a real
- * replay has its first two token events collapsed into the same second.
- */
-async function detectReplaySecond(file: string): Promise<string | null> {
-  if (!(await hasReplayMarker(file))) {
-    return null;
-  }
-
-  let stream: ReturnType<typeof createReadStream>;
-  try {
-    stream = createReadStream(file, { encoding: 'utf8' });
-  } catch {
-    return null;
-  }
-
-  const lines = createInterface({ input: stream, crlfDelay: Infinity });
-  let firstSecond: string | null = null;
-  try {
-    for await (const line of lines) {
-      let raw: unknown;
-      try {
-        raw = JSON.parse(line);
-      } catch {
-        continue;
-      }
-      if (typeof raw !== 'object' || raw === null || !readCumulative(raw as Record<string, unknown>)) {
-        continue;
-      }
-      const second = timestampSecond((raw as Record<string, unknown>).timestamp);
-      if (second === null) {
-        continue;
-      }
-      if (firstSecond === null) {
-        firstSecond = second;
-        continue;
-      }
-      return firstSecond === second ? firstSecond : null;
-    }
-  } catch {
-    return null;
-  } finally {
-    lines.close();
-    stream.destroy();
-  }
-  return null;
-}
-
-async function hasReplayMarker(file: string): Promise<boolean> {
-  let handle: Awaited<ReturnType<typeof open>> | undefined;
-  try {
-    handle = await open(file, 'r');
-    const buffer = Buffer.alloc(REPLAY_PREFIX_BYTES);
-    const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0);
-    const prefix = buffer.subarray(0, bytesRead).toString('utf8');
-    return prefix.includes('"thread_spawn"') || prefix.includes('"forked_from_id"');
-  } catch {
-    return false;
-  } finally {
-    await handle?.close().catch(() => {});
-  }
-}
-
-function timestampSecond(value: unknown): string | null {
-  const timestamp = parseTimestamp(value);
-  return timestamp === null ? null : new Date(timestamp).toISOString().slice(0, 19);
-}
-
-/** Find a model id on a Codex line, checking common locations. */
-function findModel(entry: Record<string, unknown>): string {
-  const direct = asString(entry.model);
-  if (direct) {
-    return direct;
-  }
-  const payload = entry.payload;
-  if (typeof payload === 'object' && payload !== null) {
-    const p = payload as Record<string, unknown>;
-    const fromPayload = asString(p.model);
-    if (fromPayload) {
-      return fromPayload;
-    }
-    const threadSettings = p.thread_settings;
-    if (typeof threadSettings === 'object' && threadSettings !== null) {
-      const fromThreadSettings = asString((threadSettings as Record<string, unknown>).model);
-      if (fromThreadSettings) {
-        return fromThreadSettings;
-      }
-    }
-    const ctx = p.turn_context;
-    if (typeof ctx === 'object' && ctx !== null) {
-      const fromCtx = asString((ctx as Record<string, unknown>).model);
-      if (fromCtx) {
-        return fromCtx;
-      }
-    }
-    const info = p.info;
-    if (typeof info === 'object' && info !== null) {
-      const fromInfo = asString((info as Record<string, unknown>).model);
-      if (fromInfo) {
-        return fromInfo;
-      }
-    }
-  }
-  return '';
-}
-
-async function readConfiguredPricingMultiplier(configPath?: string): Promise<number> {
-  let config: string;
-  try {
-    config = await readFile(configPath ?? join(homedir(), '.codex', 'config.toml'), 'utf8');
-  } catch {
-    return 1;
-  }
-  const serviceTier = /^\s*service_tier\s*=\s*["']([^"']+)["']/m.exec(config)?.[1]?.toLowerCase() ?? '';
-  if (serviceTier === 'priority' || serviceTier === 'fast') {
-    return 2;
-  }
-  return 1;
-}
-
-function asNumber(value: unknown): number {
-  return typeof value === 'number' && Number.isFinite(value) ? value : 0;
-}
-
-function asString(value: unknown): string {
-  return typeof value === 'string' ? value : '';
 }

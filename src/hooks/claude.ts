@@ -7,6 +7,14 @@ export interface ClaudeHookContext {
   project?: string;
 }
 
+function sessionIdFromTranscriptPath(path: string | undefined): string | undefined {
+  if (!path) {
+    return undefined;
+  }
+  const file = basename(path).replace(/\.jsonl$/u, '');
+  return file || undefined;
+}
+
 export function resolveClaudeHookContext(payload: unknown, env: StringEnv = process.env): ClaudeHookContext {
   const event = pickString(payload, {
     env,
@@ -50,12 +58,4 @@ export function resolveClaudeHookContext(payload: unknown, env: StringEnv = proc
       payloadFirst: true
     })
   };
-}
-
-function sessionIdFromTranscriptPath(path: string | undefined): string | undefined {
-  if (!path) {
-    return undefined;
-  }
-  const file = basename(path).replace(/\.jsonl$/u, '');
-  return file || undefined;
 }

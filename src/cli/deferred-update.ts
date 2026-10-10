@@ -5,6 +5,35 @@ import { writeLogEvent } from '../log.js';
 const MIN_DELAY_MS = 1_000;
 const DEFAULT_RATE_LIMIT_RETRY_MS = 60_000;
 
+function spawnDeferredUpdate(delayMs: number): void {
+  const cliPath = process.argv[1];
+  if (!cliPath) {
+    return;
+  }
+
+  const script = `
+const { spawn } = require('node:child_process');
+const delayMs = Number(process.argv[1]);
+const nodePath = process.argv[2];
+const cliPath = process.argv[3];
+setTimeout(() => {
+  const child = spawn(nodePath, [cliPath, 'flush', '--force', '--silent'], {
+    detached: true,
+    env: process.env,
+    stdio: 'ignore'
+  });
+  child.unref();
+}, delayMs);
+`;
+
+  const child = spawn(process.execPath, ['-e', script, String(delayMs), process.execPath, cliPath], {
+    detached: true,
+    env: process.env,
+    stdio: 'ignore'
+  });
+  child.unref();
+}
+
 export async function scheduleDeferredRenderedUpdate(options: {
   statePath: string;
   delayMs: number;
@@ -12,18 +41,17 @@ export async function scheduleDeferredRenderedUpdate(options: {
 }): Promise<void> {
   const delayMs = Math.max(options.delayMs, MIN_DELAY_MS);
   const runAt = options.now + delayMs;
-  let shouldSpawn = false;
 
-  await withStateLock(options.statePath, async () => {
+  const shouldSpawn = await withStateLock(options.statePath, async () => {
     const state = await loadState(options.statePath);
     const pending = state.pendingSlotFlushAt ?? 0;
     if (pending > options.now && pending <= runAt) {
-      return;
+      return false;
     }
 
     state.pendingSlotFlushAt = runAt;
     await saveState(state, options.statePath);
-    shouldSpawn = true;
+    return true;
   });
 
   if (!shouldSpawn) {
@@ -58,33 +86,4 @@ export async function scheduleDeferredRenderedUpdateForResult(
         ? (result.retryAfterMs ?? Math.max(options.delayMs, DEFAULT_RATE_LIMIT_RETRY_MS))
         : options.delayMs
   });
-}
-
-function spawnDeferredUpdate(delayMs: number): void {
-  const cliPath = process.argv[1];
-  if (!cliPath) {
-    return;
-  }
-
-  const script = `
-const { spawn } = require('node:child_process');
-const delayMs = Number(process.argv[1]);
-const nodePath = process.argv[2];
-const cliPath = process.argv[3];
-setTimeout(() => {
-  const child = spawn(nodePath, [cliPath, 'flush', '--force', '--silent'], {
-    detached: true,
-    env: process.env,
-    stdio: 'ignore'
-  });
-  child.unref();
-}, delayMs);
-`;
-
-  const child = spawn(process.execPath, ['-e', script, String(delayMs), process.execPath, cliPath], {
-    detached: true,
-    env: process.env,
-    stdio: 'ignore'
-  });
-  child.unref();
 }

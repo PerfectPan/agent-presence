@@ -20,28 +20,6 @@ export interface CreateProviderOptions {
 
 export type ProviderFactory = (options: CreateProviderOptions) => PresenceProvider;
 
-const factories: Record<ProviderId, ProviderFactory> = {
-  'feishu-signature': createFeishuSignatureProvider,
-  'magic-builder': createMagicBuilderProvider
-};
-
-/**
- * Resolve a provider id to a capability-oriented {@link PresenceProvider}.
- * This is the single place that knows which concrete pieces back each id, so
- * CLI commands depend on capabilities rather than on a storage backend.
- */
-export function createProvider(id: ProviderId, options: CreateProviderOptions): PresenceProvider {
-  const factory = factories[id];
-  if (!factory) {
-    throw new Error(`unsupported provider: ${id}`);
-  }
-  return factory(options);
-}
-
-export function registeredProviderIds(): ProviderId[] {
-  return Object.keys(factories) as ProviderId[];
-}
-
 /** Capabilities every slot-backed provider shares, mapped onto the backend. */
 function slotCapabilities(
   slot: SlotBackend
@@ -100,4 +78,29 @@ function createMagicBuilderProvider({ config, credential }: CreateProviderOption
       return frontEnd.invokeFaas(faasId);
     }
   };
+}
+
+// Partial: createProvider rejects ids without a factory, and that guard is a
+// tested contract, so lookups stay fallible even though the keys cover
+// ProviderId today.
+const factories: Partial<Record<ProviderId, ProviderFactory>> = {
+  'feishu-signature': createFeishuSignatureProvider,
+  'magic-builder': createMagicBuilderProvider
+};
+
+/**
+ * Resolve a provider id to a capability-oriented {@link PresenceProvider}.
+ * This is the single place that knows which concrete pieces back each id, so
+ * CLI commands depend on capabilities rather than on a storage backend.
+ */
+export function createProvider(id: ProviderId, options: CreateProviderOptions): PresenceProvider {
+  const factory = factories[id];
+  if (!factory) {
+    throw new Error(`unsupported provider: ${id}`);
+  }
+  return factory(options);
+}
+
+export function registeredProviderIds(): ProviderId[] {
+  return Object.keys(factories) as ProviderId[];
 }

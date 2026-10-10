@@ -146,16 +146,6 @@ export function getPluginsDir(): string {
   return process.env.AGENT_PRESENCE_PLUGINS_DIR ?? join(getHomeDir(), 'plugins');
 }
 
-export async function loadConfig(configPath = getConfigPath()): Promise<AppConfig> {
-  if (configPath === getConfigPath() && !hasExplicitConfigPath() && !existsSync(configPath)) {
-    const legacyConfigPath = join(getLegacyHomeDir(), 'config.json');
-    if (existsSync(legacyConfigPath)) {
-      return readJsonFile<AppConfig>(legacyConfigPath, {});
-    }
-  }
-  return readJsonFile<AppConfig>(configPath, {});
-}
-
 export async function saveConfig(config: AppConfig, configPath = getConfigPath()): Promise<void> {
   await writeJsonAtomic(configPath, config);
 }
@@ -285,54 +275,12 @@ export function previewTargetUrl(config: AppConfig): string | undefined {
   );
 }
 
-export function ttlMs(config: AppConfig): number {
-  return (
-    readPositiveInt(process.env.AGENT_PRESENCE_TTL_MS) ??
-    readPositiveInt(process.env.AGENT_SIGNATURE_TTL_MS) ??
-    config.ttlMs ??
-    DEFAULT_TTL_MS
-  );
-}
-
-export function debounceMs(config: AppConfig): number {
-  return (
-    readPositiveInt(process.env.AGENT_PRESENCE_DEBOUNCE_MS) ??
-    readPositiveInt(process.env.AGENT_SIGNATURE_DEBOUNCE_MS) ??
-    config.debounceMs ??
-    DEFAULT_DEBOUNCE_MS
-  );
-}
-
-export function renderTemplates(config: AppConfig): RenderTemplates {
-  const templates: RenderTemplates = {};
-  setDefinedTemplate(
-    templates,
-    'zero',
-    process.env.AGENT_PRESENCE_RENDER_ZERO ?? process.env.AGENT_SIGNATURE_RENDER_ZERO ?? config.render?.zero
-  );
-  setDefinedTemplate(
-    templates,
-    'one',
-    process.env.AGENT_PRESENCE_RENDER_ONE ?? process.env.AGENT_SIGNATURE_RENDER_ONE ?? config.render?.one
-  );
-  setDefinedTemplate(
-    templates,
-    'many',
-    process.env.AGENT_PRESENCE_RENDER_MANY ?? process.env.AGENT_SIGNATURE_RENDER_MANY ?? config.render?.many
-  );
-  return templates;
-}
-
 export function usageShowInSignature(config: AppConfig): boolean {
   const env = process.env.AGENT_PRESENCE_USAGE_IN_SIGNATURE;
   if (env !== undefined) {
     return env === '1' || env.toLowerCase() === 'true';
   }
   return config.usage?.showInSignature ?? false;
-}
-
-export function usageSignatureWindowDays(config: AppConfig): number {
-  return readPositiveInt(process.env.AGENT_PRESENCE_USAGE_WINDOW_DAYS) ?? config.usage?.signatureWindowDays ?? 1;
 }
 
 export function usagePricingOverrides(config: AppConfig): PricingOverrides {
@@ -389,12 +337,64 @@ export function readPositiveInt(value: string | undefined): number | undefined {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
 }
 
+export function ttlMs(config: AppConfig): number {
+  return (
+    readPositiveInt(process.env.AGENT_PRESENCE_TTL_MS) ??
+    readPositiveInt(process.env.AGENT_SIGNATURE_TTL_MS) ??
+    config.ttlMs ??
+    DEFAULT_TTL_MS
+  );
+}
+
+export function debounceMs(config: AppConfig): number {
+  return (
+    readPositiveInt(process.env.AGENT_PRESENCE_DEBOUNCE_MS) ??
+    readPositiveInt(process.env.AGENT_SIGNATURE_DEBOUNCE_MS) ??
+    config.debounceMs ??
+    DEFAULT_DEBOUNCE_MS
+  );
+}
+
+export function usageSignatureWindowDays(config: AppConfig): number {
+  return readPositiveInt(process.env.AGENT_PRESENCE_USAGE_WINDOW_DAYS) ?? config.usage?.signatureWindowDays ?? 1;
+}
+
 function setDefinedTemplate(templates: RenderTemplates, key: keyof RenderTemplates, value: string | undefined): void {
   if (value !== undefined) {
     templates[key] = value;
   }
 }
 
+export function renderTemplates(config: AppConfig): RenderTemplates {
+  const templates: RenderTemplates = {};
+  setDefinedTemplate(
+    templates,
+    'zero',
+    process.env.AGENT_PRESENCE_RENDER_ZERO ?? process.env.AGENT_SIGNATURE_RENDER_ZERO ?? config.render?.zero
+  );
+  setDefinedTemplate(
+    templates,
+    'one',
+    process.env.AGENT_PRESENCE_RENDER_ONE ?? process.env.AGENT_SIGNATURE_RENDER_ONE ?? config.render?.one
+  );
+  setDefinedTemplate(
+    templates,
+    'many',
+    process.env.AGENT_PRESENCE_RENDER_MANY ?? process.env.AGENT_SIGNATURE_RENDER_MANY ?? config.render?.many
+  );
+  return templates;
+}
+
 function hasExplicitConfigPath(): boolean {
   return Boolean(process.env.AGENT_PRESENCE_CONFIG_FILE ?? process.env.AGENT_SIGNATURE_CONFIG_FILE);
+}
+
+export async function loadConfig(configPath = getConfigPath()): Promise<AppConfig> {
+  if (configPath === getConfigPath() && !hasExplicitConfigPath() && !existsSync(configPath)) {
+    const legacyConfigPath = join(getLegacyHomeDir(), 'config.json');
+    if (existsSync(legacyConfigPath)) {
+      return readJsonFile<AppConfig>(legacyConfigPath, {});
+    }
+  }
+  return readJsonFile<AppConfig>(configPath, {});
 }

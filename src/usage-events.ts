@@ -32,27 +32,10 @@ export async function appendUsageEvent(event: UsageEvent): Promise<void> {
   await appendRetainedLogLine(getUsageEventsPath(), `${JSON.stringify(event)}\n`);
 }
 
-/** Read a source's events in `[sinceMs, untilMs)`. Missing/corrupt lines are skipped. */
-export async function readUsageEvents(source: string, sinceMs: number, untilMs: number): Promise<UsageEvent[]> {
-  const path = getUsageEventsPath();
-  // The log is append-only with ingestion timestamps, so an mtime older than
-  // the window means zero events in range — skip the read entirely.
-  try {
-    const info = await stat(path);
-    if (info.mtimeMs < sinceMs) {
-      return [];
-    }
-  } catch {
-    return [];
-  }
-  const events: UsageEvent[] = [];
-  await forEachJsonl(path, (record) => {
-    const event = asUsageEvent(record);
-    if (event && event.source === source && event.timestamp >= sinceMs && event.timestamp < untilMs) {
-      events.push(event);
-    }
-  });
-  return events;
+function asNumber(value: unknown): number {
+  // Ingestion boundary: coerce non-finite and negative values to zero so a
+  // malformed plugin payload can't write nonsense into the log.
+  return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : 0;
 }
 
 /**
@@ -108,8 +91,25 @@ function asUsageEvent(value: unknown): UsageEvent | null {
   };
 }
 
-function asNumber(value: unknown): number {
-  // Ingestion boundary: coerce non-finite and negative values to zero so a
-  // malformed plugin payload can't write nonsense into the log.
-  return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : 0;
+/** Read a source's events in `[sinceMs, untilMs)`. Missing/corrupt lines are skipped. */
+export async function readUsageEvents(source: string, sinceMs: number, untilMs: number): Promise<UsageEvent[]> {
+  const path = getUsageEventsPath();
+  // The log is append-only with ingestion timestamps, so an mtime older than
+  // the window means zero events in range — skip the read entirely.
+  try {
+    const info = await stat(path);
+    if (info.mtimeMs < sinceMs) {
+      return [];
+    }
+  } catch {
+    return [];
+  }
+  const events: UsageEvent[] = [];
+  await forEachJsonl(path, (record) => {
+    const event = asUsageEvent(record);
+    if (event && event.source === source && event.timestamp >= sinceMs && event.timestamp < untilMs) {
+      events.push(event);
+    }
+  });
+  return events;
 }

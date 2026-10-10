@@ -37,47 +37,14 @@ export interface CollectOptions {
   failOnSourceError?: boolean;
 }
 
-/**
- * Collect token usage across the billable sources for a calendar-day window
- * ending at `now`. The lower bound snaps to local midnight so "today" resets at
- * 00:00 and never shrinks mid-day, rather than sliding as a rolling 24h window
- * would.
- *
- * Sources are iterated dynamically from the merged source table (each source is
- * one thing that declares all its capabilities), not a hardcoded set. A source
- * whose scan throws is isolated: its failure is logged and it contributes
- * nothing, mirroring how presence resolution fails open — one unreadable
- * transcript store never breaks the whole run. Atomic cache callers can opt
- * into rejection with `failOnSourceError` so a failed scan is not mistaken for
- * a real zero-usage contribution.
- */
-export async function collectWindowUsage(options: CollectOptions): Promise<WindowUsage> {
-  const untilMs = options.now;
-  const sinceMs = startOfLocalDayMs(options.now) - (options.days - 1) * DAY_MS;
-
-  const bySource = await Promise.all(
-    options.sources.map(async (source) => {
-      const records = await source
-        .scanUsage({ sinceMs, untilMs, root: options.roots?.[source.id] })
-        .catch(async (error) => {
-          // Fail-soft: one source's unreadable data must not break the whole run,
-          // mirroring how presence resolution fails open. Log it (redaction-safe,
-          // name only); a log-write failure must not resurface as the scan error.
-          await writeLog(`usage scan failed source=${source.id} error=${errorName(error)}`).catch(() => {});
-          if (options.failOnSourceError) {
-            throw error;
-          }
-          return [] as UsageRecord[];
-        });
-      return summarise(source.id, records, options.pricing);
-    })
-  );
-
+function emptyTotals(): UsageTotals {
   return {
-    sinceMs,
-    untilMs,
-    bySource,
-    total: combineTotals(bySource)
+    inputTokens: 0,
+    outputTokens: 0,
+    cacheWriteTokens: 0,
+    cacheReadTokens: 0,
+    totalTokens: 0,
+    costUsd: 0
   };
 }
 
@@ -126,17 +93,50 @@ function combineTotals(groups: UsageTotals[]): UsageTotals {
   return totals;
 }
 
-function emptyTotals(): UsageTotals {
-  return {
-    inputTokens: 0,
-    outputTokens: 0,
-    cacheWriteTokens: 0,
-    cacheReadTokens: 0,
-    totalTokens: 0,
-    costUsd: 0
-  };
-}
-
 function errorName(error: unknown): string {
   return error instanceof Error ? error.name : 'Error';
+}
+
+/**
+ * Collect token usage across the billable sources for a calendar-day window
+ * ending at `now`. The lower bound snaps to local midnight so "today" resets at
+ * 00:00 and never shrinks mid-day, rather than sliding as a rolling 24h window
+ * would.
+ *
+ * Sources are iterated dynamically from the merged source table (each source is
+ * one thing that declares all its capabilities), not a hardcoded set. A source
+ * whose scan throws is isolated: its failure is logged and it contributes
+ * nothing, mirroring how presence resolution fails open — one unreadable
+ * transcript store never breaks the whole run. Atomic cache callers can opt
+ * into rejection with `failOnSourceError` so a failed scan is not mistaken for
+ * a real zero-usage contribution.
+ */
+export async function collectWindowUsage(options: CollectOptions): Promise<WindowUsage> {
+  const untilMs = options.now;
+  const sinceMs = startOfLocalDayMs(options.now) - (options.days - 1) * DAY_MS;
+
+  const bySource = await Promise.all(
+    options.sources.map(async (source) => {
+      const records = await source
+        .scanUsage({ sinceMs, untilMs, root: options.roots?.[source.id] })
+        .catch(async (error) => {
+          // Fail-soft: one source's unreadable data must not break the whole run,
+          // mirroring how presence resolution fails open. Log it (redaction-safe,
+          // name only); a log-write failure must not resurface as the scan error.
+          await writeLog(`usage scan failed source=${source.id} error=${errorName(error)}`).catch(() => {});
+          if (options.failOnSourceError) {
+            throw error;
+          }
+          return [] as UsageRecord[];
+        });
+      return summarise(source.id, records, options.pricing);
+    })
+  );
+
+  return {
+    sinceMs,
+    untilMs,
+    bySource,
+    total: combineTotals(bySource)
+  };
 }
