@@ -16,6 +16,7 @@ Usage:
   agent-presence usage [--days <n>] [--json]
   agent-presence update [--provider <magic-builder|feishu-signature>] [--force] [--value <text>] [--silent]
   agent-presence reset [--provider <magic-builder|feishu-signature>] [--force] [--silent]
+  agent-presence hook --agent <claude-code|codex|gemini-cli|grok|opencode|pi>
   agent-presence hook --source codex --event <SessionStart|Heartbeat|UserPromptSubmit|PreToolUse|Stop>
   agent-presence hook --source claude --event <SessionStart|UserPromptSubmit|PreToolUse|PostToolUse|Stop|SessionEnd|SubagentStart|SubagentStop> --silent
   agent-presence hook --source gemini --event <SessionStart|UserPromptSubmit|PreToolUse|PostToolUse|Stop|SessionEnd> --silent
