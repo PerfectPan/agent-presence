@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 
 const hasCredentialMock = vi.hoisted(() => vi.fn<typeof import('../src/cli/credential.js').hasCredential>());
 const loginMock = vi.hoisted(() => vi.fn<typeof import('../src/cli/commands/login.js').login>());

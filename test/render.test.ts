@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vite-plus/test';
 import { prepareSlotSync, renderPresence } from '../src/render.js';
 import type { AgentSession, PresenceState } from '../src/state.js';
 

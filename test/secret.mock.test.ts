@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
+import { describe, expect, it, vi, beforeEach, afterEach } from 'vite-plus/test';
 
 const execFileMock = vi.hoisted(() => vi.fn<(...args: unknown[]) => void>());
 

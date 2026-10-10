@@ -36,12 +36,12 @@
     "uninstall:pi-extension": "node dist/scripts/uninstall-pi-extension.js",
     "uninstall:shutdown-watcher": "node dist/scripts/uninstall-shutdown-watcher.js",
     "changeset": "changeset",
-    "format": "oxfmt",
-    "format:check": "oxfmt --check",
+    "format": "vp fmt",
+    "format:check": "vp fmt --check",
     "prepack": "pnpm test && pnpm run typecheck && pnpm run build",
-    "lint": "oxlint",
+    "lint": "vp lint",
     "release": "changeset publish",
-    "test": "vitest run",
+    "test": "vp test",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "update-pricing": "node scripts/update-pricing.mjs",
     "version-packages": "changeset version"
@@ -67,11 +67,8 @@
     "@changesets/cli": "^3.0.3",
     "@perfectpan/lint-config": "github:PerfectPan/lint-config#v0.6.0",
     "@types/node": "^24.19.1",
-    "oxfmt": "0.71.0",
-    "oxlint": "^1.86.0",
-    "oxlint-tsgolint": "^7.0.2003",
     "typescript": "^7.0.2",
-    "vitest": "^5.0.3"
+    "vite-plus": "1.1.0"
   },
   "dependencies": {
     "@clack/prompts": "1.8.1"
