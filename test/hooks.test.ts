@@ -480,6 +480,31 @@ describe('Pi hook context', () => {
     });
   });
 
+  it('reads the kit bridge payload and the old extension payload', () => {
+    expect(
+      resolvePiHookContext({
+        type: 'before_agent_start',
+        sessionId: 'pi-kit-session',
+        cwd: '/work/repo'
+      })
+    ).toEqual({
+      event: 'before_agent_start',
+      project: '/work/repo',
+      sessionId: 'pi-kit-session'
+    });
+    expect(
+      resolvePiHookContext({
+        event: 'SessionStart',
+        session_id: 'pi-old-session',
+        cwd: '/work/repo'
+      })
+    ).toEqual({
+      event: 'SessionStart',
+      project: '/work/repo',
+      sessionId: 'pi-old-session'
+    });
+  });
+
   it('routes through resolveHookContext when source is pi', () => {
     expect(resolveHookContext('pi', { session_id: 'pi-session-2', cwd: '/repo', event: 'Stop' })).toEqual({
       event: 'Stop',

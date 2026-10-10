@@ -60,7 +60,7 @@
     "README.zh-CN.md"
   ],
   "engines": {
-    "node": ">=22"
+    "node": ">=22.13"
   },
   "devDependencies": {
     "@changesets/changelog-github": "^1.0.1",
@@ -71,6 +71,7 @@
     "vite-plus": "1.1.0"
   },
   "dependencies": {
-    "@clack/prompts": "1.8.1"
+    "@clack/prompts": "1.8.1",
+    "@rivus/agent-kit": "0.9.0"
   }
 }

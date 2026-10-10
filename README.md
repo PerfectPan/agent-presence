@@ -17,7 +17,7 @@ Codex / Claude Code / Gemini CLI / opencode / Pi / Grok / dsh
 
 ## Install
 
-Requires Node.js 22 or newer. macOS and Linux only — Windows exits with a clear error. macOS uses Keychain and installs a LaunchAgent power watcher; Linux uses libsecret and relies on TTL pruning instead of a watcher.
+Requires Node.js 22.13 or newer. macOS and Linux only — Windows exits with a clear error. macOS uses Keychain and installs a LaunchAgent power watcher; Linux uses libsecret and relies on TTL pruning instead of a watcher.
 
 ```bash
 pnpm add -g @rivus/agent-presence
