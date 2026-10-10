@@ -14,7 +14,7 @@ import { resolveHookContextForSource } from '../../sources.js';
 import { applyAgentEvent, isSessionBoundaryEvent } from '../../state.js';
 import { hasFlag, optionValue } from '../args.js';
 import { errorMessage } from '../errors.js';
-import { writeHookOutput } from '../hook-context.js';
+import { writeHookOutput } from '../hook-output.js';
 import { writeHookDiagnostic } from '../hook-diagnostics.js';
 import { readStdinJson, writeLog } from '../io.js';
 import { syncRenderedSlotWithDeferredFlush } from '../rendered-slot-sync.js';
