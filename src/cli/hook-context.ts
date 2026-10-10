@@ -86,9 +86,3 @@ export function resolveBuiltinHookContext(source: string, payload: unknown): Hoo
  * tests import this name; unified resolution lives in `src/sources.ts`.
  */
 export const resolveHookContext = resolveBuiltinHookContext;
-
-export function writeHookOutput(silent: boolean): void {
-  if (!silent) {
-    process.stdout.write('{}\n');
-  }
-}
