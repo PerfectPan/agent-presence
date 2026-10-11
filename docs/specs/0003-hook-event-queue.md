@@ -149,10 +149,10 @@ interpreted (Spec and Plan 0002).
 ## Compatibility And Constraints
 
 - Platforms: macOS and Linux, the platforms presence supports.
-- Hooks installed by a previous release with a version-pinned `npx` command keep running that release's code, which
-  applies events directly, until `setup` runs again. A deferred flush scheduled by a previous release runs that release's
-  `flush`, and its own retries when the provider rate-limits it, also after `setup` or `uninstall --all`. Both can race
-  the new worker until they stop.
+- Upgrading from a release before the queue: uninstall that release with its own `agent-presence uninstall`, then
+  install the new release and run `setup`. A deferred flush the previous release had already scheduled still runs that
+  release's `flush` when due (and retries while the provider rate-limits it); it can race the worker, and this is not
+  handled.
 - Downgrade: run `agent-presence worker --stop` with the new release, then install the previous release, which ignores
   the queue.
 - One state file uses one configuration: the worker reads the configuration file before each batch and uses the

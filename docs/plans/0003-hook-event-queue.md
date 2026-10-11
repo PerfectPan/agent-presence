@@ -300,15 +300,17 @@ records and backlog warnings.
 
 ### 3.12 Compatibility and migration
 
-- Hook commands of the new release record from their first run, whatever form they were installed in.
-- Hooks installed by a previous release with a version-pinned `npx` command (`src/installers.ts:371-375`) keep running
-  that release's direct code until `setup` runs again.
-- A deferred flush scheduled by a previous release (`deferred-update.ts:9-24`) runs that release's `flush`; when the
-  provider rate-limits it, that `flush` schedules its own retries (`deferred-update.ts:78-87`). It ignores the queue and
-  the tombstone, and each of its saves drops `queueApplied` and `queueOwed`: after such a save at most the records of one
-  batch can be applied twice, and the owed items of that moment are lost. This lasts until that release's retries stop;
-  section 7 asks the owner to accept it.
-- Downgrade: `agent-presence worker --stop` with the new release, then install the previous release.
+- Upgrading from a release before the queue: uninstall that release with its own `agent-presence uninstall`, which
+  removes the hooks it installed at whatever paths it used, then install the new release and run `setup`. The new release
+  does not handle a previous release running alongside it.
+- A deferred flush that the previous release scheduled before its uninstall (`deferred-update.ts:9-24`) is a detached
+  timer the uninstall does not stop. It still runs that release's `flush` when due, and its retries while the provider
+  rate-limits it (`deferred-update.ts:78-87`); it ignores the queue and the tombstone, and each of its saves drops
+  `queueApplied` and `queueOwed`, so at most the records of one batch can be applied twice and the owed items of that
+  moment are lost. By decision this is not handled.
+- Upgrades between releases that both have the queue use the record version and the takeover (3.3, 3.7).
+- Downgrade: `agent-presence worker --stop` with the new release, then install the previous release, which ignores the
+  queue and the worker files.
 
 ### 3.13 Security and privacy
 
@@ -440,13 +442,13 @@ shared platform module and their tests.
 
 ## 7. Risks, open questions, and follow-up
 
-| Item                                                                                                                                                                                                                 | Type          | Next step                                                                                                                                                                                                          |
-| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Idle interval (proposed 5 minutes)                                                                                                                                                                                   | Owner, Q1     | Confirm or change                                                                                                                                                                                                  |
-| One configuration per state file; credentials from the environment of the hook that started the worker                                                                                                               | Owner, Q1     | Confirm, or require per-event configuration identity (a worker per identity)                                                                                                                                       |
-| Node-free shell producer as the stable hook shim (Plan 0002's hook-command decision)                                                                                                                                 | Owner         | A few milliseconds per hook, but `sh` cannot parse JSON, so it would record the raw payload, against S9; recommend not now                                                                                         |
-| A worker stuck in an iteration blocks takeovers and new workers until it is killed                                                                                                                                   | Risk          | Abort signals and timeouts on external calls; automatic takeover after a stuck period as a follow-up                                                                                                               |
-| A worker pid reused within the 3-second liveness window hides a dead worker until the window passes                                                                                                                  | Accepted risk | The next hook after the window starts a worker                                                                                                                                                                     |
-| A crash right after a producer saw the old worker alive leaves that record pending until a later hook                                                                                                                | Accepted risk | As the Spec states                                                                                                                                                                                                 |
-| A previous release's version-pinned hooks race the worker until `setup` runs                                                                                                                                         | Accepted risk | Plan 0002 batch 5's `setup` replaces the installed commands                                                                                                                                                        |
-| A previous release's scheduled flush keeps rescheduling itself while the provider rate-limits it (`deferred-update.ts:78-87`); its saves drop the queue fields and can recreate a state removed by `uninstall --all` | Owner, Q1     | (a) Accept the race until those retries stop; (b) make `setup` and `uninstall` terminate previous releases' deferred-flush timer processes (detached `node -e` processes whose arguments name a presence CLI path) |
+| Item                                                                                                                                                            | Type          | Next step                                                                                                                                |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| Idle interval                                                                                                                                                   | Decided       | 5 minutes                                                                                                                                |
+| One configuration per state file; credentials from the environment of the hook that started the worker                                                          | Decided       | As 3.9                                                                                                                                   |
+| Node-free shell producer as the stable hook shim (Plan 0002's hook-command decision)                                                                            | Owner         | A few milliseconds per hook, but `sh` cannot parse JSON, so it would record the raw payload, against S9; recommend not now               |
+| A worker stuck in an iteration blocks takeovers and new workers until it is killed                                                                              | Risk          | Abort signals and timeouts on external calls; automatic takeover after a stuck period as a follow-up                                     |
+| A worker pid reused within the 3-second liveness window hides a dead worker until the window passes                                                             | Accepted risk | The next hook after the window starts a worker                                                                                           |
+| A crash right after a producer saw the old worker alive leaves that record pending until a later hook                                                           | Accepted risk | As the Spec states                                                                                                                       |
+| Upgrading from a release before the queue                                                                                                                       | Decided       | Uninstall the previous release with its own `agent-presence uninstall` first; no handling of a previous release running alongside (3.12) |
+| A flush the previous release scheduled before its uninstall still runs when due, and retries while the provider rate-limits it; its saves drop the queue fields | Decided       | Not handled (3.12)                                                                                                                       |
