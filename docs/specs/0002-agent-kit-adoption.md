@@ -19,7 +19,7 @@ Out of scope: everything else. See "Unchanged behavior".
 ## Behavioral Requirements
 
 - Installed command hooks carry their timeout in each agent's own unit: seconds for Claude Code, Codex, and Grok; milliseconds for Gemini CLI. A five-second intent installs as `timeout: 5` (Claude, Codex, Grok) and `timeout: 5000` (Gemini CLI). The installed Claude timeout falls from the mistaken 5000 seconds to 5 seconds, so Claude's shared per-event hook budget becomes 5 seconds, within Claude's 60-second ceiling.
-- Gemini CLI hooks are registered under Gemini's own event names (`SessionStart`, `BeforeAgent`, `BeforeTool`, `AfterTool`, `AfterAgent`, `SessionEnd`), and setup or uninstall removes previous-version entries under the Claude-only names (`UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `Stop`) from the Gemini settings file.
+- Gemini CLI hooks are registered under Gemini's own event names (`SessionStart`, `BeforeAgent`, `BeforeTool`, `AfterTool`, `AfterAgent`, `SessionEnd`). The previous-version entries under the Claude-only names (`UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `Stop`) in the Gemini settings file are removed by the previous version's uninstall, which the upgrade runs first.
 - With presence installed, a Cursor agent that loads Claude Code's hook configuration can run tool calls: presence's Claude hooks are not placed in a file Cursor reads, and any presence registration that would run as a silent observer on an event some runner treats as a permission gate is refused at install time — setup fails with that refusal instead of writing it.
 - On an event that any runner may treat as a permission gate, the installed command prints a valid empty JSON object (`{}`) even when the hook CLI fails, so silence can never block the agent.
 - Grok sessions move the presence value through the same states as other built-in sources, using Grok's own hook file.
@@ -37,14 +37,15 @@ Out of scope: everything else. See "Unchanged behavior".
 - `agent-presence setup` shows, before writing anything to the agent targets: the files it will change and how, any agent commands it would run, the trust prompts the user should expect from each agent (for example Codex's hook review), hooks it had to drop and why, and notes about files it deliberately does not touch. It applies only after the user confirms, and verifies the result afterwards.
 - `setup` asks only about conflicts it is allowed to resolve (adopt, back up, or force as each conflict permits); files managed by dotfiles tooling and symlinked targets are reported, never written.
 - New `agent-presence doctor` and `agent-presence inventory` commands report installation health (duplicate, drifted, or legacy-hook problems) and the installed artifact ledger.
-- `agent-presence uninstall` removes both the current version's artifacts and previous-version entries recognized by their command markers, and reports anything it kept.
+- While an agent target still holds entries that a previous version installed and `setup` can detect (the paired Plan 3.5 lists the ones it cannot), `agent-presence setup` writes nothing to the agent targets: it lists the entries it found and exits with an error asking the user to run the previous version's `agent-presence uninstall` first. It never removes those entries itself.
+- `agent-presence uninstall` removes the artifacts this version installed and reports anything it kept. It leaves entries that a previous version installed; that version's own uninstall removes them.
 - The kit's SQLite-backed process lock replaces the mkdir-based state lock and the hardlink-based log lock; a crashed process no longer leaves a lock that others must time out or reclaim. Both call sites keep today's bounded waits (about 2 seconds for state writes, about 2.5 seconds for log appends).
 
 ## Unchanged Behavior
 
 Everything not listed above stays unchanged, explicitly including:
 
-- The npx-form installed hook command stays recognizable by its markers (`@rivus/agent-presence`, `agent-presence hook`); the absolute-path form keeps carrying `dist/src/cli.js hook` in its command text, but that generic fragment is not a legacy marker — the paired Plan records which old command forms are recognized and which are not.
+- The npx-form installed hook command stays recognizable by its markers (`@rivus/agent-presence`, `agent-presence hook`); the absolute-path form keeps carrying `dist/src/cli.js hook` in its command text, but that generic fragment is not a marker — the paired Plan records which old command forms `setup` detects and which it does not.
 - Presence source ids stay `claude`, `codex`, `gemini`, `opencode`, `pi`, `dsh` (plus the new `grok`); persisted state, render templates, and user configuration keep working.
 - The presence state file format is unchanged: this adoption adds no fields (usage scans are stateless), and older versions load files this version writes.
 - Render templates, providers, keyring credentials, the power watcher, the dsh plugin flow, and the source-table mechanism.
@@ -69,7 +70,7 @@ Everything not listed above stays unchanged, explicitly including:
 ### S2: Gemini event names and timeout unit
 
 - Given a machine set up by a previous version, with Claude-named presence entries in the Gemini settings file
-- When `agent-presence setup` runs with this version
+- When the previous version's `agent-presence uninstall` runs, and then `agent-presence setup` runs with this version
 - Then the Gemini registration uses only `SessionStart`, `BeforeAgent`, `BeforeTool`, `AfterTool`, `AfterAgent`, and `SessionEnd`, its timeout is in milliseconds (`5000`), and the entries under the Claude-only names (`UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `Stop`) are gone
 
 ### S3: Cursor tool calls proceed
@@ -128,11 +129,13 @@ Everything not listed above stays unchanged, explicitly including:
 - When `setup` plans
 - Then each conflict resolves only through its allowed choices, and dotfiles-managed and symlinked targets are reported and left unwritten
 
-### S11: Upgrade replaces the previous version
+### S11: Upgrade after uninstalling the previous version
 
 - Given a machine set up by the previous version
 - When `setup` runs with this version
-- Then previous-version entries are replaced exactly once per event, and `doctor` and `verify` report no duplicate or legacy leftovers; the documented exception is an absolute-path command entry installed from a checkout whose path carries no presence marker — it is not recognized (paired Plan 3.5): the previous version's uninstall covers unquoted checkout paths, and a quoted checkout path (for example one containing a space) needs manual removal
+- Then it lists the previous version's entries, writes nothing to the agent targets, and exits with an error asking for the previous version's `agent-presence uninstall`
+- When the previous version's `agent-presence uninstall` runs, and then `setup` runs with this version
+- Then each event runs presence's hook exactly once, and `doctor` and `verify` report no duplicate or leftover entries; the documented exceptions are the entries `setup` cannot detect (paired Plan 3.5): an absolute-path command entry installed from a checkout whose path carries no presence marker, which the previous version's uninstall removes for an unquoted checkout path while a quoted one (for example containing a space) needs manual removal, and an entry at a location the kit already tracks or protects as the user's, which follows the kit's ordinary conflict rules instead
 
 ### S12: Uninstall and documented downgrade
 
@@ -149,6 +152,7 @@ Everything not listed above stays unchanged, explicitly including:
 ## Compatibility And Constraints
 
 - Public API: none (no exported library surface). CLI: `hook`, `setup`, `uninstall`, `update` keep their names and existing flags; `doctor` and `inventory` are new.
+- Upgrade from a previous version: run that version's `agent-presence uninstall` (without `--credentials` or `--all`, so credentials, configuration, and state stay), then install this version and run `setup`. When the previous version was set up with install-target override variables such as `CLAUDE_SETTINGS_FILE`, its uninstall runs with the same variables set; this version ignores them and `setup` warns when one is set. Later upgrades from this version need no uninstall.
 - Persisted data: `PresenceState`'s usage shape is unchanged — scans are stateless and no new fields are added. The kit's install ledger is a JSON file under `$XDG_STATE_HOME/agent-kit/harness/<scope>` (default `~/.local/state/agent-kit/harness`) with its own SQLite ledger lock, and the presence-side lock databases are new local files under the presence state directory.
 - Configuration: no existing key changes meaning. `effect` is added as an exact dependency (`4.0.1`, required by the kit's `/harness` entry), and `engines.node` rises to `>= 22.13` (the kit's Node adapters).
 - Package policy: the kit versions are excluded from the repository's `minimumReleaseAge` window (`pnpm-workspace.yaml`), or the adoption waits until the versions age past it.
