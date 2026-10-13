@@ -109,20 +109,20 @@ After all batches: a hook invocation resolves the presence source from `--agent 
 
 ### 2.4 Design decisions
 
-| Decision                      | Choice                                                                                                             | Section  |
-| ----------------------------- | ------------------------------------------------------------------------------------------------------------------ | -------- |
-| State lock mechanism          | `acquireProcessLock` on a new `${statePath}.lock.db` path                                                          | 3.1      |
-| Log lock mechanism            | `acquireProcessLock` with today's bounded wait (~2.5 s); a timed-out append skips as today                         | 3.1      |
-| Usage decoding                | Stateless full-window `scanUsage` over the resolved source table; snapshots replaced as today                      | 3.2      |
-| Pricing                       | Kit `createPricing` fed the snapshot's per-million prices directly; `fromLiteLLM` only at the raw-refresh boundary | 3.2      |
-| dsh usage                     | Stays hand-rolled (kit has no dsh decoder; host-owned protocol)                                                    | 3.2      |
-| Build split                   | Per-command dynamic import at the CLI root; hook graph stays Effect-free                                           | 3.3      |
-| Hook interpretation           | Presence-owned phase→signal mapping over `readHookEvent`; `reduceLifecycle`/`heartbeatSignal` not adopted          | 3.4      |
-| #89                           | Kit-native Claude plugin placement + `hookRegistrations` gate refusal + `{}` pass-through                          | 3.4      |
-| #85/#86                       | `HookSpec.timeoutSeconds` converted per dialect unit; Gemini events from the kit dialect                           | 3.4      |
-| Installed hook command        | Open decision: stable shim file (recommended) vs today's version-pinned npx; unpinned npx rejected                 | 3.5, 7   |
-| Setup                         | Kit `planInstall`/`applyInstall`/`verify`/`doctor`/`inventory`/`uninstall` behind one `Effect.runPromiseExit`      | 3.5      |
-| dsh plugin + shutdown watcher | Stay in presence (no kit adapter)                                                                                  | 3.5, 3.6 |
+| Decision                      | Choice                                                                                                                                                                          | Section  |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
+| State lock mechanism          | `acquireProcessLock` on a new `${statePath}.lock.db` path                                                                                                                       | 3.1      |
+| Log lock mechanism            | `acquireProcessLock` with today's bounded wait (~2.5 s); a timed-out append skips as today                                                                                      | 3.1      |
+| Usage decoding                | Open decision: stateless full-window `scanUsage` over the resolved source table, snapshots replaced as today (recommended) vs persisted `UsageScanState` (issue #92, kit guide) | 3.2, 7   |
+| Pricing                       | Kit `createPricing` fed the snapshot's per-million prices directly; `fromLiteLLM` only at the raw-refresh boundary                                                              | 3.2      |
+| dsh usage                     | Stays hand-rolled (kit has no dsh decoder; host-owned protocol)                                                                                                                 | 3.2      |
+| Build split                   | Per-command dynamic import at the CLI root; hook graph stays Effect-free                                                                                                        | 3.3      |
+| Hook interpretation           | Presence-owned phase→signal mapping over `readHookEvent`; `reduceLifecycle`/`heartbeatSignal` not adopted                                                                       | 3.4      |
+| #89                           | Kit-native Claude plugin placement + `hookRegistrations` gate refusal + `{}` pass-through                                                                                       | 3.4      |
+| #85/#86                       | `HookSpec.timeoutSeconds` converted per dialect unit; Gemini events from the kit dialect                                                                                        | 3.4      |
+| Installed hook command        | Open decision: stable shim file (recommended) vs today's version-pinned npx; unpinned npx rejected                                                                              | 3.5, 7   |
+| Setup                         | Kit `planInstall`/`applyInstall`/`verify`/`doctor`/`inventory`/`uninstall` behind one `Effect.runPromiseExit`                                                                   | 3.5      |
+| dsh plugin + shutdown watcher | Stay in presence (no kit adapter)                                                                                                                                               | 3.5, 3.6 |
 
 ## 3. Detailed design
 
@@ -161,7 +161,7 @@ After all batches: a hook invocation resolves the presence source from `--agent 
   - Absent-versus-zero: counts a transcript does not report stay absent instead of 0.
   - opencode store and fallback: the kit reads the SQLite message store and uses the legacy `storage/message` session directories only when no database exists ([opencode.ts](https://github.com/PerfectPan/agent-kit/blob/v0.11.0/packages/sessions/src/application/services/usage-decoders/opencode.ts)) — the legacy fallback itself is not a kit gap. The real difference: when `opencode.db` exists but cannot be read, the kit reports a source failure while presence falls back to legacy JSON (`docs/architecture.md` usage section). Current opencode (1.18.11) keeps sessions in `opencode.db` (`storage/` holds only `migration` and `session_diff`), so the fallback difference is the fixture-tested edge — see 3.6.
 
-**Rejected alternatives.** (a) Keep presence's scanners and only port individual fixes: rejected — every future agent/decoding fix would stay hand-rolled, which is the problem. (b) Let the kit own windows and badges too: rejected — presence's per-source snapshot and aggregate rules (`src/cli/usage-badge.ts:88-179`) are product policy the kit does not ship, and moving them would break the downgrade story for no kit benefit. (c) Persist the kit's `UsageScanState` cursors and store incremental deltas (per-day buckets): rejected — the persisted cursors partition the window, so a scan reads only what was written since its cursor and a second scan of a quiet window yields nothing; overlapping scans then double count or drop the first scan's usage — atomic cursor and aggregate commits alone do not cure that, because two readers of the same cursor still need serialization or revision checks; price changes apply only to not-yet-counted records, leaving stale prices in stored buckets; and each window rollover must decide between subtracting an expired contribution from a live aggregate or re-deriving it. The stateless rescan has none of these modes and matches the cost model presence already has.
+**Rejected alternatives.** (a) Keep presence's scanners and only port individual fixes: rejected — every future agent/decoding fix would stay hand-rolled, which is the problem. (b) Let the kit own windows and badges too: rejected — presence's per-source snapshot and aggregate rules (`src/cli/usage-badge.ts:88-179`) are product policy the kit does not ship, and moving them would break the downgrade story for no kit benefit. (c) Persist the kit's `UsageScanState` cursors and store incremental deltas (per-day buckets): not recommended, pending the owner decision (Owner decisions) — the persisted cursors partition the window, so a scan reads only what was written since its cursor and a second scan of a quiet window yields nothing; overlapping scans then double count or drop the first scan's usage — atomic cursor and aggregate commits alone do not cure that, because two readers of the same cursor still need serialization or revision checks; price changes apply only to not-yet-counted records, leaving stale prices in stored buckets; and each window rollover must decide between subtracting an expired contribution from a live aggregate or re-deriving it. The stateless rescan has none of these modes and matches the cost model presence already has.
 
 **Kit entries used.** `@rivus/agent-kit/transcript/usage` (`scanUsage`, `decodeUsage`, `UsageRecord`, failure item types), `@rivus/agent-kit/cost` (`createPricing`, `fromLiteLLM`, `priceUsage` via `costOf`, `summarize`, `calendarWindow` if needed for self-checks), `@rivus/agent-kit/node` (platform).
 
@@ -306,7 +306,7 @@ Five batches, one per kit area (closing #85/#86; #89 is delivered across the hoo
   3. run the new version's `verify` and `doctor` until both report no new and no legacy duplicates;
   4. install the old version and run the old `agent-presence setup`.
      Acceptance exercises exactly this: after new-install → new-uninstall → old-setup, the old hooks fire exactly once per event (S12).
-- Data: no `PresenceState` format change to roll back — scans are stateless and `usageSnapshots` keep their shape (3.2); the kit ledger is additive and ignored by old versions.
+- Data: with the recommended stateless scans (usage-scan-state decision, Owner decisions) there is no `PresenceState` format change to roll back — `usageSnapshots` keep their shape (3.2); the kit ledger is additive and ignored by old versions.
 
 ## 5. Verification
 
@@ -317,7 +317,7 @@ Five batches, one per kit area (closing #85/#86; #89 is delivered across the hoo
 
 ### 5.2 Compatibility checks
 
-- State files load unchanged in both directions — no batch adds fields (3.2 keeps the `PresenceState` shape), so no field whitelisting is involved.
+- State files load unchanged in both directions — no batch adds fields (3.2 keeps the `PresenceState` shape with the recommended stateless scans; persisted scan state would add fields), so no field whitelisting is involved.
 - The compiled hook graph contains no `effect`/setup imports (graph test), and the timed hook cold start is not slower than the pre-split baseline.
 - `pnpm pack --dry-run` file list stays free of test fixtures, ledgers, and lock databases.
 
