@@ -34,7 +34,7 @@ const forbiddenHookGraphModules = [
 const scriptsDir = resolve(repoRoot, 'scripts');
 // Every npm entry the hook path loads statically, by exact specifier. A batch
 // that brings a package into the hook path adds it here; `effect` never goes
-// on this list (Plan 0002, 3.3).
+// on this list (docs/architecture.md, "CLI").
 const hookGraphPackages = ['@rivus/agent-kit/harness/events'];
 // Imported by the hook command, not by the dispatcher, so its presence in the
 // graph shows the walk followed the hook command's imports.

@@ -6,9 +6,11 @@ import { beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 import { hook } from '../src/cli/commands/hook.js';
 import { createEmptyState, loadState, saveState, type AgentSession, type PresenceState } from '../src/state.js';
 
-// `hook --agent <kitAgentId>` interpreted with readHookEvent. One case per row of
-// Plan 0002 §3.4, including grouped names and payload branches. Where a
-// today-rule exists, the state outcome matches test/hook-event-table.test.ts.
+// `hook --agent <kitAgentId>` interpreted with readHookEvent. One case per
+// event of the signal rule in docs/architecture.md ("Hook Normalization"),
+// including grouped names and payload branches. Where the `--source/--event`
+// form handles the same event, the state outcome matches
+// test/hook-event-table.test.ts.
 
 const publishValueMock = vi.hoisted(() => vi.fn<(value: string) => Promise<void>>());
 const stdinPayload = vi.hoisted(() => {

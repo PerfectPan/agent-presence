@@ -9,9 +9,9 @@ import { hook } from '../src/cli/commands/hook.js';
 import { buildOpenCodePluginSource, buildPiExtensionSource } from '../src/installers.js';
 import { createEmptyState, loadState, saveState, type AgentSession } from '../src/state.js';
 
-// Regression oracle for today's hook-event mapping: one case per row of the
-// agent-kit adoption plan's event table (docs/plans/0002-agent-kit-adoption.md
-// section 3.4) that has a today-rule. Existing-source cases run the way today's
+// Regression oracle for today's hook-event mapping: one case per event the
+// `--source/--event` form handles (the source mapping in docs/architecture.md,
+// "Hook Normalization"). Existing-source cases run the way today's
 // installed hooks run them: Claude/Codex/Gemini/Grok cases call
 // `hook --source <id> --event <Name>` directly; opencode and Pi cases go
 // through the generated old bridge/extension themselves, so the row asserts
