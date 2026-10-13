@@ -102,10 +102,12 @@ src/cli/hook-context.ts     built-in source hook context selection
 src/sources.ts              source registry: built-ins plus configured plugin sources
 src/cli/commands/*.ts       one command or subcommand per file
 src/json-file.ts            shared JSON read and atomic write helpers
+src/process-lock.ts         the kit's process lock that the state and log locks take
+src/kit-platform.ts         the kit's Node platform, created once per process on first use
 src/hooks/context.ts        shared hook payload/env string extraction
 ```
 
-The dispatcher loads each command's implementation with a dynamic `import()` inside its `case`, so a hook run loads only the modules the hook command needs. The dispatcher statically imports argument parsing, help, the platform check, and the small hook failure fallback `src/cli/hook-output.ts`, which pulls in the log path and retained-log writer through `src/cli/io.ts`; nothing heavier crosses this static boundary. When loading the hook command's module rejects, `writeHookLoadFailure` writes the same `hook failed` log line and emits the same hook output as a failure inside the hook command does, leaving the exit code at 0. If the log write itself fails, the error reaches the generic CLI catch with the error on stderr and exit code 1 — the same outcome an in-hook failure with failing logging has. Only the load is covered: an error that escapes the hook command itself also reaches the generic CLI catch. The static import graph of the hook path, walked from `src/cli.ts` and the hook command, loads only repository modules, Node built-ins (`node:*`), and one npm entry, `@rivus/agent-kit/harness/events`: no other npm package, so no `effect`, no `zod`, and no `@clack/prompts`, and no setup, installer, migration, login, Clack wrapper (`src/cli/ui.ts`), or scripts code. `test/hook-graph.test.ts` walks that graph and fails if it reaches any of them. A static setup import in the hook graph would defeat this split even when tree-shaking would discard it elsewhere.
+The dispatcher loads each command's implementation with a dynamic `import()` inside its `case`, so a hook run loads only the modules the hook command needs. The dispatcher statically imports argument parsing, help, the platform check, and the small hook failure fallback `src/cli/hook-output.ts`, which pulls in the log path and retained-log writer, and with it the kit's process lock, through `src/cli/io.ts`; nothing heavier crosses this static boundary. When loading the hook command's module rejects, `writeHookLoadFailure` writes the same `hook failed` log line and emits the same hook output as a failure inside the hook command does, leaving the exit code at 0. If the log write itself fails, the error reaches the generic CLI catch with the error on stderr and exit code 1 — the same outcome an in-hook failure with failing logging has. Only the load is covered: an error that escapes the hook command itself also reaches the generic CLI catch. The static import graph of the hook path, walked from `src/cli.ts` and the hook command, loads only repository modules, Node built-ins (`node:*`), and three npm entries: `@rivus/agent-kit/harness/events`, and `@rivus/agent-kit-collab/process-lock` with `@rivus/agent-kit/node` for the log lock (both bundle `zod/mini` and load no module of the `zod` package). No other npm package is loaded, so no `effect`, no `zod`, and no `@clack/prompts`, and no setup, installer, migration, login, Clack wrapper (`src/cli/ui.ts`), or scripts code. `test/hook-graph.test.ts` walks that graph and fails if it reaches any of them. A static setup import in the hook graph would defeat this split even when tree-shaking would discard it elsewhere.
 
 The package exposes both binaries:
 
@@ -160,7 +162,7 @@ The `feishu-signature` provider can be configured with a base URL, preview base 
 
 ### State Store
 
-`src/state.ts` stores the local state as JSON under the user state directory. Updates are guarded by a local lock file so concurrent hooks do not clobber each other.
+`src/state.ts` stores the local state as JSON under the user state directory. Updates are guarded by the state lock so concurrent hooks and commands do not clobber each other. The state lock is the kit's process lock (`@rivus/agent-kit-collab/process-lock`) on `<state>.lock.db`: a SQLite database that the kernel unlocks when its holder exits or crashes, so a lock is never reclaimed. A writer waits up to 2 seconds for it and then fails. The `<state>.lock` directory that earlier releases locked is left alone, because those releases delete that path.
 
 State has two layers:
 
@@ -563,7 +565,7 @@ AGENT_SIGNATURE_LOG_FILE
 
 Current hook commands log notable failures such as missing session ids or hook exceptions. Timestamps are formatted in China time with an explicit `+08:00` offset so local traces are readable without mental UTC conversion. The log must not contain provider tokens, full Authorization headers, QR code tickets, or local prompt payloads.
 
-`src/log-retention.ts` owns the append-and-retain boundary. Each writer acquires a short-lived sibling lock file carrying an agent-presence owner token, appends the new event, and immediately compacts the file in place when it exceeds 5 MiB. This order also bounds a single oversized event without waiting for another write. Compaction keeps roughly the latest 1 MiB of bytes and preserves the file identity for processes that may already hold it open; the first retained line may therefore begin mid-line. A verified lock is reclaimable after 2 seconds only when its owner PID is no longer alive. Reclaimers first create a fixed hard link to the current lock inode, so exactly one process can remove that stale generation and none can delete a newer replacement. Foreign data at either coordination path is never removed. If the filesystem cannot create the lock or the path belongs to something else, the event is appended without maintenance; if another valid live owner remains contended, the diagnostic write is skipped rather than racing a truncate. Cleanup failures never break a hook or provider operation.
+`src/log-retention.ts` owns the append-and-retain boundary. Each writer takes the file's log lock, the kit's process lock on `<log>.lock.db` (the same kind of lock as the state lock, so a crashed writer releases it at once), appends the new event, and immediately compacts the file in place when it exceeds 5 MiB. This order also bounds a single oversized event without waiting for another write. Compaction keeps roughly the latest 1 MiB of bytes and preserves the file identity for processes that may already hold it open; the first retained line may therefore begin mid-line. A writer waits up to 2.5 seconds for the lock; if another writer still holds it, the diagnostic write is skipped rather than racing a truncate. A caller can pass its own abort signal instead of that wait, to wait until it holds the lock or its signal aborts. If the lock cannot be taken at all, for example because the directory is not writable or the lock path belongs to something else, the event is appended without maintenance, and the foreign path is left alone. Writers inside one process take turns before they try the lock, because the kit's first attempt against a held lock blocks the thread while it settles. Cleanup failures never break a hook or provider operation.
 
 ### Power Watcher Log
 
@@ -581,8 +583,7 @@ Retention limits:
 
 - The 5 MiB trigger and the roughly 1 MiB tail are fixed; there is no time-based retention, archive, or user setting. Logs that user-supplied source handlers write elsewhere are not managed.
 - A single event larger than the retained tail keeps only its most recent bytes.
-- A crash inside the small reclaim critical section can leave the fixed reclaim hard link behind. Normal lock generations keep working, but a later stale generation cannot be reclaimed until that link is removed.
-- During an upgrade, an older package version that does not take the lock can race an in-place compaction.
+- Releases before the kit lock locked the log through a hard-linked `<log>.agent-presence.lock` file, and older ones took no lock, so such a release running next to this one can race an in-place compaction. An upgrade uninstalls the previous release first.
 
 ### Provider Request Log
 

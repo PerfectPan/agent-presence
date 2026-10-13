@@ -1,10 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vite-plus/test';
-import { mkdir, mkdtemp, readFile, rm, stat, utimes, writeFile } from 'node:fs/promises';
-import { randomUUID } from 'node:crypto';
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+import { acquireProcessLock, isProcessLockHeld, type ProcessLock } from '@rivus/agent-kit-collab/process-lock';
+import { kitPlatform } from '../src/kit-platform.js';
 import { createLogWriter, formatLogEvent, formatLogTime, writeLog } from '../src/log.js';
-import { LOG_LOCK_MARKER } from '../src/log-retention.js';
+import { appendRetainedLogLine } from '../src/log-retention.js';
 
 describe('log timestamps', () => {
   let tempDir: string | undefined;
@@ -89,66 +90,54 @@ describe('log timestamps', () => {
     for (let index = 0; index < 20; index += 1) {
       expect(contents).toContain(`message=concurrent-${index}`);
     }
-    await expect(stat(`${logPath}.agent-presence.lock`)).rejects.toMatchObject({ code: 'ENOENT' });
+    await expect(isProcessLockHeld(kitPlatform(), `${logPath}.lock.db`)).resolves.toBe(false);
   });
 
-  it('reclaims only stale locks created by agent-presence', async () => {
-    const logPath = await useTempLogFile();
-    const lockPath = `${logPath}.agent-presence.lock`;
-    await writeFile(lockPath, `${LOG_LOCK_MARKER}:99999999:${randomUUID()}\n`, { mode: 0o600 });
-    const staleTime = new Date(Date.now() - 10_000);
-    await utimes(lockPath, staleTime, staleTime);
-
-    await writeLog('after stale lock');
-
-    expect(await readFile(logPath, 'utf8')).toContain('message="after stale lock"');
-    await expect(stat(lockPath)).rejects.toMatchObject({ code: 'ENOENT' });
-  });
-
-  it('serializes concurrent writers that reclaim the same stale lock', async () => {
-    const logPath = await useTempLogFile();
-    const lockPath = `${logPath}.agent-presence.lock`;
-    await writeFile(lockPath, `${LOG_LOCK_MARKER}:99999999:${randomUUID()}\n`, { mode: 0o600 });
-    const staleTime = new Date(Date.now() - 10_000);
-    await utimes(lockPath, staleTime, staleTime);
-
-    await Promise.all(Array.from({ length: 20 }, (_, index) => writeLog(`reclaimed-${index}`)));
-
-    const contents = await readFile(logPath, 'utf8');
-    for (let index = 0; index < 20; index += 1) {
-      expect(contents).toContain(`message=reclaimed-${index}`);
+  async function holdLogLock(logPath: string): Promise<ProcessLock> {
+    const held = await acquireProcessLock(kitPlatform(), `${logPath}.lock.db`);
+    if (!held.ok) {
+      throw new Error('the test could not take the log lock');
     }
-    await expect(stat(lockPath)).rejects.toMatchObject({ code: 'ENOENT' });
-    await expect(stat(`${lockPath}.reclaim`)).rejects.toMatchObject({ code: 'ENOENT' });
+    return held.value;
+  }
+
+  it('skips the line when the log lock stays held until the wait ends', async () => {
+    const logPath = await useTempLogFile();
+    const holder = await holdLogLock(logPath);
+    const wait = new AbortController();
+
+    const appended = appendRetainedLogLine(logPath, 'skipped\n', { signal: wait.signal });
+    // Let the append reach the kit's wait for the held lock before the wait ends.
+    await new Promise((resolve) => setImmediate(resolve));
+    wait.abort();
+
+    await expect(appended).resolves.toBe(false);
+    await holder.release();
+    await expect(stat(logPath)).rejects.toMatchObject({ code: 'ENOENT' });
   });
 
-  it('never deletes an unrelated lock path', async () => {
+  it('writes the line once the holder releases the log lock', async () => {
     const logPath = await useTempLogFile();
-    const lockPath = `${logPath}.agent-presence.lock`;
+    const holder = await holdLogLock(logPath);
+
+    const appended = appendRetainedLogLine(logPath, 'after release\n', { signal: new AbortController().signal });
+    await holder.release();
+
+    await expect(appended).resolves.toBe(true);
+    expect(await readFile(logPath, 'utf8')).toBe('after release\n');
+  });
+
+  it('appends without the lock and leaves a foreign lock path alone when the lock cannot be taken', async () => {
+    const logPath = await useTempLogFile();
+    const lockPath = `${logPath}.lock.db`;
     await mkdir(lockPath, { mode: 0o700 });
     const userDataPath = join(lockPath, 'user-data.txt');
     await writeFile(userDataPath, 'keep me', { mode: 0o600 });
-    const staleTime = new Date(Date.now() - 60_000);
-    await utimes(lockPath, staleTime, staleTime);
 
-    await writeLog('blocked by foreign lock');
+    await writeLog('lock unavailable');
 
     expect(await readFile(userDataPath, 'utf8')).toBe('keep me');
-    expect(await readFile(logPath, 'utf8')).toContain('message="blocked by foreign lock"');
-  });
-
-  it('never reclaims a lock owned by a live process', async () => {
-    const logPath = await useTempLogFile();
-    const lockPath = `${logPath}.agent-presence.lock`;
-    const token = `${LOG_LOCK_MARKER}:${process.pid}:${randomUUID()}\n`;
-    await writeFile(lockPath, token, { mode: 0o600 });
-    const staleTime = new Date(Date.now() - 10_000);
-    await utimes(lockPath, staleTime, staleTime);
-
-    await writeLog('blocked by live owner');
-
-    expect(await readFile(lockPath, 'utf8')).toBe(token);
-    await expect(stat(logPath)).rejects.toMatchObject({ code: 'ENOENT' });
+    expect(await readFile(logPath, 'utf8')).toContain('message="lock unavailable"');
   });
 
   it('formats event values as readable single-line fields', () => {

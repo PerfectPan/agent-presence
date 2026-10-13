@@ -33,9 +33,15 @@ const forbiddenHookGraphModules = [
 ].map((relative) => resolve(repoRoot, relative));
 const scriptsDir = resolve(repoRoot, 'scripts');
 // Every npm entry the hook path loads statically, by exact specifier. A batch
-// that brings a package into the hook path adds it here; `effect` never goes
-// on this list (docs/architecture.md, "CLI").
-const hookGraphPackages = ['@rivus/agent-kit/harness/events'];
+// that brings a package into the hook path adds it here; `effect` and `zod`
+// never go on this list (docs/architecture.md, "CLI"). The kit's process lock
+// and Node platform are here because the log lock reaches them through
+// `src/sources.ts`, `src/cli/hook-output.ts`, and `src/cli/io.ts`.
+const hookGraphPackages = [
+  '@rivus/agent-kit-collab/process-lock',
+  '@rivus/agent-kit/harness/events',
+  '@rivus/agent-kit/node'
+];
 // Imported by the hook command, not by the dispatcher, so its presence in the
 // graph shows the walk followed the hook command's imports.
 const deepHookModule = resolve(repoRoot, 'src/state.ts');

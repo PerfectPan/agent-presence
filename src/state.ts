@@ -1,8 +1,8 @@
-import { mkdir, rm, stat } from 'node:fs/promises';
+import { mkdir } from 'node:fs/promises';
 import { dirname } from 'node:path';
-import { setTimeout as delay } from 'node:timers/promises';
 import { getStatePath } from './config.js';
-import { hasNodeErrorCode, readJsonFile, writeJsonAtomic } from './json-file.js';
+import { readJsonFile, writeJsonAtomic } from './json-file.js';
+import { acquireLock } from './process-lock.js';
 
 export type AgentStatus = 'running' | 'finished' | 'expired';
 
@@ -291,52 +291,33 @@ export function isSessionBoundaryEvent(event: string): boolean {
   return normalized === 'start' || normalized === 'finish';
 }
 
-async function isStaleLock(lockPath: string, staleMs: number): Promise<boolean> {
-  try {
-    const info = await stat(lockPath);
-    return Date.now() - info.mtimeMs > staleMs;
-  } catch {
-    return false;
-  }
-}
+const STATE_LOCK_WAIT_MS = 2_000;
 
-function isAlreadyExists(error: unknown): boolean {
-  return hasNodeErrorCode(error, 'EEXIST');
-}
-
+/**
+ * Run `fn` while holding the state lock of `statePath`, waiting up to `waitMs` (2 seconds by default) for another
+ * holder. The lock is the kit's process lock, so a holder that crashes releases it at once.
+ */
 export async function withStateLock<T>(
   statePath: string,
   fn: () => Promise<T>,
-  options: { waitMs?: number; staleMs?: number } = {}
+  options: { waitMs?: number } = {}
 ): Promise<T> {
-  const lockPath = `${statePath}.lock`;
-  const waitMs = options.waitMs ?? 2_000;
-  const staleMs = options.staleMs ?? 10_000;
-  const startedAt = Date.now();
-
+  // Every release that writes this state file must lock this same path. It is not the previous `<state>.lock`
+  // directory: releases that used it delete that path on release and on reclaim.
+  const lockPath = `${statePath}.lock.db`;
   await mkdir(dirname(statePath), { recursive: true, mode: 0o700 });
-  while (true) {
-    try {
-      await mkdir(lockPath, { mode: 0o700 });
-      break;
-    } catch (error) {
-      if (!isAlreadyExists(error)) {
-        throw error;
-      }
-      if (await isStaleLock(lockPath, staleMs)) {
-        await rm(lockPath, { recursive: true, force: true });
-        continue;
-      }
-      if (Date.now() - startedAt > waitMs) {
-        throw new Error(`timed out waiting for state lock: ${lockPath}`);
-      }
-      await delay(50);
-    }
+  const signal = AbortSignal.timeout(options.waitMs ?? STATE_LOCK_WAIT_MS);
+
+  let lock;
+  try {
+    lock = await acquireLock(lockPath, signal);
+  } catch (error) {
+    throw signal.aborted ? new Error(`timed out waiting for state lock: ${lockPath}`) : error;
   }
 
   try {
     return await fn();
   } finally {
-    await rm(lockPath, { recursive: true, force: true });
+    await lock.release();
   }
 }
