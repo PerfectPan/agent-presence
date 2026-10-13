@@ -81,12 +81,12 @@ function createMagicBuilderProvider({ config, credential }: CreateProviderOption
 }
 
 // Partial: createProvider rejects ids without a factory, and that guard is a
-// tested contract, so lookups stay fallible even though the keys cover
-// ProviderId today.
+// tested contract, so lookups stay fallible; `satisfies` still requires a
+// factory for every ProviderId.
 const factories: Partial<Record<ProviderId, ProviderFactory>> = {
   'feishu-signature': createFeishuSignatureProvider,
   'magic-builder': createMagicBuilderProvider
-};
+} satisfies Record<ProviderId, ProviderFactory>;
 
 /**
  * Resolve a provider id to a capability-oriented {@link PresenceProvider}.
