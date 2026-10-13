@@ -42,9 +42,10 @@ const hookGraphPackages = [
   '@rivus/agent-kit/harness/events',
   '@rivus/agent-kit/node'
 ];
-// Imported by the hook command, not by the dispatcher, so its presence in the
-// graph shows the walk followed the hook command's imports.
-const deepHookModule = resolve(repoRoot, 'src/state.ts');
+// Imported by the hook command (through `src/sources.ts`), not by the
+// dispatcher, so its presence in the graph shows the walk followed the hook
+// command's imports.
+const deepHookModule = resolve(repoRoot, 'src/cli/hook-context.ts');
 
 function staticImportSpecifiers(source: string): string[] {
   const specifiers: string[] = [];
