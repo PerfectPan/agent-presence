@@ -136,7 +136,7 @@ Everything not listed above stays unchanged, explicitly including:
 - When `setup` runs with this version
 - Then it lists the previous version's entries, writes nothing to the agent targets, and exits with an error asking for the previous version's `agent-presence uninstall`
 - When the previous version's `agent-presence uninstall` runs, and then `setup` runs with this version
-- Then each event runs presence's hook exactly once, and `doctor` and `verify` report no duplicate or leftover entries; the documented exceptions are the entries `setup` cannot detect (paired Plan 3.5): an absolute-path command entry installed from a checkout whose path carries no presence marker, which the previous version's uninstall removes for an unquoted checkout path while a quoted one (for example containing a space) needs manual removal, and an entry at a location the kit already tracks or protects as the user's, which follows the kit's ordinary conflict rules instead
+- Then each event runs presence's hook exactly once, and `doctor` and `verify` report no duplicate or leftover entries; the documented exceptions are the entries `setup` cannot detect (paired Plan 3.5): an absolute-path command entry installed from a checkout whose path carries no presence marker, which the previous version's uninstall removes for an unquoted checkout path while a quoted one (for example containing a space) needs manual removal, and an entry at a location the kit's ledger already records, which follows the kit's ordinary conflict rules instead
 
 ### S12: Uninstall and documented downgrade
 
