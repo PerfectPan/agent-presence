@@ -11,7 +11,8 @@ import { createProvider } from '../providers/registry.js';
 import { assertSupportsPublish } from '../providers/types.js';
 import { readCredential } from '../secret.js';
 import { applyAgentEvent, isSessionBoundaryEvent } from '../state.js';
-import { appendUsageEvent, usageEventFromPayload } from '../usage-events.js';
+import { usageEventFromPayload } from '../usage-events.js';
+import { appendUsageEvent } from '../usage-events-log.js';
 import { syncRenderedSlotWithDeferredFlush } from './rendered-slot-sync.js';
 import { refreshSignatureUsageBadges, usageRenderPlan } from './usage-badge.js';
 

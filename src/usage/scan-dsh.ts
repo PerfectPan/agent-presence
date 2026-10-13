@@ -1,4 +1,4 @@
-import { readUsageEvents } from '../usage-events.js';
+import { readUsageEvents } from '../usage-events-log.js';
 import type { ScanOptions } from './scan-claude.js';
 import type { UsageRecord } from './types.js';
 

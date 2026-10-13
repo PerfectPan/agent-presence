@@ -1,16 +1,11 @@
-import { stat } from 'node:fs/promises';
-import { join } from 'node:path';
-
-import { getHomeDir } from './config.js';
-import { appendRetainedLogLine } from './log-retention.js';
-import { forEachJsonl } from './usage/read-jsonl.js';
+// Kept free of schemas so the hook path can use `usageEventFromPayload` without loading zod; the usage events log
+// and its line schema live in `src/usage-events-log.ts`.
 
 /**
  * One usage report ingested from a source plugin's hook payload. Sources that
  * cannot (or should not) be scraped from transcripts — dsh, whose plugin
- * reports usage in real time — append events here instead, and their
- * `scanUsage` reads this log back. The log is append-only and size-bounded by
- * the same retention utility as the diagnostic log.
+ * reports usage in real time — append these to the usage events log instead,
+ * and their `scanUsage` reads that log back.
  */
 export interface UsageEvent {
   source: string;
@@ -21,15 +16,6 @@ export interface UsageEvent {
   outputTokens: number;
   cacheWriteTokens: number;
   cacheReadTokens: number;
-}
-
-export function getUsageEventsPath(): string {
-  return process.env.AGENT_PRESENCE_USAGE_EVENTS_FILE ?? join(getHomeDir(), 'usage-events.log');
-}
-
-/** Append one usage event. Best-effort: a failed append must never break the hook. */
-export async function appendUsageEvent(event: UsageEvent): Promise<void> {
-  await appendRetainedLogLine(getUsageEventsPath(), `${JSON.stringify(event)}\n`);
 }
 
 function asNumber(value: unknown): number {
@@ -70,46 +56,4 @@ export function usageEventFromPayload(source: string, payload: unknown, now: num
     cacheWriteTokens,
     cacheReadTokens
   };
-}
-
-function asUsageEvent(value: unknown): UsageEvent | null {
-  if (typeof value !== 'object' || value === null) {
-    return null;
-  }
-  const v = value as Record<string, unknown>;
-  if (typeof v.source !== 'string' || typeof v.timestamp !== 'number' || !Number.isFinite(v.timestamp)) {
-    return null;
-  }
-  return {
-    source: v.source,
-    model: typeof v.model === 'string' ? v.model : 'unknown',
-    timestamp: v.timestamp,
-    inputTokens: asNumber(v.inputTokens),
-    outputTokens: asNumber(v.outputTokens),
-    cacheWriteTokens: asNumber(v.cacheWriteTokens),
-    cacheReadTokens: asNumber(v.cacheReadTokens)
-  };
-}
-
-/** Read a source's events in `[sinceMs, untilMs)`. Missing/corrupt lines are skipped. */
-export async function readUsageEvents(source: string, sinceMs: number, untilMs: number): Promise<UsageEvent[]> {
-  const path = getUsageEventsPath();
-  // The log is append-only with ingestion timestamps, so an mtime older than
-  // the window means zero events in range — skip the read entirely.
-  try {
-    const info = await stat(path);
-    if (info.mtimeMs < sinceMs) {
-      return [];
-    }
-  } catch {
-    return [];
-  }
-  const events: UsageEvent[] = [];
-  await forEachJsonl(path, (record) => {
-    const event = asUsageEvent(record);
-    if (event && event.source === source && event.timestamp >= sinceMs && event.timestamp < untilMs) {
-      events.push(event);
-    }
-  });
-  return events;
 }
