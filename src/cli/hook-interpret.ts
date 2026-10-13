@@ -165,14 +165,6 @@ function internalEvent(agent: KitAgentId, event: LifecycleEvent): string | null 
   return eventFromPhase(event.phase);
 }
 
-function hookEnvironment(env: NodeJS.ProcessEnv): Readonly<Record<string, string | undefined>> {
-  const copy: Record<string, string | undefined> = {};
-  for (const key of Object.keys(env)) {
-    copy[key] = env[key];
-  }
-  return copy;
-}
-
 /**
  * Interpret one `hook --agent` payload. The presence source is the sniffed
  * `LifecycleEvent.agent`, not the declared flag: Grok and Cursor also run
@@ -183,7 +175,7 @@ export function interpretAgentHook(agentId: string, payload: unknown, env: NodeJ
   if (declared === undefined) {
     throw new Error(`Agent "${agentId}" has no hook dialect`);
   }
-  const event = readHookEvent(declared, payload, hookEnvironment(env));
+  const event = readHookEvent(declared, payload, env);
   const source = presenceSource(event.agent);
   const nativeEvent = event.nativeEvent === '' ? 'unknown' : event.nativeEvent;
   if (source === undefined) {
