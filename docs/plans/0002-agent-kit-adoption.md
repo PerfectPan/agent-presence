@@ -167,10 +167,10 @@ After all batches: a hook invocation resolves the presence source from `--agent 
 
 ### 3.3 Hook and setup build split
 
-**Chosen approach.** Make the command dispatch in `src/cli/app.ts` load each command implementation through dynamic `import()` and move the shared, hook-needed code (args parsing, state, render, slot sync, hook context) into modules that import neither the installers nor anything Effect-typed. The hook command's static import set becomes the hook graph; a test walks the compiled graph (entry `dist/src/cli.js` with `hook`) and fails if it reaches `effect`, `setup`, or the installer modules. This lands before the hook-events and setup batches so both migrate onto an already-split build (kit adoption doc, "split build outputs before migrating injection").
+**Chosen approach.** Make the command dispatch in `src/cli/app.ts` load each command implementation through dynamic `import()` and move the shared, hook-needed code (args parsing, state, render, slot sync, hook context) into modules that import neither the installers nor anything Effect-typed. The hook command's static import set becomes the hook graph; a test walks it from the sources (`src/cli.ts` and the hook command) and fails if it reaches an npm package (`effect` included), `setup`, or the installer modules. A batch that brings a kit entry into the hook path (batch 1's process lock) adds that package to an explicit allowlist in the test; `effect` never goes on it. The source graph is the compiled graph: `vp pack` emits one file per source file without tree-shaking (`unbundle: true`, `treeshake: false`), so each built module keeps its source's runtime imports, and walking `src/` needs no build inside `pnpm test`. This lands before the hook-events and setup batches so both migrate onto an already-split build (kit adoption doc, "split build outputs before migrating injection").
 
 - The `bin` target survives: the CLI entry stays `dist/src/cli.js`, so the installed command's shape is unchanged. Command recognition moves to the kit's marker matching in batch 5 (3.5): the presence-specific substrings carry over, and the generic `dist/src/cli.js hook` fragment (`src/installers.ts:98`) deliberately does not — 3.5 records which old command forms that leaves unrecognized. The kit's `HookSpec.command` (3.5) stays recognizable by presence's command markers — the `legacyMarkers` list is presence-defined and extends to the shim path if the shim option wins.
-- Cold start is measured the same way before and after: time `node dist/src/cli.js hook` with a synthetic payload on the built output; the exit condition is "not slower than the pre-split baseline" (it should drop, since setup/installer modules leave the graph).
+- Cold start is measured the same way before and after: time `node dist/src/cli.js hook` with a synthetic payload on the built output; the exit condition is "not slower than the pre-split baseline" (it should drop, since setup/installer modules leave the graph). The measurement is manual and its numbers go in the PR description. CI runs no timing test: wall-clock start-up times on shared runners are too noisy for a stable threshold.
 - `vp pack` (the separate Vite+ batch) keeps emitting `dist/src/cli.js` as the bin with the legacy hook marker; this batch only restructures imports and depends on that contract, it does not change the bundler.
 
 **Rejected alternative.** Split into two binaries (a hook entry and a management entry): rejected — two bins double the npx surface, break the single installed-command marker, and the dynamic-import dispatch achieves the same graph separation inside one entry.
@@ -314,7 +314,7 @@ Five batches, one per kit area (closing #85/#86; #89 is delivered across the hoo
 ### 5.2 Compatibility checks
 
 - State files load unchanged in both directions — no batch adds fields (3.2 keeps the `PresenceState` shape), so no field whitelisting is involved.
-- The compiled hook graph contains no `effect`/setup imports (graph test), and the timed hook cold start is not slower than the pre-split baseline.
+- The hook graph contains no npm package (so no `effect`) and no setup imports (graph test over the source graph, which matches the compiled graph, 3.3), and the hook cold start, measured by hand on the built output, is not slower than the pre-split baseline.
 - `pnpm pack --dry-run` file list stays free of test fixtures, ledgers, and lock databases.
 
 ### 5.3 End-to-end acceptance
@@ -342,7 +342,7 @@ Five batches, one per kit area (closing #85/#86; #89 is delivered across the hoo
 | S7, S8 (parity, trailing-request lag)       | Batch 2 parity + trailing-request lag tests over the old scanners' fixtures                                                          |
 | S9, S10, S11 (setup UX, conflicts, upgrade) | Batch 5 plan-display, conflict, and upgrade tests under isolated `HOME`                                                              |
 | S12 (uninstall + downgrade)                 | Batch 5 downgrade-order test                                                                                                         |
-| S13 (everything else)                       | Batch 3 graph/cold-start tests + per-batch state-compat tests                                                                        |
+| S13 (everything else)                       | Batch 3 graph test and manual cold-start measurement + per-batch state-compat tests                                                  |
 
 Plus: deleted-modules checklist (issue #92) — `src/usage/scan-{claude,codex,gemini,opencode,pi}.ts`, `src/usage/pricing.ts`'s hand-rolled table logic, the hook/config installers for kit-covered agents in `src/installers.ts` and `scripts/install-*`/`uninstall-*`, the mkdir and hardlink locks; `engines.node >= 22.13`; a changeset per user-facing batch; `docs/architecture.md` updated in the same change as each behavior shift; this Spec and Plan deleted after the last batch migrates lasting constraints into current-state docs. The real-agent checks (Claude skills-directory plugin, Cursor, Codex, Gemini) pass before the pair is deleted (Owner decisions, 5.3).
 
@@ -373,11 +373,11 @@ Plus: deleted-modules checklist (issue #92) — `src/usage/scan-{claude,codex,ge
 #### Batch 3 — Hook and setup build split (PR 3)
 
 - Preconditions: independent of batches 1 and 2 — this batch may land before either; baseline cold-start measurement recorded on `main`.
-- Files: `src/cli/app.ts` (dynamic per-command import), command modules' import hygiene, new graph-check test script, cold-start measurement script/test.
+- Files: `src/cli/app.ts` (dynamic per-command import), command modules' import hygiene, new graph test (`test/hook-graph.test.ts`); no cold-start script or test (3.3).
 - Changes: dispatch loads command implementations lazily; hook-needed modules stop importing setup/installers; no behavior change.
 - Deleted old code: none.
-- Tests: import-graph test (hook entry reaches neither `effect` nor setup/installer modules); cold-start timing test with the recorded baseline; `node dist/src/cli.js --help` smoke.
-- Old/new evidence: baseline timing vs post-split timing attached to the PR.
+- Tests: import-graph test over the source graph (the bin entry and the hook command reach no npm package, so no `effect`, and no setup/installer modules); `node dist/src/cli.js --help` smoke. No cold-start timing test in CI (3.3).
+- Old/new evidence: baseline timing vs post-split timing, measured by hand on the built output (median of 20 hook runs, each with a fresh `HOME`), in the PR description.
 - Exit conditions: gates green; hook cold start ≤ baseline; marker strings untouched (`src/installers.ts:92-100`).
 - Rollback: revert the PR (pure restructure).
 
@@ -412,8 +412,8 @@ Plus: deleted-modules checklist (issue #92) — `src/usage/scan-{claude,codex,ge
 | 1     | Built-output hook stdio comparison vs `main`              | stdout and stderr unchanged                                         |
 | 2     | Fixture parity table old vs new                           | identical except annotated corrections                              |
 | 2     | Two scans of one window                                   | identical snapshots, no scan state                                  |
-| 3     | Import-graph test                                         | hook graph has no `effect`/setup imports                            |
-| 3     | Cold-start timing                                         | ≤ baseline recorded on `main`                                       |
+| 3     | Import-graph test                                         | hook graph has no npm package (so no `effect`) and no setup imports |
+| 3     | Cold-start timing, measured by hand (PR description)      | ≤ baseline recorded on `main`                                       |
 | 4     | Per-agent signal fixtures                                 | expected start/heartbeat/finish per event                           |
 | 4     | Gate-output failure test                                  | `{}` on stdout despite CLI failure                                  |
 | 5     | Isolated-`HOME` install/verify/doctor/uninstall per agent | pass, no duplicates                                                 |
