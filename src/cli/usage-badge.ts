@@ -45,13 +45,16 @@ export interface UsageBadgeCacheRefresh {
   pricing?: PricingOverrides;
   /** A hook refresh owns only this source. Omit for an explicit full refresh. */
   source?: string;
-  /** Stops the refresh before it saves. Scans already running finish in the background; they only read transcripts. */
+  /**
+   * Stops the refresh before or while its scans run; scans already running finish in the background, as they only read
+   * transcripts. Once the scans have finished, an abort no longer stops it: it waits for the state lock and saves.
+   */
   signal?: AbortSignal;
 }
 
 /**
- * How a refresh ended. `completed` is false only when its signal stopped it before it saved; a refresh that found
- * nothing to scan, or kept the previous cache after a failed scan, completed.
+ * How a refresh ended. `completed` is false only when its signal stopped it before its scans finished; a refresh that
+ * found nothing to scan, kept the previous cache after a failed scan, or saved after a later abort, completed.
  */
 export interface UsageRefreshOutcome {
   completed: boolean;
@@ -214,7 +217,7 @@ export async function refreshUsageBadgeCache(options: UsageBadgeCacheRefresh): P
  * its source id and normally scans only that source; the first boundary after
  * midnight and an explicit update rebuild every built-in contribution. Scans
  * run outside the state lock and any failure leaves the previous cache intact.
- * `signal` stops the refresh before it saves (see `refreshUsageBadgeCache`).
+ * `signal` stops the refresh before or while its scans run (see `UsageBadgeCacheRefresh`).
  */
 export async function refreshSignatureUsageBadges(
   config: AppConfig,
