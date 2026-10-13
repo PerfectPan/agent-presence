@@ -45,6 +45,43 @@ export interface UsageBadgeCacheRefresh {
   pricing?: PricingOverrides;
   /** A hook refresh owns only this source. Omit for an explicit full refresh. */
   source?: string;
+  /** Stops the refresh before it saves. Scans already running finish in the background; they only read transcripts. */
+  signal?: AbortSignal;
+}
+
+/**
+ * How a refresh ended. `completed` is false only when its signal stopped it before it saved; a refresh that found
+ * nothing to scan, or kept the previous cache after a failed scan, completed.
+ */
+export interface UsageRefreshOutcome {
+  completed: boolean;
+}
+
+const aborted = Symbol('aborted');
+
+/** Settles with `work`, or with `aborted` as soon as `signal` aborts; `work` keeps running either way. */
+function unlessAborted<T>(work: Promise<T>, signal: AbortSignal | undefined): Promise<T | typeof aborted> {
+  if (!signal) {
+    return work;
+  }
+  return new Promise((resolve, reject) => {
+    if (signal.aborted) {
+      resolve(aborted);
+      return;
+    }
+    const onAbort = (): void => resolve(aborted);
+    signal.addEventListener('abort', onAbort, { once: true });
+    work.then(
+      (value) => {
+        signal.removeEventListener('abort', onAbort);
+        resolve(value);
+      },
+      (error: unknown) => {
+        signal.removeEventListener('abort', onAbort);
+        reject(error);
+      }
+    );
+  });
 }
 
 function aggregateSnapshots(snapshots: UsageSnapshot[]): { totalTokens: number; costUsd: number | null } {
@@ -68,7 +105,10 @@ function aggregateSnapshots(snapshots: UsageSnapshot[]): { totalTokens: number; 
  * so inactive sources cannot leave the new calendar day permanently stale.
  * Explicit updates also replace the complete built-in snapshot set.
  */
-export async function refreshUsageBadgeCache(options: UsageBadgeCacheRefresh): Promise<void> {
+export async function refreshUsageBadgeCache(options: UsageBadgeCacheRefresh): Promise<UsageRefreshOutcome> {
+  if (options.signal?.aborted) {
+    return { completed: false };
+  }
   const cachedState = await loadState(options.statePath);
   const refreshSource =
     options.source &&
@@ -79,33 +119,40 @@ export async function refreshUsageBadgeCache(options: UsageBadgeCacheRefresh): P
     ? options.sources.filter((candidate) => candidate.id === refreshSource)
     : options.sources;
   if (refreshSource && selectedSources.length === 0) {
-    return;
+    return { completed: true };
   }
 
   let results: Array<readonly [string, Record<string, UsageSnapshot>]>;
   try {
-    results = await Promise.all(
-      options.windows.map(async (days) => {
-        const window = await collectWindowUsage({
-          days,
-          now: options.now,
-          pricing: options.pricing,
-          sources: selectedSources,
-          failOnSourceError: true
-        });
-        return [
-          String(days),
-          Object.fromEntries(
-            window.bySource.map((usage) => [
-              usage.source,
-              { totalTokens: usage.totalTokens, costUsd: usage.costUsd, scannedAt: options.now }
-            ])
-          )
-        ] as const;
-      })
+    const scanned = await unlessAborted(
+      Promise.all(
+        options.windows.map(async (days) => {
+          const window = await collectWindowUsage({
+            days,
+            now: options.now,
+            pricing: options.pricing,
+            sources: selectedSources,
+            failOnSourceError: true
+          });
+          return [
+            String(days),
+            Object.fromEntries(
+              window.bySource.map((usage) => [
+                usage.source,
+                { totalTokens: usage.totalTokens, costUsd: usage.costUsd, scannedAt: options.now }
+              ])
+            )
+          ] as const;
+        })
+      ),
+      options.signal
     );
+    if (scanned === aborted) {
+      return { completed: false };
+    }
+    results = scanned;
   } catch {
-    return; // keep the previously cached badges on scan failure
+    return { completed: true }; // keep the previously cached badges on scan failure
   }
 
   await withStateLock(options.statePath, async () => {
@@ -159,6 +206,7 @@ export async function refreshUsageBadgeCache(options: UsageBadgeCacheRefresh): P
     }
     await saveState(state, options.statePath);
   });
+  return { completed: true };
 }
 
 /**
@@ -166,16 +214,18 @@ export async function refreshUsageBadgeCache(options: UsageBadgeCacheRefresh): P
  * its source id and normally scans only that source; the first boundary after
  * midnight and an explicit update rebuild every built-in contribution. Scans
  * run outside the state lock and any failure leaves the previous cache intact.
+ * `signal` stops the refresh before it saves (see `refreshUsageBadgeCache`).
  */
 export async function refreshSignatureUsageBadges(
   config: AppConfig,
   statePath: string,
   now: number,
-  source?: string
-): Promise<void> {
+  source?: string,
+  options: { signal?: AbortSignal } = {}
+): Promise<UsageRefreshOutcome> {
   const plan = usageRenderPlan(config);
   if (!plan.enabled) {
-    return;
+    return { completed: true };
   }
 
   const pricing = usagePricingOverrides(config);
@@ -183,12 +233,13 @@ export async function refreshSignatureUsageBadges(
   // third-party JS handlers here (`includeHandlers: false` keeps
   // `billableSources` from `import()`ing them on the hot path).
   const sources = await billableSources(config, { includeHandlers: false });
-  await refreshUsageBadgeCache({
+  return refreshUsageBadgeCache({
     statePath,
     now,
     windows: plan.windows,
     pricing,
     sources,
-    source
+    source,
+    signal: options.signal
   });
 }
