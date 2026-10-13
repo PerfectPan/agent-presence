@@ -105,6 +105,8 @@ src/json-file.ts            shared JSON read and atomic write helpers
 src/hooks/context.ts        shared hook payload/env string extraction
 ```
 
+The dispatcher loads each command's implementation with a dynamic `import()` inside its `case`, so a hook run loads only the modules the hook command needs. The dispatcher statically imports argument parsing, help, the platform check, and the small hook failure fallback `src/cli/hook-output.ts`, which pulls in the log path and retained-log writer through `src/cli/io.ts`; nothing heavier crosses this static boundary. When loading the hook command's module rejects, `writeHookLoadFailure` writes the same `hook failed` log line and emits the same hook output as a failure inside the hook command does, leaving the exit code at 0. If the log write itself fails, the error reaches the generic CLI catch with the error on stderr and exit code 1 — the same outcome an in-hook failure with failing logging has. Only the load is covered: an error that escapes the hook command itself also reaches the generic CLI catch. The static import graph of the hook path, walked from `src/cli.ts` and the hook command, loads only repository modules and Node built-ins (`node:*`): no npm package, so no `effect` and no `@clack/prompts`, and no setup, installer, migration, login, Clack wrapper (`src/cli/ui.ts`), or scripts code. `test/hook-graph.test.ts` walks that graph and fails if it reaches any of them. A static setup import in the hook graph would defeat this split even when tree-shaking would discard it elsewhere.
+
 The package exposes both binaries:
 
 ```text
