@@ -8,13 +8,14 @@ const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const cliEntry = resolve(repoRoot, 'src/cli.ts');
 const hookCommandEntry = resolve(repoRoot, 'src/cli/commands/hook.ts');
 
-// Modules the hook path must never load statically: the setup/installer cluster
-// and the helpers only setup, uninstall, and login use. The bin entry and the
-// dispatcher are walked as well as the hook command, because a static setup
-// import in `src/cli/app.ts` pulls the whole graph into every hook run just as
-// one in the hook command does. The graph must also stay free of `effect`;
-// later batches must not be able to reach it from the hook path
-// (docs/architecture.md, "Hook Setup Split").
+// The hook path's static graph loads only repository modules and Node built-ins
+// (docs/architecture.md, "CLI"). A bare specifier other than `node:*` is an npm
+// package loaded on every hook run, so the walk fails on it; this keeps
+// `effect` and `@clack/prompts` out. The forbidden modules are the
+// setup/installer cluster, the Clack wrapper, and the helpers only setup,
+// uninstall, and login use. The bin entry and the dispatcher are walked as well
+// as the hook command, because a static setup import in `src/cli/app.ts` pulls
+// the whole graph into every hook run just as one in the hook command does.
 const forbiddenHookGraphModules = [
   'src/setup.ts',
   'src/installers.ts',
@@ -24,11 +25,15 @@ const forbiddenHookGraphModules = [
   'src/magic-token.ts',
   'src/cli/credential.ts',
   'src/cli/magic-builder-setup.ts',
+  'src/cli/ui.ts',
   'src/cli/commands/setup.ts',
   'src/cli/commands/uninstall.ts',
   'src/cli/commands/login.ts'
 ].map((relative) => resolve(repoRoot, relative));
 const scriptsDir = resolve(repoRoot, 'scripts');
+// Imported by the hook command, not by the dispatcher, so its presence in the
+// graph shows the walk followed the hook command's imports.
+const deepHookModule = resolve(repoRoot, 'src/state.ts');
 
 function staticImportSpecifiers(source: string): string[] {
   const specifiers: string[] = [];
@@ -81,12 +86,14 @@ function resolveRelativeImport(fromFile: string, specifier: string): string | un
 
 interface StaticGraph {
   files: string[];
-  effectSpecifiers: string[];
+  packageSpecifiers: string[];
 }
 
+// A resolved file that cannot be read throws: a renamed or moved module must
+// fail the walk, not silently shrink the graph.
 function walkStaticGraph(entries: string[]): StaticGraph {
   const files = new Set<string>();
-  const effectSpecifiers = new Set<string>();
+  const packageSpecifiers = new Set<string>();
   const queue = [...entries];
   while (queue.length > 0) {
     const file = queue.pop();
@@ -94,24 +101,16 @@ function walkStaticGraph(entries: string[]): StaticGraph {
       continue;
     }
     files.add(file);
-    let source: string;
-    try {
-      source = readFileSync(file, 'utf8');
-    } catch {
-      continue;
-    }
-    for (const specifier of staticImportSpecifiers(source)) {
-      if (specifier === 'effect' || specifier.startsWith('effect/')) {
-        effectSpecifiers.add(specifier);
-        continue;
-      }
+    for (const specifier of staticImportSpecifiers(readFileSync(file, 'utf8'))) {
       const target = resolveRelativeImport(file, specifier);
       if (target !== undefined) {
         queue.push(target);
+      } else if (!specifier.startsWith('node:')) {
+        packageSpecifiers.add(specifier);
       }
     }
   }
-  return { files: [...files].sort(), effectSpecifiers: [...effectSpecifiers] };
+  return { files: [...files].sort(), packageSpecifiers: [...packageSpecifiers].sort() };
 }
 
 describe('static import scanning', () => {
@@ -135,13 +134,14 @@ describe('static import scanning', () => {
 });
 
 describe('hook static import graph', () => {
-  it('never reaches setup, installer, or effect modules from the bin entry or the hook command', () => {
+  it('loads only Node built-ins and never reaches setup, installer, or prompt modules', () => {
     const graph = walkStaticGraph([cliEntry, hookCommandEntry]);
 
+    expect(graph.files).toEqual(expect.arrayContaining([cliEntry, hookCommandEntry, deepHookModule]));
     const reachedForbidden = graph.files.filter(
-      (file) => forbiddenHookGraphModules.includes(file) || (file.startsWith(`${scriptsDir}/`) && file !== scriptsDir)
+      (file) => forbiddenHookGraphModules.includes(file) || file.startsWith(`${scriptsDir}/`)
     );
     expect(reachedForbidden).toEqual([]);
-    expect(graph.effectSpecifiers).toEqual([]);
+    expect(graph.packageSpecifiers).toEqual([]);
   });
 });
