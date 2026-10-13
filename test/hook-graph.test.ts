@@ -8,14 +8,15 @@ const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const cliEntry = resolve(repoRoot, 'src/cli.ts');
 const hookCommandEntry = resolve(repoRoot, 'src/cli/commands/hook.ts');
 
-// The hook path's static graph loads only repository modules and Node built-ins
-// (docs/architecture.md, "CLI"). A bare specifier other than `node:*` is an npm
-// package loaded on every hook run, so the walk fails on it; this keeps
-// `effect` and `@clack/prompts` out. The forbidden modules are the
-// setup/installer cluster, the Clack wrapper, and the helpers only setup,
-// uninstall, and login use. The bin entry and the dispatcher are walked as well
-// as the hook command, because a static setup import in `src/cli/app.ts` pulls
-// the whole graph into every hook run just as one in the hook command does.
+// The hook path's static graph loads only repository modules, Node built-ins,
+// and the npm entries in hookGraphPackages (docs/architecture.md, "CLI"). Any
+// other bare specifier is an npm package loaded on every hook run, so the walk
+// fails on it; this keeps `effect`, `zod`, and `@clack/prompts` out. The
+// forbidden modules are the setup/installer cluster, the Clack wrapper, and
+// the helpers only setup, uninstall, and login use. The bin entry and the
+// dispatcher are walked as well as the hook command, because a static setup
+// import in `src/cli/app.ts` pulls the whole graph into every hook run just as
+// one in the hook command does.
 const forbiddenHookGraphModules = [
   'src/setup.ts',
   'src/installers.ts',
@@ -31,6 +32,10 @@ const forbiddenHookGraphModules = [
   'src/cli/commands/login.ts'
 ].map((relative) => resolve(repoRoot, relative));
 const scriptsDir = resolve(repoRoot, 'scripts');
+// Every npm entry the hook path loads statically, by exact specifier. A batch
+// that brings a package into the hook path adds it here; `effect` never goes
+// on this list (docs/architecture.md, "CLI").
+const hookGraphPackages = ['@rivus/agent-kit/harness/events'];
 // Imported by the hook command, not by the dispatcher, so its presence in the
 // graph shows the walk followed the hook command's imports.
 const deepHookModule = resolve(repoRoot, 'src/state.ts');
@@ -134,7 +139,7 @@ describe('static import scanning', () => {
 });
 
 describe('hook static import graph', () => {
-  it('loads only Node built-ins and never reaches setup, installer, or prompt modules', () => {
+  it('loads only Node built-ins and the allowed npm entries and never reaches setup, installer, or prompt modules', () => {
     const graph = walkStaticGraph([cliEntry, hookCommandEntry]);
 
     expect(graph.files).toEqual(expect.arrayContaining([cliEntry, hookCommandEntry, deepHookModule]));
@@ -142,6 +147,6 @@ describe('hook static import graph', () => {
       (file) => forbiddenHookGraphModules.includes(file) || file.startsWith(`${scriptsDir}/`)
     );
     expect(reachedForbidden).toEqual([]);
-    expect(graph.packageSpecifiers).toEqual([]);
+    expect(graph.packageSpecifiers).toEqual(hookGraphPackages);
   });
 });

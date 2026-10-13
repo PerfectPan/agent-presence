@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vite-plus/test';
 import { resolveClaudeHookContext } from '../src/hooks/claude.js';
 import { resolveCodexHookContext } from '../src/hooks/codex.js';
+import { resolveGrokHookContext } from '../src/hooks/grok.js';
 import { mapOpenCodeEvent, resolveOpenCodeHookContext } from '../src/hooks/opencode.js';
 import { resolvePiHookContext } from '../src/hooks/pi.js';
 import { resolveDshHookContext } from '../src/hooks/dsh.js';
@@ -194,6 +195,297 @@ describe('opencode hook context', () => {
   });
 });
 
+describe('Grok hook context', () => {
+  it('maps a Grok snake_case wire name from the payload to the presence event', () => {
+    expect(
+      resolveGrokHookContext({
+        hook_event_name: 'user_prompt_submit',
+        session_id: 'grok-session-1',
+        cwd: '/repo'
+      })
+    ).toEqual({
+      event: 'UserPromptSubmit',
+      project: '/repo',
+      sessionId: 'grok-session-1'
+    });
+  });
+
+  it('accepts the PascalCase hookEventName spelling and camelCase session id', () => {
+    expect(
+      resolveGrokHookContext({
+        hookEventName: 'stop',
+        sessionId: 'grok-session-2',
+        cwd: '/repo'
+      })
+    ).toEqual({
+      event: 'Stop',
+      project: '/repo',
+      sessionId: 'grok-session-2'
+    });
+  });
+
+  it('falls back to env when the payload is empty', () => {
+    expect(
+      resolveGrokHookContext(
+        {},
+        {
+          GROK_HOOK_EVENT: 'session_start',
+          GROK_SESSION_ID: 'env-grok-session',
+          PWD: '/env-repo'
+        }
+      )
+    ).toEqual({
+      event: 'SessionStart',
+      project: '/env-repo',
+      sessionId: 'env-grok-session'
+    });
+  });
+
+  it('prefers payload values over env values', () => {
+    expect(
+      resolveGrokHookContext(
+        {
+          hookEventName: 'stop',
+          sessionId: 'payload-grok-session',
+          cwd: '/repo'
+        },
+        {
+          GROK_HOOK_EVENT: 'session_start',
+          GROK_SESSION_ID: 'env-grok-session',
+          PWD: '/env-repo'
+        }
+      )
+    ).toEqual({
+      event: 'Stop',
+      project: '/repo',
+      sessionId: 'payload-grok-session'
+    });
+  });
+
+  it('composes a subagent session id from subagentId', () => {
+    expect(
+      resolveGrokHookContext({
+        hookEventName: 'subagent_start',
+        sessionId: 'grok-session-1',
+        subagentId: 'sub-1',
+        cwd: '/repo'
+      })
+    ).toEqual({
+      event: 'SubagentStart',
+      project: '/repo',
+      sessionId: 'grok-session-1:subagent:sub-1'
+    });
+  });
+
+  it('composes a subagent session id from subagentType when subagentId is absent', () => {
+    expect(
+      resolveGrokHookContext({
+        hook_event_name: 'subagent_stop',
+        session_id: 'grok-session-1',
+        subagentType: 'explorer',
+        cwd: '/repo'
+      })
+    ).toEqual({
+      event: 'SubagentStop',
+      project: '/repo',
+      sessionId: 'grok-session-1:subagent:explorer'
+    });
+  });
+
+  it('does not compose a subagent session id on ordinary events', () => {
+    expect(
+      resolveGrokHookContext({
+        hookEventName: 'stop',
+        sessionId: 'grok-session-1',
+        subagentId: 'sub-1',
+        cwd: '/repo'
+      })
+    ).toEqual({
+      event: 'Stop',
+      project: '/repo',
+      sessionId: 'grok-session-1'
+    });
+  });
+
+  it('returns a name outside the Grok event table as Grok sent it', () => {
+    expect(
+      resolveGrokHookContext({ hookEventName: 'notification', sessionId: 'grok-session-1', cwd: '/repo' })
+    ).toEqual({
+      event: 'notification',
+      project: '/repo',
+      sessionId: 'grok-session-1'
+    });
+  });
+
+  it('routes through resolveHookContext when source is grok', () => {
+    expect(resolveHookContext('grok', { hookEventName: 'stop', sessionId: 'grok-session-3', cwd: '/repo' })).toEqual({
+      event: 'Stop',
+      project: '/repo',
+      sessionId: 'grok-session-3'
+    });
+  });
+});
+
+describe('opencode hook context — kit bridge session ids', () => {
+  it('reads the session id from message info on the kit bridge bus payload', () => {
+    expect(
+      resolveOpenCodeHookContext({
+        type: 'message.updated',
+        directory: '/work/repo',
+        properties: {
+          info: { id: 'msg_1', sessionID: 'ses_new' }
+        }
+      })
+    ).toEqual({
+      event: 'Heartbeat',
+      project: '/work/repo',
+      sessionId: 'ses_new'
+    });
+  });
+
+  it('reads the session id from message parts on the kit bridge bus payload', () => {
+    expect(
+      resolveOpenCodeHookContext({
+        type: 'message.part.updated',
+        properties: {
+          part: { id: 'prt_1', sessionID: 'ses_part' }
+        }
+      })
+    ).toEqual({
+      event: 'Heartbeat',
+      project: undefined,
+      sessionId: 'ses_part'
+    });
+  });
+
+  it('prefers a bus payload session id over the remembered env id', () => {
+    expect(
+      resolveOpenCodeHookContext(
+        {
+          type: 'message.updated',
+          properties: {
+            info: { sessionID: 'ses_live' }
+          }
+        },
+        { OPENCODE_SESSION_ID: 'ses_remembered' }
+      )
+    ).toEqual({
+      event: 'Heartbeat',
+      project: undefined,
+      sessionId: 'ses_live'
+    });
+  });
+
+  it('keeps the old bridge heartbeat on the env session when a late message names a previous one', () => {
+    // The old bridge remembers the session it last saw created; a late
+    // message.updated from the previous session carries that session's id in
+    // properties.info.sessionID while the env already names the new one. The
+    // env id must win for the wrapped payload shape.
+    expect(
+      resolveOpenCodeHookContext(
+        {
+          event: {
+            type: 'message.updated',
+            properties: {
+              info: { id: 'msg_1', sessionID: 'ses_previous' }
+            }
+          }
+        },
+        { OPENCODE_SESSION_ID: 'ses_current' }
+      )
+    ).toEqual({
+      event: 'Heartbeat',
+      project: undefined,
+      sessionId: 'ses_current'
+    });
+  });
+
+  it('keeps the old bridge heartbeat on the env session for a late message part event', () => {
+    expect(
+      resolveOpenCodeHookContext(
+        {
+          event: {
+            type: 'message.part.updated',
+            properties: {
+              part: { id: 'prt_1', sessionID: 'ses_previous' }
+            }
+          }
+        },
+        { OPENCODE_SESSION_ID: 'ses_current' }
+      )
+    ).toEqual({
+      event: 'Heartbeat',
+      project: undefined,
+      sessionId: 'ses_current'
+    });
+  });
+
+  it('falls back to the env id for an old bridge payload that names no session', () => {
+    expect(
+      resolveOpenCodeHookContext(
+        { event: { type: 'tool.execute.before' }, input: { tool: 'bash', callID: 'call-1' } },
+        { OPENCODE_SESSION_ID: 'ses_remembered' }
+      )
+    ).toEqual({
+      event: 'Heartbeat',
+      project: undefined,
+      sessionId: 'ses_remembered'
+    });
+  });
+
+  it('reads the bridge currentSessionId for a kit bus event that names no session', () => {
+    expect(
+      resolveOpenCodeHookContext({
+        type: 'file.edited',
+        directory: '/work/repo',
+        properties: { file: '/work/repo/src/index.ts' },
+        currentSessionId: 'ses_current'
+      })
+    ).toEqual({
+      event: 'Heartbeat',
+      project: '/work/repo',
+      sessionId: 'ses_current'
+    });
+  });
+
+  it('takes no env or payload fallback for a kit bus event the kit reads no session id from', () => {
+    expect(
+      resolveOpenCodeHookContext(
+        {
+          type: 'message.updated',
+          directory: '/work/repo',
+          properties: { info: { id: 'msg_1' }, session: { id: 'ses_nested' } }
+        },
+        { OPENCODE_SESSION_ID: 'ses_remembered' }
+      )
+    ).toEqual({
+      event: 'Heartbeat',
+      project: '/work/repo',
+      sessionId: undefined
+    });
+  });
+
+  it('keeps resolving the old bridge wrapped payload with a matching env id', () => {
+    expect(
+      resolveOpenCodeHookContext(
+        {
+          event: {
+            type: 'message.updated',
+            properties: {
+              info: { id: 'msg_1', sessionID: 'ses_old' }
+            }
+          }
+        },
+        { OPENCODE_SESSION_ID: 'ses_old' }
+      )
+    ).toEqual({
+      event: 'Heartbeat',
+      project: undefined,
+      sessionId: 'ses_old'
+    });
+  });
+});
+
 describe('Pi hook context', () => {
   it('reads pi session id and project from env when the payload is empty', () => {
     expect(
@@ -230,6 +522,31 @@ describe('Pi hook context', () => {
       event: 'Heartbeat',
       project: '/payload-repo',
       sessionId: 'payload-session'
+    });
+  });
+
+  it('reads the kit bridge payload and the old extension payload', () => {
+    expect(
+      resolvePiHookContext({
+        type: 'before_agent_start',
+        sessionId: 'pi-kit-session',
+        cwd: '/work/repo'
+      })
+    ).toEqual({
+      event: 'before_agent_start',
+      project: '/work/repo',
+      sessionId: 'pi-kit-session'
+    });
+    expect(
+      resolvePiHookContext({
+        event: 'SessionStart',
+        session_id: 'pi-old-session',
+        cwd: '/work/repo'
+      })
+    ).toEqual({
+      event: 'SessionStart',
+      project: '/work/repo',
+      sessionId: 'pi-old-session'
     });
   });
 

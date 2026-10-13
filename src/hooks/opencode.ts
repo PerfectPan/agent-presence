@@ -1,3 +1,4 @@
+import { readHookEvent } from '@rivus/agent-kit/harness/events';
 import { findPayloadString, pickString, type StringEnv } from './context.js';
 
 export interface OpenCodeHookContext {
@@ -112,12 +113,28 @@ function pickOpenCodeSessionId(payload: unknown): string | undefined {
   );
 }
 
+// The kit bridge (`hook --agent opencode`) forwards each bus event unwrapped,
+// so the kit's opencode dialect reads its type at the root. For that shape the
+// session id is only the one the dialect reads: the id the event names, or the
+// bridge's currentSessionId when it names none; presence reads no field of its
+// own. The old bridge (`hook --source opencode`) wraps every payload as
+// `{ event }`, which the dialect's root paths never reach, and passes the
+// session it last saw in OPENCODE_SESSION_ID; that id must keep winning over a
+// late event that names a previous session. Both fallbacks exist only for the
+// old bridge.
+function openCodeSessionId(payload: unknown, env: StringEnv): string | undefined {
+  const kitEvent = readHookEvent('opencode', payload, env);
+  if (kitEvent.nativeEvent !== '') {
+    return kitEvent.sessionId;
+  }
+  return (env.OPENCODE_SESSION_ID || undefined) ?? pickOpenCodeSessionId(payload);
+}
+
 export function resolveOpenCodeHookContext(payload: unknown, env: StringEnv = process.env): OpenCodeHookContext {
   const event = pickString(payload, { env, envKeys: ['OPENCODE_HOOK_EVENT'] });
-  const sessionId = pickString(undefined, { env, envKeys: ['OPENCODE_SESSION_ID'] }) ?? pickOpenCodeSessionId(payload);
   return {
     event: event ? event : mapOpenCodeEvent(payload),
-    sessionId,
+    sessionId: openCodeSessionId(payload, env),
     project: pickString(payload, {
       env,
       envKeys: ['OPENCODE_PROJECT', 'OPENCODE_CWD'],

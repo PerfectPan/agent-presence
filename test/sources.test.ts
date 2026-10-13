@@ -65,7 +65,7 @@ describe('resolveHookContextForSource — built-ins from the default table', () 
     const context = await resolveHookContextForSource('codex', { session_id: 'codex-1', cwd: '/repo' }, {});
     expect(context.sessionId).toBe('codex-1');
     expect(context.project).toBe('/repo');
-    expect(BUILTIN_SOURCE_IDS).toEqual(['codex', 'claude', 'gemini', 'opencode', 'pi', 'dsh']);
+    expect(BUILTIN_SOURCE_IDS).toEqual(['codex', 'claude', 'gemini', 'opencode', 'pi', 'grok', 'dsh']);
   });
 
   it('lets a same-id config entry override a built-in default', async () => {
@@ -271,6 +271,7 @@ describe('mergedSources', () => {
       gemini: { handler: 'builtin:gemini' },
       opencode: { handler: 'builtin:opencode' },
       pi: { handler: 'builtin:pi' },
+      grok: { handler: 'builtin:grok' },
       dsh: { handler: 'builtin:dsh' }
     });
   });
@@ -309,6 +310,7 @@ describe('describeSources', () => {
       { id: 'claude', origin: 'default', kind: 'builtin', overridesDefault: false },
       { id: 'gemini', origin: 'default', kind: 'builtin', overridesDefault: false },
       { id: 'opencode', origin: 'default', kind: 'builtin', overridesDefault: false },
+      { id: 'grok', origin: 'default', kind: 'builtin', overridesDefault: false },
       { id: 'dsh', origin: 'default', kind: 'builtin', overridesDefault: false },
       { id: 'myagent', origin: 'config', kind: 'handler', overridesDefault: false }
     ]);
@@ -321,15 +323,18 @@ describe('describeSources', () => {
       { id: 'gemini', origin: 'default', kind: 'builtin', overridesDefault: false },
       { id: 'opencode', origin: 'default', kind: 'builtin', overridesDefault: false },
       { id: 'pi', origin: 'default', kind: 'builtin', overridesDefault: false },
+      { id: 'grok', origin: 'default', kind: 'builtin', overridesDefault: false },
       { id: 'dsh', origin: 'default', kind: 'builtin', overridesDefault: false }
     ]);
   });
 });
 
 describe('billableSources', () => {
-  it('exposes every built-in as billable, in merged-table order', async () => {
+  it('exposes every built-in with a scanner as billable, in merged-table order', async () => {
     const sources = await billableSources({});
     expect(sources.map((s) => s.id)).toEqual(['codex', 'claude', 'gemini', 'opencode', 'pi', 'dsh']);
+    // grok ships presence-only until it gains a transcript scanner.
+    expect(sources.map((s) => s.id)).not.toContain('grok');
     expect(sources.every((s) => typeof s.scanUsage === 'function')).toBe(true);
   });
 

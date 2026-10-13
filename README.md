@@ -5,7 +5,7 @@ Sync local coding-agent presence (and token usage) to a Feishu signature link pr
 [简体中文](README.zh-CN.md) · [Documentation](https://agent-presence.vercel.app)
 
 ```text
-Codex / Claude Code / Gemini CLI / opencode / Pi / dsh
+Codex / Claude Code / Gemini CLI / opencode / Pi / Grok / dsh
   -> local presence state
   -> debounced renderer
   -> hosted slot store (value storage)
@@ -17,7 +17,7 @@ Codex / Claude Code / Gemini CLI / opencode / Pi / dsh
 
 ## Install
 
-Requires Node.js 22 or newer. macOS and Linux only — Windows exits with a clear error. macOS uses Keychain and installs a LaunchAgent power watcher; Linux uses libsecret and relies on TTL pruning instead of a watcher.
+Requires Node.js 22.13 or newer. macOS and Linux only — Windows exits with a clear error. macOS uses Keychain and installs a LaunchAgent power watcher; Linux uses libsecret and relies on TTL pruning instead of a watcher.
 
 ```bash
 pnpm add -g @rivus/agent-presence
@@ -114,7 +114,7 @@ Hooks are installed by `setup` but can be invoked directly, e.g. `agent-presence
 
 ## Sources
 
-The counted agents (`codex`, `claude`, `gemini`, `opencode`, `pi`, `dsh`) are a **source table** your config can extend, override, or disable. Add one with a config-only `match` spec, a local `handler` module, or by installing a package:
+The counted agents (`codex`, `claude`, `gemini`, `opencode`, `pi`, `grok`, `dsh`) are a **source table** your config can extend, override, or disable. Add one with a config-only `match` spec, a local `handler` module, or by installing a package:
 
 ```bash
 agent-presence source add @your-scope/agent-presence-youragent --yes   # --registry <url> for an internal registry

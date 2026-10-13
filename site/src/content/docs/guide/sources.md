@@ -3,7 +3,7 @@ title: Sources
 description: Add, override, or disable the coding agents that presence counts.
 ---
 
-A **source** is a coding agent whose lifecycle presence is counted. Five ship built in — `codex`, `claude`, `gemini`, `opencode`, `pi` — and they live in one **source table** that your config can extend, override, or disable. Nothing is required: with no config, the five built-ins are in effect.
+A **source** is a coding agent whose lifecycle presence is counted. Seven ship built in — `codex`, `claude`, `gemini`, `opencode`, `pi`, `grok`, `dsh` — and they live in one **source table** that your config can extend, override, or disable. Nothing is required: with no config, the seven built-ins are in effect.
 
 The table is `plugins.sources` in `~/.agent-presence/config.json`, keyed by source id. A same-id entry **overrides** a built-in, a new id **adds** a source, and `enabled: false` **disables** one. Check the effective table any time:
 

@@ -5,6 +5,7 @@
     "gemini": { "handler": "builtin:gemini" },
     "opencode": { "handler": "builtin:opencode" },
     "pi": { "handler": "builtin:pi" },
+    "grok": { "handler": "builtin:grok" },
     "dsh": { "handler": "builtin:dsh" }
   }
 }
