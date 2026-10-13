@@ -1,6 +1,9 @@
 // Presence state types and the pure session rules. Loading, saving and the state lock live in
 // `src/state-store.ts`, whose schemas load zod; keep this module free of schemas and I/O so the hook path can use it.
 
+// Type-only, so erased: an inline `type` specifier would keep the module edge.
+import type { QueueOwed } from './queue/schema.js';
+
 export type AgentStatus = 'running' | 'finished' | 'expired';
 
 export interface AgentSession {
@@ -24,6 +27,10 @@ export interface PresenceState {
   usageBadgesAt?: number;
   /** Per-window source contributions used to rebuild aggregate usage badges. */
   usageSnapshots?: Record<string, Record<string, UsageSnapshot>>;
+  /** Ids of applied queue records whose files may still exist (Plan 0003 3.5). */
+  queueApplied?: string[];
+  /** Follow-up work that applied queue records owe, with what this release does not know kept (Plan 0003 3.5). */
+  queueOwed?: QueueOwed;
 }
 
 export interface UsageSnapshot {

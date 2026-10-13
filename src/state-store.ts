@@ -6,6 +6,7 @@ import { catch as catchInvalid } from 'zod/mini';
 import { getStatePath } from './config.js';
 import { readJsonFile, writeJsonAtomic } from './json-file.js';
 import { acquireLock } from './process-lock.js';
+import { parseQueueApplied, parseQueueOwed } from './queue/schema.js';
 import { createEmptyState, type AgentSession, type PresenceState } from './state.js';
 
 const STATE_LOCK_WAIT_MS = 2_000;
@@ -14,7 +15,8 @@ const STATE_LOCK_RETRY_MS = 5;
 
 // The state file is untrusted disk JSON: it may be hand-edited, truncated, or written by another release. A field or
 // map entry whose value does not parse loads as missing, never as a failed load, and top-level fields this release
-// does not know are dropped when it saves.
+// does not know are dropped when it saves. The queue fields are the exception: they keep what this release does not
+// know inside them, because releases with the queue save the state in turns (Plan 0003 3.5).
 const entries = z.record(z.string(), z.unknown());
 const windowKey = z.string().check(z.regex(/^\d+$/));
 const nonEmptyKey = z.string().check(z.minLength(1));
@@ -45,7 +47,9 @@ const stateSchema = z.object({
   pendingSlotFlushAt: catchInvalid(z.optional(z.number()), undefined),
   usageBadges: catchInvalid(z.optional(entries), undefined),
   usageBadgesAt: catchInvalid(z.optional(z.number()), undefined),
-  usageSnapshots: catchInvalid(z.optional(entries), undefined)
+  usageSnapshots: catchInvalid(z.optional(entries), undefined),
+  queueApplied: z.optional(z.unknown()),
+  queueOwed: z.optional(z.unknown())
 });
 
 /** The entries whose key and value both parse, so a malformed entry drops only itself. */
@@ -108,7 +112,9 @@ export function normalizeState(raw: unknown): PresenceState {
     pendingSlotFlushAt: state.pendingSlotFlushAt,
     usageBadges: nonEmpty(validEntries(state.usageBadges, windowKey, z.string())),
     usageBadgesAt: state.usageBadgesAt,
-    usageSnapshots: nonEmpty(usageSnapshots)
+    usageSnapshots: nonEmpty(usageSnapshots),
+    queueApplied: parseQueueApplied(state.queueApplied),
+    queueOwed: parseQueueOwed(state.queueOwed)
   };
 }
 
