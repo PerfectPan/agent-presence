@@ -50,6 +50,7 @@ Everything not listed above stays unchanged, explicitly including:
 - Render templates, providers, keyring credentials, the power watcher, the dsh plugin flow, and the source-table mechanism.
 - The hook path stays fast, bounded, non-interactive, and fail-open; Codex hooks still print `{}` — on every event, including successful context events.
 - Presence still expires sessions after the inactivity TTL, still reopens a finished session on a new user prompt, and still falls back to finishing the most recent matching session.
+- An opencode file edit still refreshes the running session, and an opencode `session.error` that names no session still finishes it (this depends on the paired Plan's opencode owner decision: under its option (b), the heartbeat from file edits and the finish from a session-less `session.error` disappear until presence pins the agent-kit#86 release, leaving such a session to the inactivity TTL).
 
 ## Domain Invariants
 
