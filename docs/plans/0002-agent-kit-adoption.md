@@ -170,7 +170,7 @@ After all batches: a hook invocation resolves the presence source from `--agent 
 
 **Stays in presence.** dsh usage events (host-owned protocol), windows, snapshots, badges, `src/usage/format.ts`, config overrides, snapshot refresh, the `UsageSnapshot` state shape.
 
-**Compatibility.** `PresenceState` keeps its current usage shape — `usageSnapshots` unchanged, no new field (scans are stateless). The only new state fields are Plan 0003's optional `queueApplied` and `queueOwed` (its 3.5), which older versions drop. dsh records convert into the kit record shape at the totals boundary so one summarizer serves both.
+**Compatibility.** `PresenceState` keeps its current usage shape — `usageSnapshots` unchanged, no new field (scans are stateless). The only new state fields are Plan 0003's optional `queueApplied` and `queueOwed` (its 3.5), which versions before the queue drop and every queue version writes back with the parts it does not know. dsh records convert into the kit record shape at the totals boundary so one summarizer serves both.
 
 ### 3.3 Hook and setup build split
 
@@ -326,7 +326,7 @@ Five batches, one per kit area (closing #85/#86; #89 is delivered across the hoo
 
 ### 5.2 Compatibility checks
 
-- State files load in both directions — no batch of this plan adds fields (3.2 keeps the `PresenceState` shape: scans are stateless, as the owner decided); the only new fields are Plan 0003's optional `queueApplied` and `queueOwed`, which older versions drop and newer versions parse with a schema that loads an invalid value as absent (Plan 0003 3.5).
+- State files load in both directions — no batch of this plan adds fields (3.2 keeps the `PresenceState` shape: scans are stateless, as the owner decided); the only new fields are Plan 0003's optional `queueApplied` and `queueOwed`, which versions before the queue drop and every queue version parses with a loose schema that keeps the keys and fields it does not know and loads an invalid value as absent (Plan 0003 3.5, 3.12).
 - The hook graph contains no npm package outside the test's allowlist (so no `effect`) and no setup imports (graph test over the source graph, which matches the compiled graph, 3.3), and the hook cold start, measured by hand on the built output, is not slower than the pre-split baseline.
 - `pnpm pack --dry-run` file list stays free of test fixtures, ledgers, and lock databases.
 
