@@ -1,3 +1,4 @@
+import { readHookEvent } from '@rivus/agent-kit/harness/events';
 import { findPayloadString, pickString, type StringEnv } from './context.js';
 
 export interface OpenCodeHookContext {
@@ -81,19 +82,9 @@ function pickNestedId(value: unknown): string | undefined {
   return isRecord(value) && typeof value.id === 'string' && value.id.length > 0 ? value.id : undefined;
 }
 
-// message.updated carries its message in properties.info and
-// message.part.updated its part in properties.part; both carry the sessionID
-// of the session they belong to.
-function pickSessionIdField(value: unknown): string | undefined {
-  return isRecord(value) && typeof value.sessionID === 'string' && value.sessionID.length > 0
-    ? value.sessionID
-    : undefined;
-}
-
 function pickEventSessionId(event: Record<string, unknown>): string | undefined {
   const properties = isRecord(event.properties) ? event.properties : undefined;
   const info = properties && isRecord(properties.info) ? properties.info : undefined;
-  const part = properties && isRecord(properties.part) ? properties.part : undefined;
   const session = properties && isRecord(properties.session) ? properties.session : undefined;
   const isSessionEvent = typeof event.type === 'string' && event.type.startsWith('session.');
 
@@ -102,8 +93,6 @@ function pickEventSessionId(event: Record<string, unknown>): string | undefined 
     properties?.sessionID,
     properties?.sessionId,
     properties?.session_id,
-    pickSessionIdField(info),
-    pickSessionIdField(part),
     pickNestedId(session)
   );
 }
@@ -124,23 +113,19 @@ function pickOpenCodeSessionId(payload: unknown): string | undefined {
   );
 }
 
-// The old bridge wraps every payload as `{ event }` and remembers the session
-// it last saw created in OPENCODE_SESSION_ID. A late event from a previous
-// session (a message.updated carrying the old info.sessionID) must not steal
-// the heartbeat, so for that shape the env id wins, exactly as it always did.
-// The kit bridge forwards bus events unwrapped with the live session id in the
-// payload, so for that shape the payload wins and env is only the fallback.
-function isWrappedBridgePayload(payload: unknown): boolean {
-  return isRecord(payload) && isRecord(payload.event);
-}
-
 export function resolveOpenCodeHookContext(payload: unknown, env: StringEnv = process.env): OpenCodeHookContext {
   const event = pickString(payload, { env, envKeys: ['OPENCODE_HOOK_EVENT'] });
-  const payloadSessionId = pickOpenCodeSessionId(payload);
-  const envSessionId = pickString(undefined, { env, envKeys: ['OPENCODE_SESSION_ID'] });
-  const sessionId = isWrappedBridgePayload(payload)
-    ? (envSessionId ?? payloadSessionId)
-    : (payloadSessionId ?? envSessionId);
+  // The kit bridge forwards each bus event unwrapped, with its live session id
+  // where the kit's opencode dialect reads it (properties.sessionID, the
+  // sessionID of properties.info or properties.part, then properties.info.id),
+  // so that id wins. The old bridge wraps every payload as `{ event }`, which
+  // those root paths never reach, and passes the session it last saw created
+  // in OPENCODE_SESSION_ID; that id must keep winning over a late event that
+  // names a previous session.
+  const sessionId =
+    readHookEvent('opencode', payload, env).sessionId ??
+    pickString(undefined, { env, envKeys: ['OPENCODE_SESSION_ID'] }) ??
+    pickOpenCodeSessionId(payload);
   return {
     event: event ? event : mapOpenCodeEvent(payload),
     sessionId,
