@@ -248,14 +248,15 @@ async function runCaptured(captures: CaptureReader): Promise<void> {
   });
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
-}
-
 interface OpenCodeBridgeHandlers {
   event: (input: { event: Record<string, unknown> }) => Promise<void>;
   'tool.execute.before': (input: Record<string, unknown>) => Promise<void>;
   'tool.execute.after': (input: Record<string, unknown>) => Promise<void>;
+}
+
+// The generated bridge's export, called with the fake plugin input.
+interface OpenCodeBridgeModule {
+  AgentSignaturePlugin: (ctx: { directory: string }) => Promise<OpenCodeBridgeHandlers>;
 }
 
 interface OpenCodeBridge {
@@ -271,11 +272,8 @@ async function loadOpenCodeBridge(): Promise<OpenCodeBridge> {
   await writeFile(scriptFile, CAPTURE_SCRIPT);
   const pluginFile = join(homeDir, 'opencode-bridge.mjs');
   await writeFile(pluginFile, buildOpenCodePluginSource(['node', scriptFile, captureFile]));
-  const module: unknown = await import(pathToFileURL(pluginFile).href);
-  if (!isRecord(module) || typeof module.AgentSignaturePlugin !== 'function') {
-    throw new Error('the generated opencode plugin does not export AgentSignaturePlugin');
-  }
-  const handlers: OpenCodeBridgeHandlers = await module.AgentSignaturePlugin({ directory: '/work/repo' });
+  const module: OpenCodeBridgeModule = await import(pathToFileURL(pluginFile).href);
+  const handlers = await module.AgentSignaturePlugin({ directory: '/work/repo' });
   return {
     busEvent: (event) => handlers.event({ event }),
     toolBefore: (input) => handlers['tool.execute.before'](input),
@@ -291,6 +289,11 @@ interface PiHostContext {
   cwd: string;
 }
 
+// The generated extension's default export, called with the fake host.
+interface PiExtensionModule {
+  default: (host: { on: (name: string, handler: PiEventHandler) => void }) => void;
+}
+
 interface PiExtensionHost {
   handlers: Map<string, PiEventHandler>;
   context: PiHostContext;
@@ -302,17 +305,14 @@ async function loadPiExtension(): Promise<PiExtensionHost> {
   const scriptFile = join(homeDir, 'capture-hook.mjs');
   await writeFile(scriptFile, CAPTURE_SCRIPT);
   // A broken transpile surfaces as the import below failing with a syntax
-  // error; the default-export check then reports the missing extension.
+  // error.
   const transpiled = await transformWithOxc(
     buildPiExtensionSource(['node', scriptFile, captureFile]),
     'pi-extension.ts'
   );
   const extensionFile = join(homeDir, 'pi-extension.mjs');
   await writeFile(extensionFile, transpiled.code);
-  const module: unknown = await import(pathToFileURL(extensionFile).href);
-  if (!isRecord(module) || typeof module.default !== 'function') {
-    throw new Error('the generated Pi extension has no default export');
-  }
+  const module: PiExtensionModule = await import(pathToFileURL(extensionFile).href);
   const handlers = new Map<string, PiEventHandler>();
   module.default({
     on: (name: string, handler: PiEventHandler) => {
