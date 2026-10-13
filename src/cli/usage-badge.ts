@@ -11,7 +11,8 @@ import { calendarDaysBetween } from '../time.js';
 import { renderUsageBadge } from '../usage/format.js';
 import { collectWindowUsage } from '../usage/index.js';
 import type { BillableSource, PricingOverrides } from '../usage/index.js';
-import { loadState, saveState, withStateLock, type UsageSnapshot } from '../state.js';
+import type { UsageSnapshot } from '../state.js';
+import { loadState, saveState, withStateLock } from '../state-store.js';
 
 export interface UsageRenderPlan {
   /** Whether any usage badge should be rendered into the signature. */

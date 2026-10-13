@@ -1,8 +1,5 @@
-import { mkdir } from 'node:fs/promises';
-import { dirname } from 'node:path';
-import { getStatePath } from './config.js';
-import { readJsonFile, writeJsonAtomic } from './json-file.js';
-import { acquireLock } from './process-lock.js';
+// Presence state types and the pure session rules. Loading, saving and the state lock live in
+// `src/state-store.ts`, whose schemas load zod; keep this module free of schemas and I/O so the hook path can use it.
 
 export type AgentStatus = 'running' | 'finished' | 'expired';
 
@@ -51,104 +48,6 @@ export function createEmptyState(): PresenceState {
     lastSlotUpdateAt: 0,
     lastValue: ''
   };
-}
-
-export async function saveState(state: PresenceState, statePath = getStatePath()): Promise<void> {
-  await writeJsonAtomic(statePath, state);
-}
-
-function normalizeUsageBadges(raw: unknown): Record<string, string> | undefined {
-  if (typeof raw !== 'object' || raw === null) {
-    return undefined;
-  }
-  const badges: Record<string, string> = {};
-  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
-    if (/^\d+$/.test(key) && typeof value === 'string') {
-      badges[key] = value;
-    }
-  }
-  return Object.keys(badges).length > 0 ? badges : undefined;
-}
-
-function normalizeUsageSnapshots(raw: unknown): Record<string, Record<string, UsageSnapshot>> | undefined {
-  if (typeof raw !== 'object' || raw === null) {
-    return undefined;
-  }
-  const windows: Record<string, Record<string, UsageSnapshot>> = {};
-  for (const [days, rawSources] of Object.entries(raw as Record<string, unknown>)) {
-    if (!/^\d+$/.test(days) || typeof rawSources !== 'object' || rawSources === null) {
-      continue;
-    }
-    const sources: Record<string, UsageSnapshot> = {};
-    for (const [source, rawSnapshot] of Object.entries(rawSources as Record<string, unknown>)) {
-      if (!source || typeof rawSnapshot !== 'object' || rawSnapshot === null) {
-        continue;
-      }
-      const snapshot = rawSnapshot as Partial<UsageSnapshot>;
-      if (
-        typeof snapshot.totalTokens !== 'number' ||
-        !Number.isFinite(snapshot.totalTokens) ||
-        snapshot.totalTokens < 0 ||
-        (snapshot.costUsd !== null &&
-          (typeof snapshot.costUsd !== 'number' || !Number.isFinite(snapshot.costUsd) || snapshot.costUsd < 0)) ||
-        typeof snapshot.scannedAt !== 'number' ||
-        !Number.isFinite(snapshot.scannedAt)
-      ) {
-        continue;
-      }
-      sources[source] = {
-        totalTokens: snapshot.totalTokens,
-        costUsd: snapshot.costUsd,
-        scannedAt: snapshot.scannedAt
-      };
-    }
-    if (Object.keys(sources).length > 0) {
-      windows[days] = sources;
-    }
-  }
-  return Object.keys(windows).length > 0 ? windows : undefined;
-}
-
-// The input is untrusted disk JSON (state.json may be hand-edited, truncated,
-// or written by an older version), so every field is read as optional.
-export function normalizeState(raw: Partial<PresenceState> | null): PresenceState {
-  const state = raw && typeof raw === 'object' ? raw : createEmptyState();
-  const sessions: Record<string, AgentSession> = {};
-
-  for (const [id, rawSession] of Object.entries(state.sessions ?? {})) {
-    const legacy = rawSession as Partial<Omit<AgentSession, 'kind' | 'source'>> & {
-      kind?: string;
-      source?: string;
-    };
-    const source = legacy.source ?? (legacy.kind && legacy.kind !== 'coding' ? legacy.kind : undefined);
-    if (!legacy.id || !source || !legacy.status || !legacy.startedAt || !legacy.lastHeartbeatAt) {
-      continue;
-    }
-    sessions[id] = {
-      id: legacy.id,
-      source,
-      kind: 'coding',
-      status: legacy.status,
-      startedAt: legacy.startedAt,
-      lastHeartbeatAt: legacy.lastHeartbeatAt,
-      finishedAt: legacy.status === 'running' ? undefined : legacy.finishedAt,
-      project: legacy.project
-    };
-  }
-
-  return {
-    sessions,
-    lastSlotUpdateAt: state.lastSlotUpdateAt ?? 0,
-    lastValue: state.lastValue ?? '',
-    pendingSlotFlushAt: typeof state.pendingSlotFlushAt === 'number' ? state.pendingSlotFlushAt : undefined,
-    usageBadges: normalizeUsageBadges(state.usageBadges),
-    usageBadgesAt: typeof state.usageBadgesAt === 'number' ? state.usageBadgesAt : undefined,
-    usageSnapshots: normalizeUsageSnapshots(state.usageSnapshots)
-  };
-}
-
-export async function loadState(statePath = getStatePath()): Promise<PresenceState> {
-  return normalizeState(await readJsonFile<PresenceState>(statePath, createEmptyState()));
 }
 
 function isReopenHeartbeat(event: string): boolean {
@@ -289,35 +188,4 @@ export function isSessionBoundaryEvent(event: string): boolean {
   }
   const normalized = normalizeEvent(event);
   return normalized === 'start' || normalized === 'finish';
-}
-
-const STATE_LOCK_WAIT_MS = 2_000;
-
-/**
- * Run `fn` while holding the state lock of `statePath`, waiting up to `waitMs` (2 seconds by default) for another
- * holder. The lock is the kit's process lock, so a holder that crashes releases it at once.
- */
-export async function withStateLock<T>(
-  statePath: string,
-  fn: () => Promise<T>,
-  options: { waitMs?: number } = {}
-): Promise<T> {
-  // Every release that writes this state file must lock this same path. It is not the previous `<state>.lock`
-  // directory: releases that used it delete that path on release and on reclaim.
-  const lockPath = `${statePath}.lock.db`;
-  await mkdir(dirname(statePath), { recursive: true, mode: 0o700 });
-  const signal = AbortSignal.timeout(options.waitMs ?? STATE_LOCK_WAIT_MS);
-
-  let lock;
-  try {
-    lock = await acquireLock(lockPath, signal);
-  } catch (error) {
-    throw signal.aborted ? new Error(`timed out waiting for state lock: ${lockPath}`) : error;
-  }
-
-  try {
-    return await fn();
-  } finally {
-    await lock.release();
-  }
 }

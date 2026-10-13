@@ -4,7 +4,8 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vite-plus/test';
 
 import { refreshUsageBadgeCache } from '../src/cli/usage-badge.js';
-import { loadState, saveState, type PresenceState } from '../src/state.js';
+import type { PresenceState } from '../src/state.js';
+import { loadState, saveState } from '../src/state-store.js';
 import type { BillableSource, UsageRecord } from '../src/usage/index.js';
 
 const NOW = new Date('2026-07-14T13:00:00+08:00').getTime();

@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { loadState, saveState, withStateLock } from '../state.js';
+import { loadState, saveState, withStateLock } from '../state-store.js';
 import { writeLogEvent } from '../log.js';
 
 const MIN_DELAY_MS = 1_000;

@@ -9,7 +9,8 @@ import {
 } from '../render.js';
 import { writeLogEvent } from '../log.js';
 import { valueLength } from '../log-sanitize.js';
-import { loadState, saveState, withStateLock, type PresenceState } from '../state.js';
+import type { PresenceState } from '../state.js';
+import { loadState, saveState, withStateLock } from '../state-store.js';
 
 interface RenderedSlotOptions {
   force: boolean;

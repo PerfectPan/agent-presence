@@ -4,7 +4,8 @@ import { join } from 'node:path';
 import { builtinHookDialects } from '@rivus/agent-kit/harness/events';
 import { beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 import { hook } from '../src/cli/commands/hook.js';
-import { createEmptyState, loadState, saveState, type AgentSession, type PresenceState } from '../src/state.js';
+import { createEmptyState, type AgentSession, type PresenceState } from '../src/state.js';
+import { loadState, saveState } from '../src/state-store.js';
 
 // `hook --agent <kitAgentId>` interpreted with readHookEvent. One case per
 // event of the signal rule in docs/architecture.md ("Hook Normalization"),

@@ -3,7 +3,8 @@ import { createProvider } from '../../providers/registry.js';
 import { renderPresence, resolveUsageForRender } from '../../render.js';
 import { usageRenderPlan } from '../usage-badge.js';
 import { readCredential } from '../../secret.js';
-import { getActiveSessions, loadState, saveState, withStateLock } from '../../state.js';
+import { getActiveSessions } from '../../state.js';
+import { loadState, saveState, withStateLock } from '../../state-store.js';
 import { hasFlag, optionValue } from '../args.js';
 
 function requirePayload(payload: Record<string, unknown> | undefined): Record<string, unknown> {

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vite-plus/test';
-import { createEmptyState, isSessionBoundaryEvent, normalizeState } from '../src/state.js';
+import { createEmptyState, isSessionBoundaryEvent } from '../src/state.js';
+import { normalizeState } from '../src/state-store.js';
 import type { PresenceState } from '../src/state.js';
 
 describe('isSessionBoundaryEvent', () => {
