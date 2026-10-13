@@ -40,9 +40,11 @@ interpreted (Spec and Plan 0002).
   `reset --force` and the deferred `flush --force` publish without waiting. If a worker is killed during a publish, the
   next worker runs the sync again; because the interrupted publish already claimed the interval, that sync schedules the
   forced publish one debounce interval later.
-- A background worker (`agent-presence worker`) applies recorded events. At most one worker runs per state file. A hook
-  starts a worker when none is alive. The worker exits after the idle interval (default 5 minutes) once no event and no
-  follow-up work is pending; a publish scheduled for later is handed to the deferred flush, as the hook hands it today.
+- A background worker (`agent-presence worker`) applies recorded events. At most one worker applies events per state
+  file. A hook starts a worker unless a worker, or a command that took over, of the hook's release or a newer one is
+  applying events; of several workers started at once, one applies events and the others exit without applying any.
+  The worker exits after the idle interval (default 5 minutes) once no event and no follow-up work is pending; a
+  publish scheduled for later is handed to the deferred flush, as the hook hands it today.
 - While a worker runs, a recorded event is applied to the state within 1 second, also while a publish or a usage scan is
   in progress. After a worker crash, the events pending at that moment are applied when a later hook or command runs.
   So are the events pending when a command that took over from the worker is killed (for example by a signal) before
@@ -128,8 +130,9 @@ interpreted (Spec and Plan 0002).
 ### S7: Upgrade
 
 - Given a worker of the previous release is running
-- When a hook of the new release records an event in a newer record version
-- Then the old worker stops within about a second, and a worker of the new release applies the event
+- When hooks of the new release record events in a newer record version, one at a time or many at once
+- Then the old worker stops within about a second, one worker of the new release applies every event exactly once, and
+  any other workers those hooks started exit
 
 ### S8: Disk full
 

@@ -93,8 +93,9 @@ those locks to the kit's crash-safe process lock, which Plan 0002 batch 1 needs,
 - One applier per state file; on the producer path no lock is taken, no log line is written and the `zod` package is not
   loaded.
 - The state file records which events it holds and which follow-up work is still owed, in the same atomic save.
-- Slow work never delays applying events, and anything that needs the applier's place takes it over through one
-  mechanism: a stop request.
+- Slow work never delays applying events. Only a command asks for the applier's place, with a stop request that counts
+  while the command is alive and waiting; a worker leaves the place for such a request, for a record of a newer
+  release, when idle, or for the tombstone, and never for another worker.
 
 ### 2.2 Boundaries and responsibilities
 
@@ -109,7 +110,8 @@ those locks to the kit's crash-safe process lock, which Plan 0002 batch 1 needs,
 ### 2.3 Main path
 
 1. `hook` resolves the source, session, project and internal event name in process, writes a record (temporary file,
-   then `rename`), starts a worker if none holds the worker lock (3.3), prints its output and exits.
+   then `rename`), starts a worker unless a process of its release or a newer one holds the worker lock (3.3), prints
+   its output and exits.
 2. The worker's apply lane lists the queue every 250 ms, applies the new records under the state lock, saves the state
    together with their ids and the follow-up work they owe, then deletes their files.
 3. The follow-up lane works off owed dsh usage appends, per-source usage refreshes and the owed rendered sync, one at a
@@ -126,7 +128,9 @@ those locks to the kit's crash-safe process lock, which Plan 0002 batch 1 needs,
 | Exactly once      | Applied record ids, owed dsh appends and owed per-source refreshes saved with the state                                                                     | Idempotent replay (fallback finish and reopen are not idempotent)                                                                                                                       |
 | Publishing        | Today's rendered sync, owed as one `renderedSync` flag that the sync's own locked save clears                                                               | A publish debt with its outcome (today's sync claims the interval before publishing, so a replay returns "debounced")                                                                   |
 | Slow work         | A separate follow-up lane                                                                                                                                   | One loop (a slow publish delays every event)                                                                                                                                            |
-| Taking over       | A stop request; the holder stops within an iteration and leaves owed work in the state                                                                      | Command records with results and deadlines (receipts and snapshots across lanes)                                                                                                        |
+| Taking over       | A stop request, written only by a command, which stays alive while it waits; the holder stops within an iteration and leaves owed work in the state         | Command records with results and deadlines (receipts and snapshots across lanes); stop requests from producers (the producer's pid is gone milliseconds later, so its request is stale) |
+| Upgrade handover  | An older worker leaves when it lists a record with a higher `v`; the worker that record's producer started takes the lock                                   | A stop request from the newer worker (newer workers started together yield to each other's requests and pass the lock back and forth)                                                   |
+| Started workers   | Repeat the producer's check every 250 ms; exit once a holder of their release or a newer one has written its version; up to 60 seconds                      | A fixed 5-second wait (a newer worker gives up behind an older command); yielding to same-release workers (the lock passes back and forth)                                              |
 | Single applier    | `acquireProcessLock` on `<state>.worker.lock.db`, never deleted                                                                                             | PID file alone (stale after a crash); deleting the lock file (breaks mutual exclusion)                                                                                                  |
 | Liveness check    | `isProcessLockHeld` on `<state>.worker.lock.db` (kit 0.14.0), which checks without taking the lock (3.3); the holder's record version in `<state>.worker.v` | `acquireProcessLock` with `wait: false` (takes a free lock on the hook path, about 125 ms against a held one); `<state>.worker.json` parsed by the producer (a schema on the hook path) |
 | Record content    | Presence's normalized event                                                                                                                                 | Raw payload (prompt text and tool arguments on disk, Spec S9)                                                                                                                           |
@@ -140,8 +144,9 @@ those locks to the kit's crash-safe process lock, which Plan 0002 batch 1 needs,
 
 - `agent-presence hook ...`: every installed form (`--source/--event`, `--agent`) becomes the producer. Interpretation is
   Plan 0002 batch 4's; only the application moves to the worker.
-- `agent-presence worker`: a new command, not shown in help, started detached by producers and commands with the pattern
-  `deferred-update.ts:8-24` already uses. `agent-presence worker --stop` takes over, applies what is pending and exits.
+- `agent-presence worker`: a new command, not shown in help, started detached by producers, commands and workers that
+  stop for a stop request (3.3, 3.6), with the pattern `deferred-update.ts:8-24` already uses.
+  `agent-presence worker --stop` takes over, applies what is pending and exits.
 - `status`, `reset`, `flush`, `update`, `uninstall --all`: 3.7 and 3.8.
 
 ### 3.2 Records
@@ -170,7 +175,8 @@ those locks to the kit's crash-safe process lock, which Plan 0002 batch 1 needs,
     events only and never carries credentials.
   - `payloadKeys` holds key names, for the diagnostic log.
 
-- `v` increases on an incompatible change. A worker never applies a record with a higher `v` (3.7).
+- `v` increases on an incompatible change. A worker applies every record with its own `v` or a lower one, and never
+  one with a higher `v`: it hands over to a newer worker instead (3.7).
 - An applier (the worker or a command that took over, never the producer) parses a record once when it reads it, with
   zod/mini schemas; no hand-written shape checks. It first parses `v` alone, with a schema of just that field, and leaves
   a record with a higher `v` in place without parsing the rest (3.5), so an older worker never moves a newer release's
@@ -206,20 +212,51 @@ The producer takes no lock, and its own reads use no schema (3.2). In order, it:
 4. Checks with `isProcessLockHeld` whether a process holds `<state>.worker.lock.db`, without taking the lock. If none
    does, it starts a worker. If one does, it reads `<state>.worker.v` as decimal text, which counts as `0`, like the
    epoch, when the file is missing or its text is not a non-negative integer; if that version is lower than its own
-   record version, it starts a worker and writes a stop request (3.7).
+   record version, it starts a worker. It writes no stop request.
 
-- The worker writes its record version to `<state>.worker.v` (decimal text, temporary file and `rename`) once it holds
-  the lock. Only a worker writes it, so while a command holds the lock, or a worker that has not written it yet, the
-  producer reads an earlier worker's version, or `0` when no worker has written it since the first install or
-  `uninstall --all` (3.8). If that is lower than the producer's record version, the producer starts a worker and writes
-  a stop request that the holder's own version did not call for. A command does not yield to stop requests (3.7), so
-  that worker waits for the lock like any contender. How this interacts with the upgrade takeover is part of section
-  7's open question.
+- Every process that holds the lock, a worker or a command, writes its record version to `<state>.worker.v` (decimal
+  text, temporary file and `rename`) right after it takes the lock, and deletes the file right before it releases the
+  lock (3.6). So a producer that finds the lock held reads the holder's version, or `0` while the holder has not
+  written it yet. A holder whose version is at least the record's lists the queue after the producer's rename, a worker
+  every 250 ms and a command once more when it leaves (3.6), and applies the record. A lower version, or `0`, makes the
+  producer start a worker; when the holder is of the producer's release and has not written its version yet, that
+  worker is not needed and leaves on its own (below). The deletion matters when a process of an older release, one
+  already running when the release was upgraded, takes the lock after a newer worker left: without it, a newer
+  producer that checks in the older holder's first milliseconds would read the newer worker's version and start no
+  worker, and the older holder cannot apply its record (3.7).
+- A producer writes no stop request. A request counts only while the pid in it is alive (3.7), and the producer exits
+  milliseconds after its check, so every holder would ignore its request. Nor does the producer need one: a holder of
+  an older release leaves when it lists the producer's record (3.7), and a holder of the producer's release or a newer
+  one applies it.
+- A worker started by a producer, or by a command or a yielding worker as it leaves (3.6), repeats the producer's check
+  every 250 ms for up to 60 seconds. Each round it exits if `<state>.disabled` exists (3.8); otherwise:
+  - while a live stop request exists (3.7), it does nothing that round, so it never takes the lock in front of a
+    waiting command;
+  - when the lock is free, it tries to take it with `wait: false`; if that succeeds, it writes `<state>.worker.v` and
+    runs as the worker;
+  - when the lock is held and `<state>.worker.v` shows its own version or a higher one, it exits: that holder applies
+    every record the started worker could apply (above);
+  - when the lock is held and `<state>.worker.v` shows a lower version or `0`, it waits for the next round.
+
+  So of the workers that a burst starts, one takes the lock and the others exit in the round after it has written its
+  version. No worker yields to another, so the lock is not passed back and forth. A worker newer than the holder keeps
+  trying: an older worker leaves within about a second of listing a newer record (3.7), and an older command when its
+  run ends. The 60-second limit ends the wait behind a stuck holder; if an older release's command holds the lock
+  longer, the newer records wait for a later hook or command (inferred: an older release's command normally holds the
+  lock after an upgrade only if it was already running when the upgrade happened; section 7). The worker checks before
+  it tries because a failed `wait: false` try against a held lock costs about 125 ms (below).
+
 - A worker crash releases the lock at once (the kernel drops the SQLite lock), so the next producer finds it free and
   starts a worker. A crash right after a producer found the lock held leaves that producer's record pending until a
-  later hook or command (Spec). A command that holds the lock and is killed, for example by a signal, releases it the
-  same way but skips its exit order (3.7), so the records pending when it dies, among them every record a producer
-  renamed after the command's takeover listing, stay pending until a later hook or command. That window is the rest of
+  later hook or command (Spec). A holder that crashes or is killed leaves `<state>.worker.v` behind; the next holder
+  overwrites it right after taking the lock, and a producer or started worker that finds the lock free does not read
+  it. A newer producer or started worker that checks in the milliseconds before that holder writes its version reads
+  the crashed holder's version; if the next holder is of an older release, it hands the newer record over with no
+  newer worker waiting, and the record waits for a later hook or command (inferred: this needs a crash, an older
+  release's process taking the lock next, and a newer record checked within those milliseconds; section 7). A command
+  that holds the lock and is killed, for example by a signal, releases it the same way but skips its exit order (3.6),
+  so the records pending when it dies, among them every record a producer renamed after the command's takeover
+  listing, stay pending until a later hook or command. That window is the rest of
   the command's run, seconds, while the worker crash that section 7 accepts can strand only a record renamed within the
   apply-lane interval before the crash (about 250 ms). So the killed command is a separate section 7 item for the
   owner to confirm.
@@ -228,10 +265,11 @@ The producer takes no lock, and its own reads use no schema (3.2). In order, it:
   missing file reads as free and is not created), opens it read-only with `busy_timeout = 0` and runs one statement
   under a shared lock: it never takes the lock, writes no `<path>.holder`, reads no process identity, and checks
   running at once do not see each other as holders. An acquisition's first attempt waits out a check, so the idle-exit
-  retake with `wait: false` (3.6) still gets a free lock. A worker or command waiting with `wait: true` (3.6, 3.7) can
-  find the lock busy on a later retry while a check reads it, and gets it one backoff later: a delay, never a missed
-  lock. The answer can be stale when it arrives; only the acquisition decides who holds the lock, and the exit order
-  (3.6) covers a holder that leaves right after a check.
+  retake and a started worker's tries, all with `wait: false` (3.6, above), still get a free lock. A command waiting
+  with `wait: true` (3.7) can find the lock busy on a later retry while a check reads it, and gets it one backoff later:
+  a delay, never a missed lock; started workers make no check while its request is live (above), so only producers'
+  checks can cause it. The answer can be stale when it arrives; only the acquisition decides who holds the lock, and
+  the exit order (3.6) covers a holder that leaves right after a check.
 - `acquireProcessLock` with `wait: false` cannot stand in for the check. When the lock is free, it takes it and writes
   `<path>.holder`, which puts a lock back on the hook path. When the lock is held, it returns only after its first
   attempt's settle retries, five tries with a 10 ms SQLite busy timeout and four pauses of 5-25 ms: about 125 ms (median
@@ -257,16 +295,18 @@ releases drop them:
   and `scanEnv`, with the latest boundary time and a generation number that increases whenever a newer boundary updates
   the entry), and `renderedSync` (set when applied events changed what the slot renders and no sync has run since).
 
-Apply lane, every 250 ms, unless a stop request it did not write exists (3.7):
+Apply lane, every 250 ms, until the worker must stop (3.7):
 
-1. List the queue; delete files whose ids are in `queueApplied`; read the rest, stopping at a record with a higher `v`.
+1. List the queue; delete files whose ids are in `queueApplied`; read the rest, stopping at a record with a higher `v`,
+   in which case the worker hands over once steps 2 and 3 are done for the records before it (3.7).
 2. Under `withStateLock`: load the state; apply each record in order with its recorded time (`applyAgentEvent` and the
    session expiry the hook applies today; `skip` and `error` records change nothing); add the ids to `queueApplied`; add
    owed work: a dsh append per usage-bearing event, for each boundary event the refresh entry of its source and `scanEnv`
    (created or updated, generation increased), and `renderedSync` when an `event` record was applied; save once.
 3. Delete the applied files; at the next save, drop from `queueApplied` the ids whose files no longer exist.
 
-Follow-up lane, one item at a time, concurrently with the apply lane, checking for a stop request between items:
+Follow-up lane, one item at a time, concurrently with the apply lane, checking between items whether the worker must
+stop (3.7):
 
 - dsh usage append: through the retained-log append, but waiting until it holds the log lock instead of skipping (the
   lane is off the hook path), with the record id in the entry. The wait takes the lane's abort signal
@@ -286,61 +326,90 @@ Follow-up lane, one item at a time, concurrently with the apply lane, checking f
   that sync schedules the forced publish one debounce interval later.
 - A completed usage refresh sets `renderedSync` again, because it changes what the slot renders.
 
-A stop request that is not the holder's own aborts the item in progress through its abort signal (the dsh append's wait
-for the log lock, the refresh's scans, the publish's request), so the holder stops within about a second; an aborted
-item stays owed. The holder releases the lock only after the apply lane's current batch has saved or been dropped and
-the follow-up item has ended, with any rollback it triggers saved, so no write of the old holder lands after the new
-holder starts.
+A live stop request, or a record with a higher `v` (3.7), aborts the item in progress through its abort signal (the dsh
+append's wait for the log lock, the refresh's scans, the publish's request), so the holder stops within about a second;
+an aborted item stays owed. The holder releases the lock only after the apply lane's current batch has saved or been
+dropped and the follow-up item has ended, with any rollback it triggers saved, so no write of the old holder lands
+after the new holder starts.
 
-### 3.6 Idle exit
+### 3.6 Leaving the lock and idle exit
 
-After the idle interval with an empty queue and an empty `queueOwed`:
+A worker leaves after the idle interval with an empty queue and an empty `queueOwed`, when it must stop (3.7), or when
+it finds the tombstone (3.8); a command leaves when its run ends, whether it succeeded or failed. Every holder leaves in
+this order:
 
-1. Release the lock.
-2. List the queue once more. If a record is there, take the lock again with `wait: false`: if that succeeds, rewrite
-   `<state>.worker.v` and continue as the worker; if another process holds the lock by now, exit.
-3. Otherwise exit. Nothing slow runs after step 1, and nothing is written unless step 2 takes the lock again.
+1. Note whether owed work remains, then delete `<state>.worker.v` (3.3).
+2. Release the lock.
+3. List the queue once more, then:
+   - a worker after the idle interval: if no record is there, exit. Otherwise take the lock again with `wait: false`:
+     if that succeeds, rewrite `<state>.worker.v` and continue as the worker; if another process holds the lock by now,
+     continue as a started worker (3.3);
+   - a command, or a worker that stopped for a stop request: start a worker if owed work remained or a record is there,
+     then exit;
+   - a worker that stopped for a record with a higher `v` (3.7) or for the tombstone, `uninstall --all` and
+     `worker --stop`: exit without starting a worker.
 
-A producer renames its record, then checks the lock (3.3). A record renamed before step 2 is seen in step 2; one renamed
-after it is followed by a check that runs after step 1, which finds the lock free, so the producer starts a worker that
-waits up to 5 seconds for the lock, or finds it held by a process that took it after step 1: a worker lists the queue
-after taking it, and a command lists it once more when it leaves, after releasing the lock (next paragraph and 3.7's
-exit order), which also covers a record renamed after the command's own takeover listing. A scheduled publish is
-already held by the deferred flush the sync spawned.
+Nothing slow runs after step 2, and nothing is written after it unless the idle worker takes the lock again.
 
-A command that holds the lock leaves in the same order (3.7): it notes whether owed work remains, releases the lock,
-lists the queue once more and starts a worker if owed work remained or a record is there. The argument is the same: a
-producer that renamed its record while the command held the lock, and so started no worker, renamed it before that
-listing, which sees it. A record renamed after the listing is followed by a check that runs after the release, which
-finds the lock free or held by a later holder that applies it.
+A producer renames its record, then checks the lock (3.3). A record renamed before step 3's listing is seen there. One
+renamed after it is followed by a check that runs after step 2. That check finds the lock free, so the producer starts a
+worker, or held by a later holder, whose version decides (3.3): a holder of the record's release or a newer one lists
+the queue after taking the lock (a worker) or once more when it leaves (a command), which also covers a record renamed
+after a command's own takeover listing; an older or unwritten version makes the producer start a worker, which waits for
+the lock. A scheduled publish is already held by the deferred flush the sync spawned.
+
+A command starts a worker after its last listing because a producer that renamed its record while the command held the
+lock read the command's version and started no worker, and renamed the record before that listing, which sees it. A
+worker that stopped for a stop request starts one for the same reason. That worker makes no try while the request is
+live (3.3), so it does not take the lock in front of the requester. Once the requester holds the lock and has written
+its version, the started worker exits if that version is at least its own; otherwise the requester is of an older
+release and cannot apply the newer records, and the started worker waits for it to leave. If the requester dies before
+it takes the lock, its request no longer counts, and the started worker takes the lock.
+
+An idle worker that loses the retake keeps trying as a started worker for the same reason: the process that took the
+lock may be of an older release (3.3).
+
+A worker that stopped for a record with a higher `v` starts no worker: a worker it started would be of its own, older
+release and would stop again as soon as it listed that record. The record's producer read the older version and started
+a worker of its own release, which waits for the lock (3.3).
 
 ### 3.7 Taking over
 
-- A process that needs the applier's place writes its own request file `<state>.worker.stop.<token>` holding its pid,
-  and waits for the lock: a command up to 10 seconds, a newer-version worker up to 60 seconds. A request whose pid is no
-  longer alive is stale: any holder deletes it and ignores it. A requester deletes its own file when it gets the lock or
-  gives up.
-- A worker that holds the lock and finds a live request that is not its own stops at its next apply-lane iteration or
-  between follow-up items: it aborts the item in progress and releases the lock. A worker that wins the lock from
-  another contender does the same, so the lock passes on until the requester holds it. A command that holds the lock
-  does not yield to requests: it keeps the lock for its own bounded run and releases it when it exits.
-- The requester, holding the lock, deletes its request, then:
-  - a newer-version worker continues as the worker, applying the records the old one left;
+- Only a command asks for the applier's place. It writes its own request file `<state>.worker.stop.<token>` holding its
+  pid and waits for the lock with `wait: true`, up to 10 seconds. A request whose pid is no longer alive is stale: any
+  process that finds it deletes it and ignores it. The command deletes its file when it gets the lock or gives up. It
+  stays alive for its whole wait, so its request counts exactly while it waits. Producers and workers write no request:
+  a producer's would be stale milliseconds after it was written (3.3), and no worker needs another worker's place.
+- A worker that holds the lock stops at its next apply-lane iteration or between follow-up items when it finds a live
+  request, or when its apply-lane listing reaches a record with a higher `v` (3.5): it aborts the item in progress and
+  leaves (3.6). It never stops for another worker. Started workers make no try for the lock while a request is live
+  (3.3), so the lock goes to the command; a worker that took the lock just before the request appeared stops at its
+  first iteration. A command that holds the lock does not yield to requests: it keeps the lock for its own bounded run
+  and releases it when it leaves; a second command waits for it.
+- A worker that stops for a record with a higher `v`, an older worker after an upgrade between queue releases, first
+  applies and saves the records listed before that one, so order holds, and leaves without starting a worker (3.6). The
+  record's producer read the older version in `<state>.worker.v` and started a worker of its own release (3.3), which
+  takes the lock once the older worker has released it and applies that record and the ones after it, older ones
+  included (3.2). This needs no request and no pid: the older worker decides from the records it lists every 250 ms
+  anyway. The first release with the queue has this rule, so every later upgrade between queue releases can rely on it
+  (3.12).
+- The command, holding the lock, deletes its request and writes `<state>.worker.v` (3.3), then:
   - `status`, `flush` and `update` apply the pending records and append the owed dsh usage (apply-lane steps 1-3 and the
     dsh items), then run today's command code; `flush` and `update` clear `renderedSync` through their own sync;
   - `reset` applies the pending records only, finishes every session and publishes, clearing `renderedSync`; its time is
     bounded by the takeover wait, one in-memory pass with one save over the pending records, the credential read and
     publish timeouts, and exiting (it waits for no background work it started) (Spec S6);
   - `worker --stop`: 3.8.
-- Every lock holder that exits follows 3.6's order, commands included. Whether a command succeeded or failed, it notes
-  while it still holds the lock whether owed work remains, then releases the lock, lists the queue once more, and starts
-  a background worker if owed work remained or a record is there. A producer that renamed its record while the command
-  held the lock started no worker (3.3); this listing is what gets that record applied (3.6). This covers `status`,
-  `reset`, `flush`, `update` and `setup` after it removed a tombstone (3.8); `uninstall --all` and `worker --stop` leave
-  the tombstone in place and start no worker.
+- Every lock holder leaves in 3.6's order, commands included, whether they succeeded or failed. A producer that renamed
+  its record while the command held the lock started no worker (3.3); the command's last listing is what gets that
+  record applied (3.6). This covers `status`, `reset`, `flush`, `update` and `setup` after it removed a tombstone (3.8);
+  `uninstall --all` and `worker --stop` leave the tombstone in place and start no worker.
 - The shutdown watcher runs `reset --force --silent` and waits for it without a deadline, so the bound above is the
   shutdown delay. `--silent` keeps its meaning.
 - A command that cannot take the lock within its wait fails as a command failure does today.
+- Processes of different queue releases read three things from each other: a record's `v` (3.2), `<state>.worker.v`
+  (a decimal version, 3.3) and the stop request files (a decimal pid). Their names and formats do not change between
+  releases.
 
 ### 3.8 Uninstall and setup
 
@@ -349,8 +418,9 @@ finds the lock free or held by a later holder that applies it.
   decimal text without a schema (3.2): a missing file, or text that is not a non-negative integer, counts as `0`, so a
   first install records and applies epoch `0`, and the first increase writes `1`.
 - `<state>.disabled` is a tombstone. Producers check it after reading the epoch and before recording (3.3), workers
-  before starting and at every iteration, and `status`, `reset`, `flush` and `update` right after taking over. While it
-  exists, producers record nothing, workers exit, and those commands change nothing.
+  before starting, at every round while they wait for the lock (3.3) and at every iteration, and `status`, `reset`,
+  `flush` and `update` right after taking over. While it exists, producers record nothing, workers exit, and those
+  commands change nothing.
 - `uninstall --all` writes the tombstone, takes over, deletes the queue directory, the stop-request files and
   `<state>.worker.v`, then the state as today. It keeps `<state>.worker.lock.db` and `<state>.epoch`. The lock's
   `<state>.worker.lock.db.holder` is the kit's: written when `uninstall --all` takes the lock and deleted by the kit's
@@ -391,8 +461,9 @@ finds the lock free or held by a later holder that applies it.
 The producer writes no log line. Source resolution returns its diagnostics instead of writing them, and the producer
 records them as `error` records; the hook-module load fallback records an `error` record, and if recording fails too it
 only prints the output. The worker writes the diagnostic line for each event (payload key names), the line the hook
-writes today for each `skip` and `error` record, and `worker.start`, `worker.exit` with its reason, batch sizes, failed
-records and backlog warnings.
+writes today for each `skip` and `error` record, and `worker.start`, `worker.exit` with its reason (idle, a stop
+request, a record with a higher `v`, the tombstone, a holder of its release or a newer one, or the 60-second limit,
+3.3, 3.6), batch sizes, failed records and backlog warnings.
 
 ### 3.12 Compatibility and migration
 
@@ -404,9 +475,14 @@ records and backlog warnings.
   rate-limits it (`deferred-update.ts:78-87`); it ignores the queue and the tombstone, and each of its saves drops
   `queueApplied` and `queueOwed`, so at most the records of one batch can be applied twice and the owed items of that
   moment are lost. Decided (owner, 2026-10-13): this is not handled.
-- Upgrades between releases that both have the queue use the record version and the takeover (3.3, 3.7).
+- Upgrades between releases that both have the queue need no step: the older worker leaves when it lists a record of
+  the newer release, and the worker that record's producer started takes over (3.3, 3.7). The newer release applies
+  every older record version and reads the older form of `queueApplied` and `queueOwed`, so it continues where the
+  older worker stopped, and it keeps the file formats that 3.7 lists.
 - Downgrade: `agent-presence worker --stop` with the new release, then install the previous release, which ignores the
-  queue and the worker files.
+  queue and the worker files. Skipping `worker --stop` when downgrading to an older release that has the queue leaves
+  records that release cannot apply: its workers hand over at the first one and apply nothing after it (3.7), and each
+  hook starts a worker that leaves at once, until the newer release's `worker --stop` runs.
 
 ### 3.13 Security and privacy
 
@@ -452,21 +528,39 @@ The worker's log lines (3.11). `status` output does not change.
 - A dsh append with the usage-events file held by another writer waits and writes; a compaction during the wait keeps the
   line.
 - A boundary arriving during a refresh of its source keeps the refresh owed (generation check).
-- A stop request written by one command while a producer-started worker wins the lock: that worker yields, and the
-  command gets the lock.
+- A command takes over while started workers wait: they make no try while its request is live, the holder stops, and
+  the command takes the lock next; a worker that took the lock just before the request appeared stops at its first
+  iteration. The worker that the stopped holder starts exits once the command has written its version; if the command
+  is killed while it waits, that worker takes the lock and applies the records.
+- `<state>.worker.v` holds the holder's version while a worker or a command holds the lock, and is gone after each way
+  of leaving (3.6); after a SIGKILL it stays, and the next holder overwrites it.
+- An idle worker that loses its retake to a worker of an older release keeps trying and applies its records once the
+  older worker has left.
 - A command that fails after taking over starts a background worker when records or owed work remain.
 - Idle-exit race: producers recording while a worker exits, and while a command that took over (`status`, `flush`) holds
   the lock and exits, 1,000 iterations each with random delays: no record stays.
 - A worker killed while a producer writes: the next hook starts a worker.
 - A takeover while a slow refresh runs: the holder stops within about a second, and the refresh stays owed.
-- Two workers started together; a corrupt record; a read-only queue directory (Spec S8); a hanging publish while events
+- Twenty workers started together: one takes the lock, and the others exit in the round after it has written its
+  version without taking it. A corrupt record; a read-only queue directory (Spec S8); a hanging publish while events
   keep arriving (applied within 1 second).
 
 ### 5.3 Compatibility checks
 
 - `reset` with a pending `SessionStart` and a slow refresh running (Spec S6); `update --value` and `update --force` with
   pending events; `status` with pending events.
-- A newer-version record with an older worker running (Spec S7).
+- Version handover (Spec S7), with an older worker (a lower record version, 6.3) running a slow publish: records of
+  both versions arrive, older ones first. The older worker applies the older ones in order, leaves the newer record in
+  place, releases the lock within about a second and starts no worker; the newer worker that the producer started
+  applies the rest. No stop request file is written.
+- Upgrade burst: 100 newer producers at once while an older worker runs. Every event is applied once, exactly one newer
+  worker takes the lock, and the other started workers exit once it has written its version.
+- A newer producer while a command of an older release holds the lock for 20 seconds: the worker it starts waits and
+  applies the record after the command leaves. A producer while a command of its own release holds the lock starts no
+  worker. A producer that checks after a holder took the lock and before it wrote its version starts a worker, which
+  exits once the version is written.
+- An older worker that takes the lock after a newer one left (started by an older producer): a newer record recorded
+  then is applied by a newer worker within about a second.
 - `uninstall --all` with a worker running and records pending, then a hook (Spec S10); `setup` afterwards records again.
 - After a `UserPromptSubmit` with prompt text, no file next to the state file or under the presence home contains it
   (Spec S9).
@@ -494,8 +588,8 @@ The worker's log lines (3.11). `status` output does not change.
   `acquireProcessLock` is already there, and since PerfectPan/agent-kit#78 (0.11.0) the `/node` and `/process-lock`
   entries bundle `zod/mini` and load no module from the `zod` package (kit adoption guide, "Choose the runtime
   boundary"), so the producer may load them.
-- Section 7's stop-request question is settled; section 7 requires this before Q1a. It is a design question, not an
-  owner decision.
+- Section 7's stop-request question, which section 7 required to be settled before Q1a, is settled (2026-10-14; 3.3,
+  3.6, 3.7). It was a design question, not an owner decision.
 - Section 7's killed-command item, which the owner is to confirm, is confirmed before Q1 is released. It is not a
   precondition of Q1a or Q1b: an implementation follows the same exit order (3.6, 3.7) whichever way the owner decides.
 - The owner decided Plan 0002's collab release-age exclusion on 2026-10-13: Q1a, which adds `@rivus/agent-kit-collab`,
@@ -510,7 +604,7 @@ The worker's log lines (3.11). `status` output does not change.
 | S1, S3, S5    | Q1 latency, burst and idle-exit tests               |
 | S2, S4        | Q1 order and crash tests                            |
 | S6            | Q1 shutdown `reset` test                            |
-| S7            | Q1 upgrade test                                     |
+| S7            | Q1a version-handover and Q1b upgrade-burst tests    |
 | S8, S9, S10   | Q1 read-only directory, privacy and uninstall tests |
 
 ### 6.3 Execution order
@@ -518,9 +612,10 @@ The worker's log lines (3.11). `status` output does not change.
 #### Q1a: queue and worker, not yet wired (one PR)
 
 - Files: new `src/queue/`, split so that no schema is reachable from the hook (3.2): `schema.ts` (the record schemas,
-  the `v`-only schema, and the `queueApplied` and `queueOwed` schemas) with the reader, the stop request and the
-  tombstone writer, which the worker and the commands import, and `produce.ts` (record writer, epoch read, tombstone
-  check and lock check, 3.3), which imports no schema module; `src/cli/commands/worker.ts`; `src/state.ts`, split the
+  the `v`-only schema, and the `queueApplied` and `queueOwed` schemas) with the reader, the stop request and takeover
+  (3.7), the leaving order (3.6) and the tombstone writer, which the worker and the commands import, and `produce.ts`
+  (record writer, epoch read, tombstone check and lock check, 3.3), which imports no schema module;
+  `src/cli/commands/worker.ts`; `src/state.ts`, split the
   same way: the types and the session functions (`applyAgentEvent`, `isSessionBoundaryEvent`) stay there without a
   schema, and loading (with the queue-field schemas), saving and `withStateLock` on the kit's process lock move to a
   state-store module that the worker and the commands import; `src/log-retention.ts` (the log lock on the kit's process
@@ -544,13 +639,17 @@ The worker's log lines (3.11). `status` output does not change.
   `src/usage/billable-sources.ts`), tests.
 - The worker runs from tests and from `agent-presence worker`; nothing writes records yet, so behavior does not change.
   The hook still runs the direct path, now loaded at run time; Q1a is not released on its own (4.1).
-- Tests: 5.2's worker checks. `test/hook-graph.test.ts` adds `@rivus/agent-kit-collab/process-lock` and
+- Tests: 5.2's worker checks, and 5.3's version checks that need no producer (the version handover, an older worker
+  taking the lock after a newer one left), with the test writing the records and starting the workers. The record
+  version that a worker or a takeover writes and compares is a parameter in tests, so one build runs an older and a
+  newer release; the 250 ms rounds, the 60-second limit and the idle interval run on an injected clock.
+  `test/hook-graph.test.ts` adds `@rivus/agent-kit-collab/process-lock` and
   `@rivus/agent-kit/node` to its allowlist next to `@rivus/agent-kit/harness/events`, because `src/sources.ts`,
   `src/cli/hook-output.ts` and `src/cli/io.ts` (its `writeLog` re-export, which the hook imports with `readStdinJson`)
   reach the log lock (as batch 1's lock change would have); `zod` stays off it, and the schema module, the state-store
   module, the dsh log module, `src/usage/billable-sources.ts` and the scanners (`src/usage/scan-*.ts`, `scan-dsh.ts`
   among them) join its forbidden modules.
-- Exit: 5.2's worker checks pass; gates.
+- Exit: 5.2's worker checks and the version checks above pass; gates.
 
 #### Q1b: producer, commands, uninstall (one PR, released with Q1a)
 
@@ -559,7 +658,9 @@ The worker's log lines (3.11). `status` output does not change.
   `src/cli/app.ts` (`worker`), `src/cli/commands/{status,reset,flush,update,uninstall}.ts` (takeover), `src/setup.ts`
   (tombstone removal), `docs/architecture.md` (the hook runtime: producer, queue, worker, takeover and tombstone), a
   changeset.
-- Tests: every scenario in 6.2. `test/hook-graph.test.ts`'s allowlist stays exactly `@rivus/agent-kit/harness/events`,
+- Tests: every scenario in 6.2, and 5.3's producer checks: the upgrade burst, producers while a command holds the lock
+  or before a holder writes its version, and no stop request from a producer. `test/hook-graph.test.ts`'s allowlist
+  stays exactly `@rivus/agent-kit/harness/events`,
   `@rivus/agent-kit-collab/process-lock` and `@rivus/agent-kit/node`, now for the producer's lock check (3.3) and the
   platform it takes, and still for the log lock that `src/cli/io.ts` reaches; never `zod`. Its walk reaches
   `src/queue/produce.ts` and `src/cli/hook-context.ts` (through `src/sources.ts`) and none of the forbidden modules:
@@ -581,7 +682,8 @@ holds the log lock or a handover aborts the wait (3.5).
 
 | Batch | Command or evidence                                                                                | Expected result                                   |
 | ----- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------- |
-| Q1a   | Crash, takeover and idle-race tests                                                                | No lost, doubled or stranded event or owed item   |
+| Q1a   | Crash, takeover, idle-race and version-handover tests                                              | No lost, doubled or stranded event or owed item   |
+| Q1b   | Upgrade burst and producers during a command (5.3)                                                 | One newer holder; every event applied once        |
 | Q1b   | Event table through producer and worker                                                            | Same state as the direct path for all 67 cases    |
 | Q1b   | Hook cold start against the 143 ms pre-split baseline (1.1), re-measured on the same machine (5.4) | At most 60 percent                                |
 | Q1b   | `reset` during a slow refresh; uninstall                                                           | No running session within the bound; nothing left |
@@ -589,11 +691,11 @@ holds the log lock or a handover aborts the wait (3.5).
 
 ### 6.5 Work split and schedule
 
-| Batch | Owner       | Depends on                                                                | When        |
-| ----- | ----------- | ------------------------------------------------------------------------- | ----------- |
-| Q1a   | unconfirmed | Kit 0.14.0 (released) and section 7's stop-request question settled (6.1) | unconfirmed |
-| Q1b   | unconfirmed | Q1a                                                                       | unconfirmed |
-| Q2    | unconfirmed | Q1b released with Plan 0002 batch 5 (4.1)                                 | unconfirmed |
+| Batch | Owner       | Depends on                                | When        |
+| ----- | ----------- | ----------------------------------------- | ----------- |
+| Q1a   | unconfirmed | Kit 0.14.0 (released, 6.1)                | unconfirmed |
+| Q1b   | unconfirmed | Q1a                                       | unconfirmed |
+| Q2    | unconfirmed | Q1b released with Plan 0002 batch 5 (4.1) | unconfirmed |
 
 ## 7. Risks, open questions, and follow-up
 
@@ -603,7 +705,8 @@ holds the log lock or a handover aborts the wait (3.5).
 | One configuration per state file; credentials from the environment of the process that started the worker (a hook or a command that took over)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | Decided (owner, 2026-10-13)                                                                  | As 3.9                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | The whole feature ships in one release, with no mode switch; a downgrade runs `agent-presence worker --stop` first                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | Decided (owner, 2026-10-13)                                                                  | As 4.1 and 4.3                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | Node-free shell producer as the stable hook shim: Plan 0002's hook-command decision chose a stable shim file (owner, 2026-10-13); whether that shim runs without Node is this item                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | Owner                                                                                        | A few milliseconds per hook, but `sh` cannot parse JSON, so it would record the raw payload, against S9; recommend not now                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
-| A producer's stop request for an older-version worker (3.3) carries the producer's own pid, but under 3.7 a request whose pid is no longer alive is stale and ignored, and the producer exits within milliseconds, so the old worker would ignore it; S7 relies on the new worker writing its own request (3.7). Same-version workers also yield the lock to each other's requests, so several new workers started during an upgrade burst may pass the lock back and forth. A producer that finds the lock held by a command, or by a worker that has not yet written `<state>.worker.v`, reads an earlier worker's version or `0` (3.3) and may start a worker and write a request that the holder's version did not call for | Open question                                                                                | Settle before Q1a; not resolved in this Plan                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| A producer's stop request for an older-version worker (3.3) carries the producer's own pid, but under 3.7 a request whose pid is no longer alive is stale and ignored, and the producer exits within milliseconds, so the old worker would ignore it; S7 relies on the new worker writing its own request (3.7). Same-version workers also yield the lock to each other's requests, so several new workers started during an upgrade burst may pass the lock back and forth. A producer that finds the lock held by a command, or by a worker that has not yet written `<state>.worker.v`, reads an earlier worker's version or `0` (3.3) and may start a worker and write a request that the holder's version did not call for | Resolved (design, 2026-10-14)                                                                | None: only a command writes a stop request, and it stays alive while it waits; producers and workers write none (3.3, 3.7). A worker stops for a live request or for a record with a higher `v`, never for another worker; an older worker that lists a newer record applies the records before it and leaves, starting no worker, and the worker that record's producer started takes the lock (3.7). Every holder, worker or command, writes `<state>.worker.v` after it takes the lock and deletes it before it releases it, so a producer reads the holder's version or `0`. A started worker repeats the producer's check every 250 ms for up to 60 seconds, makes no try while a request is live, and exits once a holder of its release or a newer one has written its version, so a burst leaves one worker and the lock is not passed back and forth (3.3, 3.6). Checks in 5.2 and 5.3    |
+| Records of a newer release wait for a later hook or command in two upgrade cases: a command of an older release holds the worker lock longer than a started worker's 60 seconds, or a holder crashes and a process of an older release takes the lock next while a newer record is checked in the milliseconds before that process writes its version (3.3)                                                                                                                                                                                                                                                                                                                                                                     | Risk                                                                                         | Accept (inferred): both need a process of the older release holding the lock after the upgrade, normally one that was already running when the upgrade happened, and the second also a crash; the record is applied by the next hook or command, as after the accepted worker crash. Closing the first would need an unbounded wait, the second a check of the holder's identity on the hook path                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | A worker stuck in an iteration blocks takeovers and new workers until it is killed                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | Risk                                                                                         | Abort signals and timeouts on external calls; automatic takeover after a stuck period as a follow-up                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | Kit 0.13.0 offered no way to ask whether a process lock is held without taking it (3.3)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | Resolved by kit 0.14.0 ([agent-kit#106](https://github.com/PerfectPan/agent-kit/issues/106)) | None: kit 0.14.0 (published 2026-10-13) ships `isProcessLockHeld(platform: ProcessLockPlatform, path: string, options?: { signal?: AbortSignal }): Promise<boolean>` in `@rivus/agent-kit-collab/process-lock` with the properties asked for here (kit Spec S68): it never takes or keeps the lock and never writes `<path>.holder`; with SQLite it makes one attempt (a file stat, a read-only open with `busy_timeout = 0`, one statement under a shared lock), without settle retries, and reads no process identity; checks running at once do not see each other as holders; a missing lock file reads as free and is not created. An acquisition's first attempt still gets a free lock while checks run; the kit's one caveat is that the later retries of a waiting acquisition can find the lock busy while a check reads it and get it one backoff later (3.3). Q1a pins 0.14.0 or later |
 | A crash right after a producer found the worker lock held leaves that record pending until a later hook                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | Accepted risk, decided (owner, 2026-10-13)                                                   | As the Spec states                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
