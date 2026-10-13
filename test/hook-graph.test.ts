@@ -8,13 +8,15 @@ const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const cliEntry = resolve(repoRoot, 'src/cli.ts');
 const hookCommandEntry = resolve(repoRoot, 'src/cli/commands/hook.ts');
 
-// Modules the hook path must never load statically: the setup/installer cluster
-// and the helpers only setup, uninstall, and login use. The bin entry and the
+// The hook path's static graph loads only repository modules, Node built-ins,
+// and the npm entries in hookGraphPackages (docs/architecture.md, "CLI"). Any
+// other bare specifier is an npm package loaded on every hook run, so the walk
+// fails on it; this keeps `effect`, `zod`, and `@clack/prompts` out. The
+// forbidden modules are the setup/installer cluster, the Clack wrapper, and
+// the helpers only setup, uninstall, and login use. The bin entry and the
 // dispatcher are walked as well as the hook command, because a static setup
 // import in `src/cli/app.ts` pulls the whole graph into every hook run just as
-// one in the hook command does. The graph must also stay free of `effect`;
-// later batches must not be able to reach it from the hook path
-// (docs/architecture.md, "Hook Setup Split").
+// one in the hook command does.
 const forbiddenHookGraphModules = [
   'src/setup.ts',
   'src/installers.ts',
@@ -24,11 +26,19 @@ const forbiddenHookGraphModules = [
   'src/magic-token.ts',
   'src/cli/credential.ts',
   'src/cli/magic-builder-setup.ts',
+  'src/cli/ui.ts',
   'src/cli/commands/setup.ts',
   'src/cli/commands/uninstall.ts',
   'src/cli/commands/login.ts'
 ].map((relative) => resolve(repoRoot, relative));
 const scriptsDir = resolve(repoRoot, 'scripts');
+// Every npm entry the hook path loads statically, by exact specifier. A batch
+// that brings a package into the hook path adds it here; `effect` never goes
+// on this list (Plan 0002, 3.3).
+const hookGraphPackages = ['@rivus/agent-kit/harness/events'];
+// Imported by the hook command, not by the dispatcher, so its presence in the
+// graph shows the walk followed the hook command's imports.
+const deepHookModule = resolve(repoRoot, 'src/state.ts');
 
 function staticImportSpecifiers(source: string): string[] {
   const specifiers: string[] = [];
@@ -81,69 +91,14 @@ function resolveRelativeImport(fromFile: string, specifier: string): string | un
 
 interface StaticGraph {
   files: string[];
-  effectSpecifiers: string[];
-  forbiddenRuntimeSpecifiers: string[];
+  packageSpecifiers: string[];
 }
 
-const ALLOWED_KIT_RUNTIME_ENTRY = '@rivus/agent-kit/harness/events';
-
-function isForbiddenRuntimeSpecifier(specifier: string): boolean {
-  if (specifier === 'effect' || specifier.startsWith('effect/')) {
-    return true;
-  }
-  if (specifier === 'zod' || specifier.startsWith('zod/')) {
-    return true;
-  }
-  if (specifier === '@rivus/agent-kit') {
-    return true;
-  }
-  return specifier.startsWith('@rivus/agent-kit/') && specifier !== ALLOWED_KIT_RUNTIME_ENTRY;
-}
-
-interface ImportLike {
-  importKind?: string;
-  source?: { value?: string } | null;
-}
-
-// A declaration-level `import type` is erased. An inline `{ type X }` import
-// still loads the module under verbatimModuleSyntax, so it is a runtime edge
-// for package specifiers too, as are value specifiers, default imports, and
-// side-effect imports.
-function isRuntimeImport(node: ImportLike): boolean {
-  return node.importKind !== 'type';
-}
-
-function forbiddenRuntimeSpecifiers(source: string): string[] {
-  const found: string[] = [];
-  for (const node of parseAst(source, { lang: 'ts' }).body) {
-    if (node.type === 'ImportDeclaration') {
-      const declaration: ImportLike = node;
-      if (declaration.source?.value !== undefined && isRuntimeImport(declaration)) {
-        found.push(declaration.source.value);
-      }
-    } else if (node.type === 'TSImportEqualsDeclaration') {
-      if (node.importKind !== 'type' && node.moduleReference.type === 'TSExternalModuleReference') {
-        found.push(node.moduleReference.expression.value);
-      }
-    } else if (node.type === 'ExportAllDeclaration') {
-      if (node.exportKind !== 'type') {
-        found.push(node.source.value);
-      }
-    } else if (node.type === 'ExportNamedDeclaration' && node.source !== null) {
-      const typeOnlySpecifiers =
-        node.specifiers.length > 0 && node.specifiers.every((specifier) => specifier.exportKind === 'type');
-      if (node.exportKind !== 'type' && !typeOnlySpecifiers) {
-        found.push(node.source.value);
-      }
-    }
-  }
-  return found.filter((specifier) => isForbiddenRuntimeSpecifier(specifier));
-}
-
+// A resolved file that cannot be read throws: a renamed or moved module must
+// fail the walk, not silently shrink the graph.
 function walkStaticGraph(entries: string[]): StaticGraph {
   const files = new Set<string>();
-  const effectSpecifiers = new Set<string>();
-  const forbiddenRuntime = new Set<string>();
+  const packageSpecifiers = new Set<string>();
   const queue = [...entries];
   while (queue.length > 0) {
     const file = queue.pop();
@@ -151,31 +106,16 @@ function walkStaticGraph(entries: string[]): StaticGraph {
       continue;
     }
     files.add(file);
-    let source: string;
-    try {
-      source = readFileSync(file, 'utf8');
-    } catch {
-      continue;
-    }
-    for (const specifier of forbiddenRuntimeSpecifiers(source)) {
-      forbiddenRuntime.add(specifier);
-    }
-    for (const specifier of staticImportSpecifiers(source)) {
-      if (specifier === 'effect' || specifier.startsWith('effect/')) {
-        effectSpecifiers.add(specifier);
-        continue;
-      }
+    for (const specifier of staticImportSpecifiers(readFileSync(file, 'utf8'))) {
       const target = resolveRelativeImport(file, specifier);
       if (target !== undefined) {
         queue.push(target);
+      } else if (!specifier.startsWith('node:')) {
+        packageSpecifiers.add(specifier);
       }
     }
   }
-  return {
-    files: [...files].sort(),
-    effectSpecifiers: [...effectSpecifiers],
-    forbiddenRuntimeSpecifiers: [...forbiddenRuntime].sort()
-  };
+  return { files: [...files].sort(), packageSpecifiers: [...packageSpecifiers].sort() };
 }
 
 describe('static import scanning', () => {
@@ -198,33 +138,15 @@ describe('static import scanning', () => {
   });
 });
 
-describe('hook runtime package imports', () => {
-  it('flags zod, effect, kit entries other than harness/events, and an inline type import', () => {
-    expect(forbiddenRuntimeSpecifiers(`import { builtinCodingAgents } from '@rivus/agent-kit/catalog';\n`)).toEqual([
-      '@rivus/agent-kit/catalog'
-    ]);
-    expect(forbiddenRuntimeSpecifiers(`import '@rivus/agent-kit/catalog';\n`)).toEqual(['@rivus/agent-kit/catalog']);
-    expect(forbiddenRuntimeSpecifiers(`import type { CodingAgentId } from '@rivus/agent-kit/catalog';\n`)).toEqual([]);
-    expect(forbiddenRuntimeSpecifiers(`import { type CodingAgentId } from '@rivus/agent-kit/catalog';\n`)).toEqual([
-      '@rivus/agent-kit/catalog'
-    ]);
-    expect(forbiddenRuntimeSpecifiers(`import { readHookEvent } from '@rivus/agent-kit/harness/events';\n`)).toEqual(
-      []
-    );
-    expect(forbiddenRuntimeSpecifiers(`import { z } from 'zod';\n`)).toEqual(['zod']);
-    expect(forbiddenRuntimeSpecifiers(`import { Effect } from 'effect';\n`)).toEqual(['effect']);
-  });
-});
-
 describe('hook static import graph', () => {
-  it('never reaches setup, installer, effect, zod, or a kit entry other than harness/events', () => {
+  it('loads only Node built-ins and the allowed npm entries and never reaches setup, installer, or prompt modules', () => {
     const graph = walkStaticGraph([cliEntry, hookCommandEntry]);
 
+    expect(graph.files).toEqual(expect.arrayContaining([cliEntry, hookCommandEntry, deepHookModule]));
     const reachedForbidden = graph.files.filter(
-      (file) => forbiddenHookGraphModules.includes(file) || (file.startsWith(`${scriptsDir}/`) && file !== scriptsDir)
+      (file) => forbiddenHookGraphModules.includes(file) || file.startsWith(`${scriptsDir}/`)
     );
     expect(reachedForbidden).toEqual([]);
-    expect(graph.effectSpecifiers).toEqual([]);
-    expect(graph.forbiddenRuntimeSpecifiers).toEqual([]);
+    expect(graph.packageSpecifiers).toEqual(hookGraphPackages);
   });
 });
