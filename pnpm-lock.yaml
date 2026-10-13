@@ -170,8 +170,8 @@ importers:
         specifier: 1.8.1
         version: 1.8.1
       '@rivus/agent-kit':
-        specifier: 0.9.0
-        version: 0.9.0
+        specifier: 0.11.0
+        version: 0.11.0
     devDependencies:
       '@changesets/changelog-github':
         specifier: ^1.0.1
@@ -1627,8 +1627,8 @@ packages:
   '@polka/url@1.0.0-next.29':
     resolution: {integrity: sha512-wwQAWhWSuHaag8c4q/KN/vCoeOJYshAIvMQwD4GpSb3OiZklFfvAgmj0VCBBImRpuF/aFgIRzllXlVX93Jevww==}
 
-  '@rivus/agent-kit@0.9.0':
-    resolution: {integrity: sha512-p0GSH6V1ioHREdnkEqNlZTqnBbKl3hRJiELSKfIx8HRLoK3Gp3BXxX1dN0cmFPyTCtqYEvax4o4fsDWMXeh+EA==}
+  '@rivus/agent-kit@0.11.0':
+    resolution: {integrity: sha512-IAff/z1WSJevyT515mbWlf6YJmnynxSm853JUr2arOzN5X4+Cb9o22EtOZUhcuDRLOpAUMc4Cd5EykYqRgNJgw==}
     engines: {node: '>=22.13'}
     peerDependencies:
       effect: 4.0.1
@@ -4501,7 +4501,7 @@ snapshots:
 
   '@polka/url@1.0.0-next.29': {}
 
-  '@rivus/agent-kit@0.9.0':
+  '@rivus/agent-kit@0.11.0':
     dependencies:
       '@agentclientprotocol/sdk': 1.7.0(zod@4.6.5)
       '@decimalturn/toml-patch': 3.3.0
