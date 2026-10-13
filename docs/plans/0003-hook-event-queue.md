@@ -237,9 +237,11 @@ Apply lane, every 250 ms, unless a stop request it did not write exists (3.7):
 Follow-up lane, one item at a time, concurrently with the apply lane, checking for a stop request between items:
 
 - dsh usage append: through the retained-log append, but waiting until it holds the log lock instead of skipping (the
-  lane is off the hook path), with the record id in the entry; the dsh usage scanner reads the optional `id` through
-  its zod/mini line schema, which replaces the hand-written `asUsageEvent` (`src/usage-events.ts:75-92`) in a module the
-  hook graph does not reach (3.2), and skips a repeated id. The item leaves `queueOwed` only after the append wrote.
+  lane is off the hook path), with the record id in the entry. The wait takes the lane's abort signal
+  (`acquireProcessLock`'s `signal`), so a stuck log-lock holder cannot keep the worker from handing over; an aborted
+  append stays owed. The dsh usage scanner reads the optional `id` through its zod/mini line schema, which replaces the
+  hand-written `asUsageEvent` (`src/usage-events.ts:75-92`) in a module the hook graph does not reach (3.2), and skips a
+  repeated id. The item leaves `queueOwed` only after the append wrote.
 - Usage refresh: through the existing refresh for that source, with its `scanEnv` and boundary time so the day rule
   (`usage-badge.ts:71-79`) holds. The refresh gains an abort signal and returns whether it completed. Afterwards, under
   the state lock, the entry is removed only if its generation is still the one the refresh started with; a boundary that
@@ -252,10 +254,11 @@ Follow-up lane, one item at a time, concurrently with the apply lane, checking f
   that sync schedules the forced publish one debounce interval later.
 - A completed usage refresh sets `renderedSync` again, because it changes what the slot renders.
 
-A stop request that is not the holder's own aborts the item in progress through its abort signal (the refresh's scans,
-the publish's request), so the holder stops within about a second; an aborted item stays owed. The holder releases the
-lock only after the apply lane's current batch has saved or been dropped and the follow-up item has ended, with any
-rollback it triggers saved, so no write of the old holder lands after the new holder starts.
+A stop request that is not the holder's own aborts the item in progress through its abort signal (the dsh append's wait
+for the log lock, the refresh's scans, the publish's request), so the holder stops within about a second; an aborted
+item stays owed. The holder releases the lock only after the apply lane's current batch has saved or been dropped and
+the follow-up item has ended, with any rollback it triggers saved, so no write of the old holder lands after the new
+holder starts.
 
 ### 3.6 Idle exit
 
@@ -300,9 +303,9 @@ publish is already held by the deferred flush the sync spawned.
   epoch matches the file. `setup`, when it removes a tombstone, increases it. Producers and appliers read it alike, as
   decimal text without a schema (3.2): a missing file, or text that is not a non-negative integer, counts as `0`, so a
   first install records and applies epoch `0`, and the first increase writes `1`.
-- `<state>.disabled` is a tombstone. Producers check it after reading the epoch and before recording (3.3), workers before starting and at every
-  iteration, and `status`, `reset`, `flush` and `update` right after taking over. While it exists, producers record
-  nothing, workers exit, and those commands change nothing.
+- `<state>.disabled` is a tombstone. Producers check it after reading the epoch and before recording (3.3), workers
+  before starting and at every iteration, and `status`, `reset`, `flush` and `update` right after taking over. While it
+  exists, producers record nothing, workers exit, and those commands change nothing.
 - `uninstall --all` writes the tombstone, takes over, deletes the queue directory, the stop-request files and
   `<state>.worker.v`, then the state as today. It keeps `<state>.worker.lock.db`, its holder file and `<state>.epoch`. A
   producer that passed its tombstone check just before can still write one record afterwards; nothing applies it while
@@ -504,20 +507,20 @@ The worker's log lines (3.11). `status` output does not change.
 - Remove the direct application path (the module the hook loaded at run time until Q1b) and the code only it used.
 
 Relation to Plan 0002: Q1 is option (c) of Plan 0002's hook-path lock cost decision, which the owner chose on
-2026-10-13: Q1 replaces batch 1, and Q1a carries batch 1's whole lock change: `withStateLock` and the log lock on the kit lock, the shared
-platform module, their tests, and the deletion of the mkdir and hardlink locks (Plan 0002 3.1). Off the hook path both
-locks keep batch 1's bounded waits, except the follow-up lane's dsh append, which waits until it holds the log lock
-(3.5).
+2026-10-13: Q1 replaces batch 1, and Q1a carries batch 1's whole lock change: `withStateLock` and the log lock on the
+kit lock, the shared platform module, their tests, and the deletion of the mkdir and hardlink locks (Plan 0002 3.1). Off
+the hook path both locks keep batch 1's bounded waits, except the follow-up lane's dsh append, which waits until it
+holds the log lock or a handover aborts the wait (3.5).
 
 ### 6.4 Validation ledger
 
-| Batch | Command or evidence                      | Expected result                                   |
-| ----- | ---------------------------------------- | ------------------------------------------------- |
-| Q1a   | Crash, takeover and idle-race tests      | No lost, doubled or stranded event or owed item   |
-| Q1b   | Event table through producer and worker  | Same state as the direct path for all 67 cases    |
-| Q1b   | Hook cold start against `main`           | At most 60 percent                                |
-| Q1b   | `reset` during a slow refresh; uninstall | No running session within the bound; nothing left |
-| all   | Repository gates                         | Pass                                              |
+| Batch | Command or evidence                                                                                | Expected result                                   |
+| ----- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------- |
+| Q1a   | Crash, takeover and idle-race tests                                                                | No lost, doubled or stranded event or owed item   |
+| Q1b   | Event table through producer and worker                                                            | Same state as the direct path for all 67 cases    |
+| Q1b   | Hook cold start against the 143 ms pre-split baseline (1.1), re-measured on the same machine (5.4) | At most 60 percent                                |
+| Q1b   | `reset` during a slow refresh; uninstall                                                           | No running session within the bound; nothing left |
+| all   | Repository gates                                                                                   | Pass                                              |
 
 ### 6.5 Work split and schedule
 
