@@ -410,13 +410,48 @@ describe('opencode hook context — kit bridge session ids', () => {
     });
   });
 
-  it('still falls back to the env id when the payload carries none', () => {
+  it('falls back to the env id for an old bridge payload that names no session', () => {
     expect(
-      resolveOpenCodeHookContext({ type: 'tool.execute.before' }, { OPENCODE_SESSION_ID: 'ses_remembered' })
+      resolveOpenCodeHookContext(
+        { event: { type: 'tool.execute.before' }, input: { tool: 'bash', callID: 'call-1' } },
+        { OPENCODE_SESSION_ID: 'ses_remembered' }
+      )
     ).toEqual({
       event: 'Heartbeat',
       project: undefined,
       sessionId: 'ses_remembered'
+    });
+  });
+
+  it('reads the bridge currentSessionId for a kit bus event that names no session', () => {
+    expect(
+      resolveOpenCodeHookContext({
+        type: 'file.edited',
+        directory: '/work/repo',
+        properties: { file: '/work/repo/src/index.ts' },
+        currentSessionId: 'ses_current'
+      })
+    ).toEqual({
+      event: 'Heartbeat',
+      project: '/work/repo',
+      sessionId: 'ses_current'
+    });
+  });
+
+  it('takes no env or payload fallback for a kit bus event the kit reads no session id from', () => {
+    expect(
+      resolveOpenCodeHookContext(
+        {
+          type: 'message.updated',
+          directory: '/work/repo',
+          properties: { info: { id: 'msg_1' }, session: { id: 'ses_nested' } }
+        },
+        { OPENCODE_SESSION_ID: 'ses_remembered' }
+      )
+    ).toEqual({
+      event: 'Heartbeat',
+      project: '/work/repo',
+      sessionId: undefined
     });
   });
 
