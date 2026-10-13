@@ -161,8 +161,10 @@ those locks to the kit's crash-safe process lock, which Plan 0002 batch 1 needs,
   - `usage` holds the normalized dsh usage event: `model` (a model name, needed for pricing, `src/usage/pricing.ts:122-128`)
     and the token and cost numbers (`src/usage-events.ts:63-71`); nothing else from the payload.
   - `scanEnv` holds the environment values that locate the source's transcripts (for example `CLAUDE_CONFIG_DIR`); Q1
-    inventories them from the scanners and lists their names next to the resolvers, so the producer copies them without
-    loading a scanner (below). It is set on boundary events only and never carries credentials.
+    inventories them from the scanners and lists their names next to the resolvers in `src/cli/hook-context.ts`, so the
+    producer copies them without loading a scanner (below). The scanners import the same list from there and read their
+    variables only through it, so a variable a scanner reads is always one the producer copies. It is set on boundary
+    events only and never carries credentials.
   - `payloadKeys` holds key names, for the diagnostic log.
 
 - `v` increases on an incompatible change. A worker never applies a record with a higher `v` (3.7).
@@ -212,7 +214,9 @@ The producer takes no lock, and its own reads use no schema (3.2). In order, it:
   7's open question.
 - A worker crash releases the lock at once (the kernel drops the SQLite lock), so the next producer finds it free and
   starts a worker. A crash right after a producer found the lock held leaves that producer's record pending until a
-  later hook or command (Spec).
+  later hook or command (Spec). A command that holds the lock and is killed, for example by a signal, releases it the
+  same way but skips its exit order (3.7), so a record a producer renamed while the command held the lock stays pending
+  too; this falls under section 7's accepted crash risk.
 - Step 4 needs a check that kit 0.13.0 does not offer: `@rivus/agent-kit-collab/process-lock` exports only
   `acquireProcessLock` and its types. `acquireProcessLock` with `wait: false` cannot stand in for it. When the lock is
   free, it takes it and writes `<path>.holder`, which puts a lock back on the hook path. When the lock is held, it
@@ -287,13 +291,15 @@ After the idle interval with an empty queue and an empty `queueOwed`:
 A producer renames its record, then checks the lock (3.3). A record renamed before step 2 is seen in step 2; one renamed
 after it is followed by a check that runs after step 1, which finds the lock free, so the producer starts a worker that
 waits up to 5 seconds for the lock, or finds it held by a process that took it after step 1: a worker lists the queue
-after taking it, and a command applies the pending records after taking over. A scheduled publish is already held by
-the deferred flush the sync spawned.
+after taking it, and a command lists it once more when it leaves, after releasing the lock (next paragraph and 3.7's
+exit order), which also covers a record renamed after the command's own takeover listing. A scheduled publish is
+already held by the deferred flush the sync spawned.
 
-A command that holds the lock leaves in the same order (3.7): it releases the lock, lists the queue once more and starts
-a worker if a record is there. The argument is the same: a producer that renamed its record while the command held the
-lock, and so started no worker, renamed it before that listing, which sees it. A record renamed after the listing is
-followed by a check that runs after the release, which finds the lock free or held by a later holder that applies it.
+A command that holds the lock leaves in the same order (3.7): it notes whether owed work remains, releases the lock,
+lists the queue once more and starts a worker if owed work remained or a record is there. The argument is the same: a
+producer that renamed its record while the command held the lock, and so started no worker, renamed it before that
+listing, which sees it. A record renamed after the listing is followed by a check that runs after the release, which
+finds the lock free or held by a later holder that applies it.
 
 ### 3.7 Taking over
 
@@ -506,15 +512,18 @@ The worker's log lines (3.11). `status` output does not change.
   the dsh append (it waits for the log lock and carries the record id) and the reader with its line schema (the optional
   `id`, repeated ids skipped) move to a module that the worker, the commands and `src/usage/scan-dsh.ts` import;
   `src/cli/hook-context.ts` and `src/sources.ts`, split as 3.2 states: the built-in table keeps only the resolvers (and
-  the `scanEnv` names), and the built-in scanners and `billableSources` move to the new `src/usage/billable-sources.ts`,
-  which `src/cli/usage-badge.ts` and `src/cli/commands/usage.ts` import; `src/cli/commands/hook.ts` (the direct
-  application path moves behind a dynamic `import()`, so before Q1b replaces that path the hook's static graph reaches
-  no state store, schema, dsh log or scanner module; it still reaches the kit lock through the log lock, Tests);
+  the `scanEnv` names, which the scanners import from there, 3.2), and the built-in scanners and `billableSources` move
+  to the new `src/usage/billable-sources.ts`, which `src/cli/usage-badge.ts` and `src/cli/commands/usage.ts` import;
+  `src/cli/commands/hook.ts` (the direct application path moves behind a dynamic `import()`, so before Q1b replaces that
+  path the hook's static graph reaches no state store, schema, dsh log or scanner module; it still reaches the kit lock
+  through the log lock, Tests);
   `src/cli/usage-badge.ts` (an abort signal and a completion result), `package.json` (+`@rivus/agent-kit-collab` at the
   version of `@rivus/agent-kit`, both at the kit release with the lock check (6.1), because collab's peer range spans
   one kit minor, as `^0.13.0` for collab 0.13.0; +`zod` at the kit's range, `^4.6.5`, shared with the kit so the
   lockfile resolves one copy), `pnpm-workspace.yaml` and `CONTRIBUTING.md` (`@rivus/agent-kit-collab` added to
-  `minimumReleaseAgeExclude`, as the owner decided for Plan 0002's collab release-age exclusion), tests.
+  `minimumReleaseAgeExclude`, as the owner decided for Plan 0002's collab release-age exclusion), `docs/architecture.md`
+  (the state and log locks on the kit's process lock, the source table's built-in resolvers without scanners, and
+  `billableSources` with the built-in scanner table in `src/usage/billable-sources.ts`), tests.
 - The worker runs from tests and from `agent-presence worker`; nothing writes records yet, so behavior does not change.
   The hook still runs the direct path, now loaded at run time; Q1a is not released on its own (4.1).
 - Tests: 5.2's worker checks. `test/hook-graph.test.ts` adds `@rivus/agent-kit-collab/process-lock` and
@@ -530,7 +539,8 @@ The worker's log lines (3.11). `status` output does not change.
 - Files: `src/cli/commands/hook.ts` (the producer, through a static import of `src/queue/produce.ts`; it no longer loads
   the direct path), `src/sources.ts` (diagnostics returned instead of written), `src/cli/hook-output.ts` (error record),
   `src/cli/app.ts` (`worker`), `src/cli/commands/{status,reset,flush,update,uninstall}.ts` (takeover), `src/setup.ts`
-  (tombstone removal), `docs/architecture.md`, a changeset.
+  (tombstone removal), `docs/architecture.md` (the hook runtime: producer, queue, worker, takeover and tombstone), a
+  changeset.
 - Tests: every scenario in 6.2. `test/hook-graph.test.ts`'s allowlist stays exactly `@rivus/agent-kit/harness/events`,
   `@rivus/agent-kit-collab/process-lock` and `@rivus/agent-kit/node`, now for the producer's lock check (3.3) and the
   platform it takes, and still for the log lock that `src/cli/io.ts` reaches; never `zod`. Its walk reaches

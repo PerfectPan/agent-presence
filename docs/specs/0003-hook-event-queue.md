@@ -44,7 +44,8 @@ interpreted (Spec and Plan 0002).
   starts a worker when none is alive. The worker exits after the idle interval (default 5 minutes) once no event and no
   follow-up work is pending; a publish scheduled for later is handed to the deferred flush, as the hook hands it today.
 - While a worker runs, a recorded event is applied to the state within 1 second, also while a publish or a usage scan is
-  in progress. After a worker crash, the events pending at that moment are applied when a later hook or command runs.
+  in progress. After a worker crash, or after a command that took over from the worker is killed (for example by a
+  signal) before it exits, the events pending at that moment are applied when a later hook or command runs.
 - The commands that change state (`status`, `reset`, `flush`, `update`, including the shutdown watcher's `reset`) take
   over from a running worker, apply every event recorded before them, make their own change and report as they do today,
   with every option keeping its meaning. A running worker hands over within about a second. `reset` leaves usage
