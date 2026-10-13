@@ -561,8 +561,9 @@ request, a record with a higher `v`, the tombstone, a holder of its release or a
   - the stop request files `<state>.worker.stop.<token>` (a decimal pid; touched every 2 seconds while its command
     waits and written again if gone; live while that pid is alive and the file's modification time is within 6 seconds
     of the reader's clock), 3.7;
-  - the state lock `<state>.lock.db` and the log locks (Plan 0002 3.1), whose paths both releases must share for their
-    locks to exclude each other, and the record id in a dsh usage line (3.5);
+  - the state lock `<state>.lock.db` and the log locks `<log>.lock.db` next to each log (`agent-presence.log.lock.db`
+    and `usage-events.log.lock.db` by default, Plan 0002 3.1), whose paths both releases must share for their locks to
+    exclude each other, and the record id in a dsh usage line (3.5);
   - the state fields `queueApplied` and `queueOwed`, which later releases only add to and every release writes back
     with what it does not know, and the rule that a release works off only the owed work it can do (3.5).
 
