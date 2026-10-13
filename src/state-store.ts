@@ -9,6 +9,8 @@ import { acquireLock } from './process-lock.js';
 import { createEmptyState, type AgentSession, type PresenceState } from './state.js';
 
 const STATE_LOCK_WAIT_MS = 2_000;
+// From its 50 ms default the kit's backoff reaches 800 ms and times waiters out under contention; from 5 ms, 80 ms.
+const STATE_LOCK_RETRY_MS = 5;
 
 // The state file is untrusted disk JSON: it may be hand-edited, truncated, or written by another release. A field or
 // map entry whose value does not parse loads as missing, never as a failed load, and top-level fields this release
@@ -135,7 +137,7 @@ export async function withStateLock<T>(
 
   let lock;
   try {
-    lock = await acquireLock(lockPath, signal);
+    lock = await acquireLock(lockPath, signal, { retryMs: STATE_LOCK_RETRY_MS });
   } catch (error) {
     throw signal.aborted ? new Error(`timed out waiting for state lock: ${lockPath}`) : error;
   }
