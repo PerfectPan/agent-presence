@@ -6,7 +6,7 @@ export const LOG_MAX_BYTES = 5 * 1024 * 1024;
 export const LOG_RETAIN_BYTES = 1024 * 1024;
 const LOG_LOCK_RETRY_MS = 10;
 /** How long an append waits for the log lock by default before it skips the line. */
-export const LOG_LOCK_WAIT_MS = 2_500;
+const LOG_LOCK_WAIT_MS = 2_500;
 
 function hasNodeErrorCode(error: unknown, code: string): error is NodeJS.ErrnoException {
   return error instanceof Error && 'code' in error && error.code === code;
