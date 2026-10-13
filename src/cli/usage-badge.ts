@@ -6,7 +6,7 @@ import {
   type AppConfig
 } from '../config.js';
 import { referencedUsageWindows } from '../render.js';
-import { billableSources } from '../sources.js';
+import { billableSources } from '../usage/billable-sources.js';
 import { calendarDaysBetween } from '../time.js';
 import { renderUsageBadge } from '../usage/format.js';
 import { collectWindowUsage } from '../usage/index.js';

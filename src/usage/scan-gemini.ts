@@ -3,6 +3,7 @@ import { readdir, readFile, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 
+import { SCAN_ENV } from '../cli/hook-context.js';
 import { forEachJsonl, parseTimestamp } from './read-jsonl.js';
 import type { ScanOptions } from './scan-claude.js';
 import type { UsageRecord } from './types.js';
@@ -12,7 +13,7 @@ import type { UsageRecord } from './types.js';
  * Chat transcripts live under `<home>/tmp/<projectHash>/chats/`.
  */
 function defaultGeminiRoot(): string {
-  const home = process.env.GEMINI_CLI_HOME;
+  const home = process.env[SCAN_ENV.geminiCliHome];
   const base = home && home.trim().length > 0 ? home.trim() : join(homedir(), '.gemini');
   return join(base, 'tmp');
 }

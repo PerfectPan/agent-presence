@@ -27,7 +27,7 @@ export interface CollectOptions {
   pricing?: PricingOverrides;
   /**
    * The billable sources to scan, in display order — resolved once by the caller
-   * via `billableSources()` (see `src/sources.ts`) so every window in a run uses
+   * via `billableSources()` (see `src/usage/billable-sources.ts`) so every window in a run uses
    * the same set and order.
    */
   sources: BillableSource[];

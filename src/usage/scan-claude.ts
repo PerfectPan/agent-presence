@@ -1,6 +1,7 @@
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 
+import { SCAN_ENV } from '../cli/hook-context.js';
 import { forEachJsonl, listJsonlFiles, parseTimestamp } from './read-jsonl.js';
 import type { ScanWindow, UsageRecord } from './types.js';
 
@@ -9,7 +10,7 @@ export type ScanOptions = ScanWindow;
 
 /** Default Claude transcript root, honouring `CLAUDE_CONFIG_DIR` like ccusage. */
 export function defaultClaudeRoot(): string {
-  const configDir = process.env.CLAUDE_CONFIG_DIR;
+  const configDir = process.env[SCAN_ENV.claudeConfigDir];
   if (configDir && configDir.trim().length > 0) {
     return join(configDir.trim(), 'projects');
   }

@@ -22,9 +22,10 @@ export interface ScanWindow {
 
 /**
  * A merged-table source that exposes usage scanning. `billableSources()` in
- * `src/sources.ts` resolves these from the source table (in table order) and
- * `collectWindowUsage()` iterates them. Kept in this leaf module so both
- * `src/usage/` and `src/sources.ts` can name it without an import cycle.
+ * `src/usage/billable-sources.ts` resolves these from the source table (in
+ * table order) and `collectWindowUsage()` iterates them. Kept in this leaf
+ * module, like the other usage types, so `src/usage/` and the source table can
+ * name them without an import cycle.
  */
 export interface BillableSource {
   id: string;

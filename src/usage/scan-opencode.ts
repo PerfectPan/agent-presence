@@ -2,6 +2,7 @@ import { readdir, readFile, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 
+import { SCAN_ENV } from '../cli/hook-context.js';
 import type { ScanOptions } from './scan-claude.js';
 import type { UsageRecord } from './types.js';
 
@@ -11,7 +12,7 @@ import type { UsageRecord } from './types.js';
  * `<dataHome>/opencode`.
  */
 function defaultOpenCodeDir(): string {
-  const xdg = process.env.XDG_DATA_HOME;
+  const xdg = process.env[SCAN_ENV.xdgDataHome];
   const base = xdg && xdg.trim().length > 0 ? xdg.trim() : join(homedir(), '.local', 'share');
   return join(base, 'opencode');
 }

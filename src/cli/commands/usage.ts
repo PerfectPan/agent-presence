@@ -1,5 +1,5 @@
 import { loadConfig, usagePricingOverrides } from '../../config.js';
-import { billableSources } from '../../sources.js';
+import { billableSources } from '../../usage/billable-sources.js';
 import { formatCost, formatTokens } from '../../usage/format.js';
 import { collectWindowUsage, type WindowUsage } from '../../usage/index.js';
 import { hasFlag, optionValue } from '../args.js';
