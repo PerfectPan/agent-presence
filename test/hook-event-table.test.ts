@@ -124,7 +124,8 @@ function toSnakeEvent(event: string): string {
 
 interface HookRun {
   source: string;
-  event: string;
+  /** Omitted to run without --event, so the source resolver names the event. */
+  event?: string;
   payload: unknown;
   env?: Record<string, string>;
   /** Installed Codex hooks run without --silent; everything else is silent. */
@@ -137,7 +138,10 @@ async function runHook(run: HookRun): Promise<void> {
     process.env[key] = value;
   }
   stdoutWrites.length = 0;
-  const args = ['--source', run.source, '--event', run.event];
+  const args = ['--source', run.source];
+  if (run.event !== undefined) {
+    args.push('--event', run.event);
+  }
   if (!run.loud) {
     args.push('--silent');
   }
@@ -1134,6 +1138,39 @@ describe('hook event table — Grok (driven via --event, presence-only source)',
       runningSession('grok', 'grok-session-1:subagent:sub-1')
     );
     await run('SubagentStop', { subagentId: 'sub-1' });
+
+    const state = await readState();
+    expect(state.sessions['grok-session-1:subagent:sub-1']).toMatchObject({
+      status: 'finished',
+      finishedAt: NOW
+    });
+    expect(state.sessions['grok-session-1']).toMatchObject({ status: 'running' });
+    expect(state.usageBadgesAt).toBeUndefined();
+  });
+});
+
+describe('hook --source grok without --event', () => {
+  const run = (hookEventName: string, extra: Record<string, unknown> = {}) =>
+    runHook({
+      source: 'grok',
+      payload: { hookEventName, sessionId: 'grok-session-1', cwd: '/work/repo', ...extra }
+    });
+
+  it('stop finishes the running session and refreshes the usage badge', async () => {
+    await seedSessions(runningSession('grok', 'grok-session-1'));
+    await run('stop', { reason: 'end_turn' });
+
+    const state = await readState();
+    expect(state.sessions['grok-session-1']).toMatchObject({ status: 'finished', finishedAt: NOW });
+    expect(state.usageBadgesAt).toBe(NOW);
+  });
+
+  it('subagent_stop finishes only the subagent session', async () => {
+    await seedSessions(
+      runningSession('grok', 'grok-session-1'),
+      runningSession('grok', 'grok-session-1:subagent:sub-1')
+    );
+    await run('subagent_stop', { subagentId: 'sub-1' });
 
     const state = await readState();
     expect(state.sessions['grok-session-1:subagent:sub-1']).toMatchObject({

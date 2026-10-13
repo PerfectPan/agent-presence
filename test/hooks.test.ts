@@ -196,7 +196,7 @@ describe('opencode hook context', () => {
 });
 
 describe('Grok hook context', () => {
-  it('reads Grok snake_case wire names from the payload', () => {
+  it('maps a Grok snake_case wire name from the payload to the presence event', () => {
     expect(
       resolveGrokHookContext({
         hook_event_name: 'user_prompt_submit',
@@ -204,7 +204,7 @@ describe('Grok hook context', () => {
         cwd: '/repo'
       })
     ).toEqual({
-      event: 'user_prompt_submit',
+      event: 'UserPromptSubmit',
       project: '/repo',
       sessionId: 'grok-session-1'
     });
@@ -218,7 +218,7 @@ describe('Grok hook context', () => {
         cwd: '/repo'
       })
     ).toEqual({
-      event: 'stop',
+      event: 'Stop',
       project: '/repo',
       sessionId: 'grok-session-2'
     });
@@ -235,7 +235,7 @@ describe('Grok hook context', () => {
         }
       )
     ).toEqual({
-      event: 'session_start',
+      event: 'SessionStart',
       project: '/env-repo',
       sessionId: 'env-grok-session'
     });
@@ -256,7 +256,7 @@ describe('Grok hook context', () => {
         }
       )
     ).toEqual({
-      event: 'stop',
+      event: 'Stop',
       project: '/repo',
       sessionId: 'payload-grok-session'
     });
@@ -271,7 +271,7 @@ describe('Grok hook context', () => {
         cwd: '/repo'
       })
     ).toEqual({
-      event: 'subagent_start',
+      event: 'SubagentStart',
       project: '/repo',
       sessionId: 'grok-session-1:subagent:sub-1'
     });
@@ -286,7 +286,7 @@ describe('Grok hook context', () => {
         cwd: '/repo'
       })
     ).toEqual({
-      event: 'subagent_stop',
+      event: 'SubagentStop',
       project: '/repo',
       sessionId: 'grok-session-1:subagent:explorer'
     });
@@ -301,7 +301,17 @@ describe('Grok hook context', () => {
         cwd: '/repo'
       })
     ).toEqual({
-      event: 'stop',
+      event: 'Stop',
+      project: '/repo',
+      sessionId: 'grok-session-1'
+    });
+  });
+
+  it('returns a name outside the Grok event table as Grok sent it', () => {
+    expect(
+      resolveGrokHookContext({ hookEventName: 'notification', sessionId: 'grok-session-1', cwd: '/repo' })
+    ).toEqual({
+      event: 'notification',
       project: '/repo',
       sessionId: 'grok-session-1'
     });
@@ -309,7 +319,7 @@ describe('Grok hook context', () => {
 
   it('routes through resolveHookContext when source is grok', () => {
     expect(resolveHookContext('grok', { hookEventName: 'stop', sessionId: 'grok-session-3', cwd: '/repo' })).toEqual({
-      event: 'stop',
+      event: 'Stop',
       project: '/repo',
       sessionId: 'grok-session-3'
     });

@@ -1,4 +1,5 @@
 import { builtinHookDialects, readHookEvent, type LifecycleEvent } from '@rivus/agent-kit/harness/events';
+import { GROK_EVENTS } from '../hooks/grok.js';
 
 // Presence keeps the internal event names normalizeEvent, applyAgentEvent, and
 // isSessionBoundaryEvent already understand. Each agent's table is Plan 0002
@@ -42,30 +43,6 @@ const GEMINI_EVENTS: EventTable = {
   BeforeTool: 'Heartbeat',
   AfterTool: 'Heartbeat',
   AfterAgent: 'Stop'
-};
-
-const GROK_EVENTS: EventTable = {
-  session_start: 'SessionStart',
-  user_prompt_submit: 'UserPromptSubmit',
-  pre_tool_use: 'PreToolUse',
-  post_tool_use: 'PostToolUse',
-  stop: 'Stop',
-  stop_failure: 'StopFailure',
-  session_end: 'SessionEnd',
-  subagent_start: 'SubagentStart',
-  subagent_stop: 'SubagentStop',
-  // Registration keys. nativeEvent is usually the snake_case wire name; the
-  // PascalCase spelling is the same event, and phase fallback would turn
-  // UserPromptSubmit into a session start and SubagentStop into a boundary.
-  SessionStart: 'SessionStart',
-  UserPromptSubmit: 'UserPromptSubmit',
-  PreToolUse: 'PreToolUse',
-  PostToolUse: 'PostToolUse',
-  Stop: 'Stop',
-  StopFailure: 'StopFailure',
-  SessionEnd: 'SessionEnd',
-  SubagentStart: 'SubagentStart',
-  SubagentStop: 'SubagentStop'
 };
 
 const OPENCODE_EVENTS: EventTable = {

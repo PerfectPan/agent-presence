@@ -924,6 +924,18 @@ describe('hook --agent grok', () => {
     expect(state.sessions['grok-session-1']).toMatchObject({ status: 'running' });
     expect(state.usageBadgesAt).toBeUndefined();
   });
+
+  it('a PascalCase SubagentStop spelling finishes only the subagent session', async () => {
+    await seedSessions(
+      runningSession('grok', 'grok-session-1'),
+      runningSession('grok', 'grok-session-1:subagent:sub-1')
+    );
+    await run('SubagentStop', { subagentId: 'sub-1' });
+    const state = await readState();
+    expect(state.sessions['grok-session-1:subagent:sub-1']).toMatchObject({ status: 'finished', finishedAt: NOW });
+    expect(state.sessions['grok-session-1']).toMatchObject({ status: 'running' });
+    expect(state.usageBadgesAt).toBeUndefined();
+  });
 });
 
 describe('hook --agent sniffing', () => {
