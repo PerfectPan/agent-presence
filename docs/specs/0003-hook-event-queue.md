@@ -43,8 +43,9 @@ interpreted (Spec and Plan 0002).
 - A background worker (`agent-presence worker`) applies recorded events. At most one worker applies events per state
   file. A hook starts a worker unless a worker, or a command that took over, of the hook's release or a newer one is
   applying events; of several workers started at once, one applies events and the others exit without applying any.
-  The worker exits after the idle interval (default 5 minutes) once no event and no follow-up work is pending; a
-  publish scheduled for later is handed to the deferred flush, as the hook hands it today.
+  The worker exits after the idle interval (default 5 minutes) once no event and no follow-up work is pending, apart
+  from follow-up work that only a newer release can do (see the upgrade requirement below); a publish scheduled for
+  later is handed to the deferred flush, as the hook hands it today.
 - While a worker runs, a recorded event is applied to the state within 1 second, also while a publish or a usage scan is
   in progress. After a worker crash, the events pending at that moment are applied when a later hook or command runs.
   So are the events pending when a command that took over from the worker is killed (for example by a signal) before
@@ -58,12 +59,16 @@ interpreted (Spec and Plan 0002).
   wait (10 seconds, for example because a worker is stuck) fails as a command failure does today.
 - After an upgrade between two releases that both record events, a process of the older release can still apply events
   for a while, for example a command that was already running, a publish the older release had scheduled, or a command
-  run from another installed release. It cannot apply events that the newer release recorded in a newer form. A command
-  of the older release makes its change without the newer events pending when it takes over, and they are applied
-  after it, so after a `reset` of the older release, a session that such an event starts is running. While commands of
-  the older release keep the worker's place for more than 60 seconds, alone or one after another, or when a process of
-  the older release is the next to apply events right after a crash, newer events wait until a later hook or command
-  runs. These cases wait for the owner to confirm them (paired Plan, section 7).
+  run from another installed release. It cannot apply events that the newer release recorded in a newer form, nor do
+  follow-up work that only the newer release can do, such as the usage refresh of an agent the newer release added; it
+  leaves that work pending and keeps it when it saves the state. A command of the older release makes its change
+  without the newer events pending when it takes over, and they are applied after it, so after a `reset` of the older
+  release, a session that such an event starts is running. While commands of the older release keep the worker's place
+  for more than 60 seconds, alone or one after another, or when a process of the older release is the next to apply
+  events right after a crash, newer events wait until a later hook or command runs. Follow-up work that only the newer
+  release can do waits while a process of the older release keeps the worker's place, and a worker of the older
+  release can exit when idle while that work is pending; a later hook or command gets it done. These cases wait for
+  the owner to confirm them (paired Plan, section 7).
 - `uninstall --all` stops the worker and removes recorded events together with the state; an event recorded by a hook
   that was already running when `uninstall --all` began is never applied. Until `setup` runs again,
   hooks that still fire record nothing, no worker starts, and the commands that change state change nothing. `uninstall`
