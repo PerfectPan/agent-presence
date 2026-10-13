@@ -1,7 +1,7 @@
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vite-plus/test';
 
 import { collectWindowUsage, resolveRecordCost, type BillableSource, type UsageRecord } from '../src/usage/index.js';
 import { scanClaude } from '../src/usage/scan-claude.js';

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vite-plus/test';
 import { resolveRecordCost } from '../src/usage/index.js';
 import type { PricingOverrides, UsageRecord } from '../src/usage/index.js';
 
