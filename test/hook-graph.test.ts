@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseAst } from 'vite-plus';
@@ -12,11 +12,17 @@ const hookCommandEntry = resolve(repoRoot, 'src/cli/commands/hook.ts');
 // and the npm entries in hookGraphPackages (docs/architecture.md, "CLI"). Any
 // other bare specifier is an npm package loaded on every hook run, so the walk
 // fails on it; this keeps `effect`, `zod`, and `@clack/prompts` out. The
-// forbidden modules are the setup/installer cluster, the Clack wrapper, and
-// the helpers only setup, uninstall, and login use. The bin entry and the
+// forbidden modules are the setup/installer cluster, the Clack wrapper, the
+// helpers only setup, uninstall, and login use, and the modules that hold
+// schemas or scan transcripts: the state store, the usage events log, the
+// billable source table, and every usage scanner. The bin entry and the
 // dispatcher are walked as well as the hook command, because a static setup
 // import in `src/cli/app.ts` pulls the whole graph into every hook run just as
 // one in the hook command does.
+const usageDir = resolve(repoRoot, 'src/usage');
+const usageScanners = readdirSync(usageDir)
+  .filter((name) => name.startsWith('scan-') && name.endsWith('.ts'))
+  .map((name) => resolve(usageDir, name));
 const forbiddenHookGraphModules = [
   'src/setup.ts',
   'src/installers.ts',
@@ -29,8 +35,13 @@ const forbiddenHookGraphModules = [
   'src/cli/ui.ts',
   'src/cli/commands/setup.ts',
   'src/cli/commands/uninstall.ts',
-  'src/cli/commands/login.ts'
-].map((relative) => resolve(repoRoot, relative));
+  'src/cli/commands/login.ts',
+  'src/state-store.ts',
+  'src/usage-events-log.ts',
+  'src/usage/billable-sources.ts'
+]
+  .map((relative) => resolve(repoRoot, relative))
+  .concat(usageScanners);
 const scriptsDir = resolve(repoRoot, 'scripts');
 // Every npm entry the hook path loads statically, by exact specifier. A batch
 // that brings a package into the hook path adds it here; `effect` and `zod`
@@ -146,7 +157,9 @@ describe('static import scanning', () => {
 });
 
 describe('hook static import graph', () => {
-  it('loads only Node built-ins and the allowed npm entries and never reaches setup, installer, or prompt modules', () => {
+  it('loads only Node built-ins and the allowed npm entries and never reaches setup, installer, prompt, schema, or scanner modules', () => {
+    // The scanner list comes from a directory listing; an empty one would forbid nothing.
+    expect(usageScanners).toContain(resolve(usageDir, 'scan-dsh.ts'));
     const graph = walkStaticGraph([cliEntry, hookCommandEntry]);
 
     expect(graph.files).toEqual(expect.arrayContaining([cliEntry, hookCommandEntry, deepHookModule]));
