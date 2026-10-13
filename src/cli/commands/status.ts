@@ -6,6 +6,13 @@ import { readCredential } from '../../secret.js';
 import { getActiveSessions, loadState, saveState, withStateLock } from '../../state.js';
 import { hasFlag, optionValue } from '../args.js';
 
+function requirePayload(payload: Record<string, unknown> | undefined): Record<string, unknown> {
+  if (!payload) {
+    throw new Error('internal error: missing status payload');
+  }
+  return payload;
+}
+
 export async function printStatus(args: string[]): Promise<void> {
   const config = await loadConfig();
   const activeProvider = providerId(config, optionValue(args, '--provider'));
@@ -60,11 +67,4 @@ export async function printStatus(args: string[]): Promise<void> {
   }
 
   console.log(JSON.stringify(requirePayload(payload), null, 2));
-}
-
-function requirePayload(payload: Record<string, unknown> | undefined): Record<string, unknown> {
-  if (!payload) {
-    throw new Error('internal error: missing status payload');
-  }
-  return payload;
 }

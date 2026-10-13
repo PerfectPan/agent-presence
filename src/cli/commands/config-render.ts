@@ -4,6 +4,27 @@ import { isInteractiveTerminal, promptText } from '../ui.js';
 
 const RENDER_OPTIONS = ['--zero', '--one', '--many'];
 
+async function promptTemplate(message: string, initialValue?: string): Promise<string | undefined> {
+  const value = await promptText({
+    message,
+    initialValue,
+    placeholder: initialValue,
+    validate: (input) => {
+      if (!input?.trim()) {
+        return 'template cannot be empty';
+      }
+      return undefined;
+    }
+  });
+  return value;
+}
+
+function setOptionalTemplate(target: Record<string, string>, key: string, value: string | undefined): void {
+  if (value !== undefined) {
+    target[key] = value;
+  }
+}
+
 export async function configureRender(args: string[]): Promise<void> {
   const config = await loadConfig();
   const reset = hasFlag(args, '--reset');
@@ -39,25 +60,4 @@ export async function configureRender(args: string[]): Promise<void> {
       2
     )
   );
-}
-
-async function promptTemplate(message: string, initialValue?: string): Promise<string | undefined> {
-  const value = await promptText({
-    message,
-    initialValue,
-    placeholder: initialValue,
-    validate: (input) => {
-      if (!input?.trim()) {
-        return 'template cannot be empty';
-      }
-      return undefined;
-    }
-  });
-  return value;
-}
-
-function setOptionalTemplate(target: Record<string, string>, key: string, value: string | undefined): void {
-  if (value !== undefined) {
-    target[key] = value;
-  }
 }

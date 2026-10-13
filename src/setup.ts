@@ -55,6 +55,14 @@ export interface RunSetupScriptsOptions {
   runner?: (scriptPath: string) => Promise<void>;
 }
 
+function defaultResolveScriptPath(scriptName: string): string {
+  return fileURLToPath(new URL(`../scripts/${scriptName}`, import.meta.url));
+}
+
+async function defaultRunner(scriptPath: string): Promise<void> {
+  await execFileAsync(process.execPath, [scriptPath], { env: process.env });
+}
+
 export async function runSetupScripts(options: RunSetupScriptsOptions = {}): Promise<SetupScriptResult[]> {
   const scriptNames = options.scriptNames ?? platformSetupScriptNames();
   const resolveScriptPath = options.resolveScriptPath ?? defaultResolveScriptPath;
@@ -75,12 +83,4 @@ export async function runUninstallScripts(options: RunSetupScriptsOptions = {}):
     ...options,
     scriptNames: options.scriptNames ?? platformUninstallScriptNames()
   });
-}
-
-function defaultResolveScriptPath(scriptName: string): string {
-  return fileURLToPath(new URL(`../scripts/${scriptName}`, import.meta.url));
-}
-
-async function defaultRunner(scriptPath: string): Promise<void> {
-  await execFileAsync(process.execPath, [scriptPath], { env: process.env });
 }

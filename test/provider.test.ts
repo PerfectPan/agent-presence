@@ -79,6 +79,26 @@ describe('l.garyyang request logging', () => {
     }
   });
 
+  async function useTempLogFile(): Promise<string> {
+    tempDir = await mkdtemp(join(tmpdir(), 'agent-presence-provider-test-'));
+    const logPath = join(tempDir, 'agent-presence.log');
+    process.env.AGENT_PRESENCE_LOG_FILE = logPath;
+    return logPath;
+  }
+
+  async function waitForLogLine(path: string): Promise<string> {
+    await expect
+      .poll(async () => {
+        try {
+          return (await readFile(path, 'utf8')).trim();
+        } catch {
+          return '';
+        }
+      })
+      .not.toBe('');
+    return (await readFile(path, 'utf8')).trim();
+  }
+
   it('logs provider requests without leaking tokens or full slot values', async () => {
     const logPath = await useTempLogFile();
     vi.stubGlobal(
@@ -157,24 +177,4 @@ describe('l.garyyang request logging', () => {
       })
       .toBe('');
   });
-
-  async function useTempLogFile(): Promise<string> {
-    tempDir = await mkdtemp(join(tmpdir(), 'agent-presence-provider-test-'));
-    const logPath = join(tempDir, 'agent-presence.log');
-    process.env.AGENT_PRESENCE_LOG_FILE = logPath;
-    return logPath;
-  }
-
-  async function waitForLogLine(path: string): Promise<string> {
-    await expect
-      .poll(async () => {
-        try {
-          return (await readFile(path, 'utf8')).trim();
-        } catch {
-          return '';
-        }
-      })
-      .not.toBe('');
-    return (await readFile(path, 'utf8')).trim();
-  }
 });

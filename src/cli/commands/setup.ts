@@ -24,6 +24,30 @@ import {
 import { login } from './login.js';
 import { resolveSignatureUrl } from './url.js';
 
+/**
+ * dsh presence + usage is opt-in: prompt to install the dsh plugin when dsh
+ * is detected. Non-interactive terminals skip it (use `pnpm run
+ * install:dsh-plugin` for automation).
+ */
+async function maybeInstallDshPlugin(): Promise<void> {
+  if (!isInteractiveTerminal()) {
+    return;
+  }
+  const dshHome = process.env.DSH_HOME?.trim() || join(homedir(), '.dsh');
+  if (!existsSync(dshHome)) {
+    return;
+  }
+  const install = await promptConfirm('Install the dsh plugin for presence + token usage reporting?');
+  if (!install) {
+    return;
+  }
+  const result = await installDshPlugin(resolveDshPluginPaths());
+  showInfo(`setup installed: dsh plugin (${result.pluginPath})`);
+  if (result.patchError) {
+    showNote(`could not update dsh patch at ${result.patchPath}: ${result.patchError}`, 'dsh plugin');
+  }
+}
+
 export async function setup(args: string[]): Promise<void> {
   const skipLogin = hasFlag(args, '--skip-login') || hasFlag(args, '--hooks-only');
   const forceLogin = hasFlag(args, '--login') && !skipLogin;
@@ -89,13 +113,15 @@ export async function setup(args: string[]): Promise<void> {
       try {
         // The token prompt (if needed) runs via acquireToken before any
         // spinner starts, so the Clack text input is not clobbered.
-        let promptShown = false;
+        // The flag lives in an object because it is mutated inside the
+        // acquireToken callback below.
+        const promptState = { shown: false };
         const result = await publishMagicBuilderFaas({
           acquireToken: async () => {
             if (!isInteractiveTerminal()) {
               return undefined;
             }
-            promptShown = true;
+            promptState.shown = true;
             showNote(MAGIC_TOKEN_HELP, 'Magic-Builder token');
             return promptText({
               message: 'Paste your Magic-Builder token:',
@@ -103,7 +129,7 @@ export async function setup(args: string[]): Promise<void> {
             });
           }
         });
-        if (promptShown) {
+        if (promptState.shown) {
           showInfo('magic-builder token saved to OS keyring');
         }
         showInfo(
@@ -126,28 +152,4 @@ export async function setup(args: string[]): Promise<void> {
   }
 
   finishOutro('setup: ok');
-}
-
-/**
- * dsh presence + usage is opt-in: prompt to install the dsh plugin when dsh
- * is detected. Non-interactive terminals skip it (use `pnpm run
- * install:dsh-plugin` for automation).
- */
-async function maybeInstallDshPlugin(): Promise<void> {
-  if (!isInteractiveTerminal()) {
-    return;
-  }
-  const dshHome = process.env.DSH_HOME?.trim() || join(homedir(), '.dsh');
-  if (!existsSync(dshHome)) {
-    return;
-  }
-  const install = await promptConfirm('Install the dsh plugin for presence + token usage reporting?');
-  if (!install) {
-    return;
-  }
-  const result = await installDshPlugin(resolveDshPluginPaths());
-  showInfo(`setup installed: dsh plugin (${result.pluginPath})`);
-  if (result.patchError) {
-    showNote(`could not update dsh patch at ${result.patchPath}: ${result.patchError}`, 'dsh plugin');
-  }
 }

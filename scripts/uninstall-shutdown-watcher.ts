@@ -10,6 +10,17 @@ const execFileAsync = promisify(execFile);
 const LABEL = 'work.rivus.agent-presence.power-watch';
 const LEGACY_LABEL = 'work.garyyang.agent-signature.shutdown-watch';
 
+async function launchctl(args: string[]): Promise<void> {
+  await execFileAsync('launchctl', args);
+}
+
+function currentUid(): number {
+  if (!process.getuid) {
+    throw new Error('process.getuid is unavailable on this platform');
+  }
+  return process.getuid();
+}
+
 async function main(): Promise<void> {
   assertMacOS();
   const home = homedir();
@@ -38,17 +49,6 @@ async function main(): Promise<void> {
   await rm(legacyScriptPath, { force: true });
   await rm(legacyPowerWatcherPath, { force: true });
   console.log(`removed power watcher: ${plistPath}`);
-}
-
-async function launchctl(args: string[]): Promise<void> {
-  await execFileAsync('launchctl', args);
-}
-
-function currentUid(): number {
-  if (!process.getuid) {
-    throw new Error('process.getuid is unavailable on this platform');
-  }
-  return process.getuid();
 }
 
 main().catch((error: unknown) => {

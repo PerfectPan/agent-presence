@@ -53,12 +53,71 @@
   addEventListener('DOMContentLoaded', () => {
     document.body.append(overlay, hint, toast);
   });
-  if (document.body) {
-    document.body.append(overlay, hint, toast);
+  /** Nullable: injected from <head>, this runs before <body> exists. */
+  const body = /** @type {HTMLElement | null} */ (document.body);
+  if (body) {
+    body.append(overlay, hint, toast);
   }
 
   let target = null;
   const ignore = (el) => el === overlay || el === hint || el === toast;
+
+  function cssPath(el) {
+    const parts = [];
+    let n = el;
+    while (n && n.nodeType === 1 && n.tagName !== 'BODY' && parts.length < 4) {
+      let seg = n.tagName.toLowerCase();
+      if (n.id) {
+        seg = '#' + n.id;
+        parts.unshift(seg);
+        break;
+      }
+      const cls = n.className && n.className.toString().trim().split(/\s+/).slice(0, 2).join('.');
+      if (cls) {
+        seg += '.' + cls;
+      }
+      const sibs = n.parentElement ? [...n.parentElement.children].filter((c) => c.tagName === n.tagName) : [];
+      if (sibs.length > 1) {
+        seg += `:nth-of-type(${sibs.indexOf(n) + 1})`;
+      }
+      parts.unshift(seg);
+      n = n.parentElement;
+    }
+    return parts.join(' > ');
+  }
+
+  let t;
+  function flash(msg) {
+    toast.textContent = msg;
+    toast.style.display = 'block';
+    clearTimeout(t);
+    t = setTimeout(() => (toast.style.display = 'none'), 1800);
+  }
+
+  async function copy(el) {
+    const cs = getComputedStyle(el);
+    const r = el.getBoundingClientRect();
+    const styles = PROPS.map((p) => `  ${p}: ${cs.getPropertyValue(p).trim()}`).join('\n');
+    const text = (el.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 90);
+    const blurb =
+      `## grabbed element\n` +
+      `- page: ${location.pathname}\n` +
+      `- selector: \`${cssPath(el)}\`\n` +
+      `- tag: <${el.tagName.toLowerCase()}>` +
+      (el.id ? ` id="${el.id}"` : '') +
+      (el.className ? ` class="${el.className.toString().trim()}"` : '') +
+      `\n` +
+      `- box: ${Math.round(r.width)}×${Math.round(r.height)} @ (${Math.round(r.left)}, ${Math.round(r.top)})\n` +
+      (text ? `- text: "${text}"\n` : '') +
+      `- computed styles:\n${styles}\n`;
+    try {
+      await navigator.clipboard.writeText(blurb);
+      flash('已复制元素 ✓  粘给 agent 即可');
+    } catch {
+      flash('复制失败(剪贴板权限?)— 见 console');
+      console.log(blurb);
+    }
+  }
 
   addEventListener(
     'mousemove',
@@ -108,61 +167,4 @@
     },
     true
   );
-
-  function cssPath(el) {
-    const parts = [];
-    let n = el;
-    while (n && n.nodeType === 1 && n.tagName !== 'BODY' && parts.length < 4) {
-      let seg = n.tagName.toLowerCase();
-      if (n.id) {
-        seg = '#' + n.id;
-        parts.unshift(seg);
-        break;
-      }
-      const cls = n.className && n.className.toString().trim().split(/\s+/).slice(0, 2).join('.');
-      if (cls) {
-        seg += '.' + cls;
-      }
-      const sibs = n.parentElement ? [...n.parentElement.children].filter((c) => c.tagName === n.tagName) : [];
-      if (sibs.length > 1) {
-        seg += `:nth-of-type(${sibs.indexOf(n) + 1})`;
-      }
-      parts.unshift(seg);
-      n = n.parentElement;
-    }
-    return parts.join(' > ');
-  }
-
-  async function copy(el) {
-    const cs = getComputedStyle(el);
-    const r = el.getBoundingClientRect();
-    const styles = PROPS.map((p) => `  ${p}: ${cs.getPropertyValue(p).trim()}`).join('\n');
-    const text = (el.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 90);
-    const blurb =
-      `## grabbed element\n` +
-      `- page: ${location.pathname}\n` +
-      `- selector: \`${cssPath(el)}\`\n` +
-      `- tag: <${el.tagName.toLowerCase()}>` +
-      (el.id ? ` id="${el.id}"` : '') +
-      (el.className ? ` class="${el.className.toString().trim()}"` : '') +
-      `\n` +
-      `- box: ${Math.round(r.width)}×${Math.round(r.height)} @ (${Math.round(r.left)}, ${Math.round(r.top)})\n` +
-      (text ? `- text: "${text}"\n` : '') +
-      `- computed styles:\n${styles}\n`;
-    try {
-      await navigator.clipboard.writeText(blurb);
-      flash('已复制元素 ✓  粘给 agent 即可');
-    } catch {
-      flash('复制失败(剪贴板权限?)— 见 console');
-      console.log(blurb);
-    }
-  }
-
-  let t;
-  function flash(msg) {
-    toast.textContent = msg;
-    toast.style.display = 'block';
-    clearTimeout(t);
-    t = setTimeout(() => (toast.style.display = 'none'), 1800);
-  }
 })();

@@ -21,6 +21,21 @@ interface HooksFile {
   hooks?: Record<string, HookGroup[]>;
 }
 
+function withoutAgentSignatureHooks(groups: HookGroup[]): HookGroup[] {
+  const next: HookGroup[] = [];
+  for (const group of groups) {
+    const hooks = (group.hooks ?? []).filter((hook) => !isAgentSignatureCommand(hook.command));
+    if (hooks.length > 0) {
+      next.push({ ...group, hooks });
+    }
+  }
+  return next;
+}
+
+async function loadHooks(path: string): Promise<HooksFile> {
+  return readJsonFile<HooksFile>(path, { hooks: {} });
+}
+
 async function main(): Promise<void> {
   assertSupportedPlatform();
   const hooksPath = process.env.CODEX_HOOKS_FILE ?? join(homedir(), '.codex', 'hooks.json');
@@ -43,21 +58,6 @@ async function main(): Promise<void> {
 
   await writeJsonAtomic(hooksPath, doc);
   console.log(`installed codex hooks: ${hooksPath}`);
-}
-
-function withoutAgentSignatureHooks(groups: HookGroup[]): HookGroup[] {
-  const next: HookGroup[] = [];
-  for (const group of groups) {
-    const hooks = (group.hooks ?? []).filter((hook) => !isAgentSignatureCommand(hook.command));
-    if (hooks.length > 0) {
-      next.push({ ...group, hooks });
-    }
-  }
-  return next;
-}
-
-async function loadHooks(path: string): Promise<HooksFile> {
-  return readJsonFile<HooksFile>(path, { hooks: {} });
 }
 
 main().catch((error: unknown) => {

@@ -8,16 +8,12 @@ interface PickStringOptions {
   payloadFirst?: boolean;
 }
 
-export function pickString(payload: unknown, options: PickStringOptions): string | undefined {
-  const envKeys = options.envKeys ? options.envKeys : [];
-  const payloadKeys = options.payloadKeys ? options.payloadKeys : [];
-  if (options.payloadFirst) {
-    const payloadValue = findPayloadString(payload, payloadKeys, options.nestedPayloadKeys);
-    return payloadValue ? payloadValue : pickEnvString(options.env, envKeys);
-  }
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
 
-  const envValue = pickEnvString(options.env, envKeys);
-  return envValue ? envValue : findPayloadString(payload, payloadKeys, options.nestedPayloadKeys);
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === 'string' && value.length > 0;
 }
 
 function pickEnvString(env: StringEnv | undefined, keys: string[]): string | undefined {
@@ -53,10 +49,14 @@ export function findPayloadString(payload: unknown, keys: string[], nestedKeys: 
   return undefined;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
-}
+export function pickString(payload: unknown, options: PickStringOptions): string | undefined {
+  const envKeys = options.envKeys ? options.envKeys : [];
+  const payloadKeys = options.payloadKeys ? options.payloadKeys : [];
+  if (options.payloadFirst) {
+    const payloadValue = findPayloadString(payload, payloadKeys, options.nestedPayloadKeys);
+    return payloadValue ? payloadValue : pickEnvString(options.env, envKeys);
+  }
 
-function isNonEmptyString(value: unknown): value is string {
-  return typeof value === 'string' && value.length > 0;
+  const envValue = pickEnvString(options.env, envKeys);
+  return envValue ? envValue : findPayloadString(payload, payloadKeys, options.nestedPayloadKeys);
 }

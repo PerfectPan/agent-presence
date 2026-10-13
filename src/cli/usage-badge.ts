@@ -36,38 +36,6 @@ export function usageRenderPlan(config: AppConfig): UsageRenderPlan {
   return { enabled: windows.size > 0, windows: [...windows], defaultWindow };
 }
 
-/**
- * Refresh cached usage for every window the signature references. A hook passes
- * its source id and normally scans only that source; the first boundary after
- * midnight and an explicit update rebuild every built-in contribution. Scans
- * run outside the state lock and any failure leaves the previous cache intact.
- */
-export async function refreshSignatureUsageBadges(
-  config: AppConfig,
-  statePath: string,
-  now: number,
-  source?: string
-): Promise<void> {
-  const plan = usageRenderPlan(config);
-  if (!plan.enabled) {
-    return;
-  }
-
-  const pricing = usagePricingOverrides(config);
-  // The signature path stays first-party even for explicit updates: never load
-  // third-party JS handlers here (`includeHandlers: false` keeps
-  // `billableSources` from `import()`ing them on the hot path).
-  const sources = await billableSources(config, { includeHandlers: false });
-  await refreshUsageBadgeCache({
-    statePath,
-    now,
-    windows: plan.windows,
-    pricing,
-    sources,
-    source
-  });
-}
-
 export interface UsageBadgeCacheRefresh {
   statePath: string;
   now: number;
@@ -76,6 +44,20 @@ export interface UsageBadgeCacheRefresh {
   pricing?: PricingOverrides;
   /** A hook refresh owns only this source. Omit for an explicit full refresh. */
   source?: string;
+}
+
+function aggregateSnapshots(snapshots: UsageSnapshot[]): { totalTokens: number; costUsd: number | null } {
+  let totalTokens = 0;
+  let costUsd = 0;
+  let sawCost = false;
+  for (const snapshot of snapshots) {
+    totalTokens += snapshot.totalTokens;
+    if (snapshot.costUsd !== null) {
+      sawCost = true;
+      costUsd += snapshot.costUsd;
+    }
+  }
+  return { totalTokens, costUsd: sawCost ? costUsd : null };
 }
 
 /**
@@ -178,16 +160,34 @@ export async function refreshUsageBadgeCache(options: UsageBadgeCacheRefresh): P
   });
 }
 
-function aggregateSnapshots(snapshots: UsageSnapshot[]): { totalTokens: number; costUsd: number | null } {
-  let totalTokens = 0;
-  let costUsd = 0;
-  let sawCost = false;
-  for (const snapshot of snapshots) {
-    totalTokens += snapshot.totalTokens;
-    if (snapshot.costUsd !== null) {
-      sawCost = true;
-      costUsd += snapshot.costUsd;
-    }
+/**
+ * Refresh cached usage for every window the signature references. A hook passes
+ * its source id and normally scans only that source; the first boundary after
+ * midnight and an explicit update rebuild every built-in contribution. Scans
+ * run outside the state lock and any failure leaves the previous cache intact.
+ */
+export async function refreshSignatureUsageBadges(
+  config: AppConfig,
+  statePath: string,
+  now: number,
+  source?: string
+): Promise<void> {
+  const plan = usageRenderPlan(config);
+  if (!plan.enabled) {
+    return;
   }
-  return { totalTokens, costUsd: sawCost ? costUsd : null };
+
+  const pricing = usagePricingOverrides(config);
+  // The signature path stays first-party even for explicit updates: never load
+  // third-party JS handlers here (`includeHandlers: false` keeps
+  // `billableSources` from `import()`ing them on the hot path).
+  const sources = await billableSources(config, { includeHandlers: false });
+  await refreshUsageBadgeCache({
+    statePath,
+    now,
+    windows: plan.windows,
+    pricing,
+    sources,
+    source
+  });
 }

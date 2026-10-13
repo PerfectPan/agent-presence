@@ -3,18 +3,6 @@ import { readdir, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline';
 
-/**
- * Recursively collect `*.jsonl` files under `root`. Files whose last
- * modification predates `sinceMs` are skipped: every entry they hold is older
- * than the window, so parsing them would be wasted work. Missing roots yield an
- * empty list rather than throwing.
- */
-export async function listJsonlFiles(root: string, sinceMs: number): Promise<string[]> {
-  const found: string[] = [];
-  await walk(root, sinceMs, found);
-  return found;
-}
-
 async function walk(dir: string, sinceMs: number, out: string[]): Promise<void> {
   let entries: Dirent[];
   try {
@@ -41,6 +29,18 @@ async function walk(dir: string, sinceMs: number, out: string[]): Promise<void> 
       // racing deletion / permission — ignore this file.
     }
   }
+}
+
+/**
+ * Recursively collect `*.jsonl` files under `root`. Files whose last
+ * modification predates `sinceMs` are skipped: every entry they hold is older
+ * than the window, so parsing them would be wasted work. Missing roots yield an
+ * empty list rather than throwing.
+ */
+export async function listJsonlFiles(root: string, sinceMs: number): Promise<string[]> {
+  const found: string[] = [];
+  await walk(root, sinceMs, found);
+  return found;
 }
 
 /**

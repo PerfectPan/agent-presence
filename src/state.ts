@@ -53,45 +53,8 @@ export function createEmptyState(): PresenceState {
   };
 }
 
-export async function loadState(statePath = getStatePath()): Promise<PresenceState> {
-  return normalizeState(await readJsonFile<PresenceState>(statePath, createEmptyState()));
-}
-
 export async function saveState(state: PresenceState, statePath = getStatePath()): Promise<void> {
   await writeJsonAtomic(statePath, state);
-}
-
-export function normalizeState(raw: PresenceState): PresenceState {
-  const state = raw && typeof raw === 'object' ? raw : createEmptyState();
-  const sessions: Record<string, AgentSession> = {};
-
-  for (const [id, rawSession] of Object.entries(state.sessions ?? {})) {
-    const legacy = rawSession as AgentSession & { kind?: string; source?: string };
-    const source = legacy.source ?? (legacy.kind && legacy.kind !== 'coding' ? legacy.kind : undefined);
-    if (!legacy.id || !source || !legacy.status || !legacy.startedAt || !legacy.lastHeartbeatAt) {
-      continue;
-    }
-    sessions[id] = {
-      id: legacy.id,
-      source,
-      kind: 'coding',
-      status: legacy.status,
-      startedAt: legacy.startedAt,
-      lastHeartbeatAt: legacy.lastHeartbeatAt,
-      finishedAt: legacy.status === 'running' ? undefined : legacy.finishedAt,
-      project: legacy.project
-    };
-  }
-
-  return {
-    sessions,
-    lastSlotUpdateAt: state.lastSlotUpdateAt ?? 0,
-    lastValue: state.lastValue ?? '',
-    pendingSlotFlushAt: typeof state.pendingSlotFlushAt === 'number' ? state.pendingSlotFlushAt : undefined,
-    usageBadges: normalizeUsageBadges(state.usageBadges),
-    usageBadgesAt: typeof state.usageBadgesAt === 'number' ? state.usageBadgesAt : undefined,
-    usageSnapshots: normalizeUsageSnapshots(state.usageSnapshots)
-  };
 }
 
 function normalizeUsageBadges(raw: unknown): Record<string, string> | undefined {
@@ -146,6 +109,126 @@ function normalizeUsageSnapshots(raw: unknown): Record<string, Record<string, Us
   return Object.keys(windows).length > 0 ? windows : undefined;
 }
 
+// The input is untrusted disk JSON (state.json may be hand-edited, truncated,
+// or written by an older version), so every field is read as optional.
+export function normalizeState(raw: Partial<PresenceState> | null): PresenceState {
+  const state = raw && typeof raw === 'object' ? raw : createEmptyState();
+  const sessions: Record<string, AgentSession> = {};
+
+  for (const [id, rawSession] of Object.entries(state.sessions ?? {})) {
+    const legacy = rawSession as Partial<Omit<AgentSession, 'kind' | 'source'>> & {
+      kind?: string;
+      source?: string;
+    };
+    const source = legacy.source ?? (legacy.kind && legacy.kind !== 'coding' ? legacy.kind : undefined);
+    if (!legacy.id || !source || !legacy.status || !legacy.startedAt || !legacy.lastHeartbeatAt) {
+      continue;
+    }
+    sessions[id] = {
+      id: legacy.id,
+      source,
+      kind: 'coding',
+      status: legacy.status,
+      startedAt: legacy.startedAt,
+      lastHeartbeatAt: legacy.lastHeartbeatAt,
+      finishedAt: legacy.status === 'running' ? undefined : legacy.finishedAt,
+      project: legacy.project
+    };
+  }
+
+  return {
+    sessions,
+    lastSlotUpdateAt: state.lastSlotUpdateAt ?? 0,
+    lastValue: state.lastValue ?? '',
+    pendingSlotFlushAt: typeof state.pendingSlotFlushAt === 'number' ? state.pendingSlotFlushAt : undefined,
+    usageBadges: normalizeUsageBadges(state.usageBadges),
+    usageBadgesAt: typeof state.usageBadgesAt === 'number' ? state.usageBadgesAt : undefined,
+    usageSnapshots: normalizeUsageSnapshots(state.usageSnapshots)
+  };
+}
+
+export async function loadState(statePath = getStatePath()): Promise<PresenceState> {
+  return normalizeState(await readJsonFile<PresenceState>(statePath, createEmptyState()));
+}
+
+function isReopenHeartbeat(event: string): boolean {
+  return event === 'UserPromptSubmit';
+}
+
+function findFallbackSessionForFinish(state: PresenceState, input: AgentEventInput): AgentSession | undefined {
+  const runningSessions = Object.values(state.sessions).filter((session) => {
+    if (session.status !== 'running' || session.source !== input.source) {
+      return false;
+    }
+    return input.project ? session.project === input.project : true;
+  });
+
+  return runningSessions.sort((left, right) => right.lastHeartbeatAt - left.lastHeartbeatAt)[0];
+}
+
+export function expireStaleSessions(state: PresenceState, now: number, ttlMs: number): PresenceState {
+  for (const session of Object.values(state.sessions)) {
+    if (session.status === 'running' && now - session.lastHeartbeatAt > ttlMs) {
+      session.status = 'expired';
+    }
+  }
+  return state;
+}
+
+export function getActiveSessions(state: PresenceState, now: number, ttlMs: number): AgentSession[] {
+  expireStaleSessions(state, now, ttlMs);
+  return Object.values(state.sessions).filter(
+    (session) => session.status === 'running' && now - session.lastHeartbeatAt <= ttlMs
+  );
+}
+
+export function finishAllSessions(state: PresenceState, now: number): PresenceState {
+  for (const session of Object.values(state.sessions)) {
+    if (session.status === 'running') {
+      session.status = 'finished';
+      session.lastHeartbeatAt = now;
+      session.finishedAt = now;
+    }
+  }
+  return state;
+}
+
+function normalizeEvent(event: string): NormalizedEvent {
+  if (event === 'SessionStart' || event === 'SubagentStart' || event === 'session.created' || event === 'start') {
+    return 'start';
+  }
+  if (
+    event === 'Stop' ||
+    event === 'SessionEnd' ||
+    event === 'StopFailure' ||
+    event === 'SubagentStop' ||
+    event === 'session.deleted' ||
+    event === 'session.error' ||
+    event === 'session.idle' ||
+    event === 'finish'
+  ) {
+    return 'finish';
+  }
+  if (
+    event === 'Heartbeat' ||
+    event === 'UserPromptSubmit' ||
+    event === 'PreToolUse' ||
+    event === 'PostToolUse' ||
+    event === 'command.executed' ||
+    event === 'file.edited' ||
+    event === 'message.updated' ||
+    event === 'session.status' ||
+    event === 'session.updated' ||
+    event === 'todo.updated' ||
+    event === 'tool.execute.after' ||
+    event === 'tool.execute.before' ||
+    event === 'heartbeat'
+  ) {
+    return 'heartbeat';
+  }
+  return 'heartbeat';
+}
+
 export function applyAgentEvent(state: PresenceState, input: AgentEventInput): PresenceState {
   const event = normalizeEvent(input.event);
   const existing = state.sessions[input.sessionId];
@@ -195,46 +278,30 @@ export function applyAgentEvent(state: PresenceState, input: AgentEventInput): P
   return state;
 }
 
-function isReopenHeartbeat(event: string): boolean {
-  return event === 'UserPromptSubmit';
-}
-
-function findFallbackSessionForFinish(state: PresenceState, input: AgentEventInput): AgentSession | undefined {
-  const runningSessions = Object.values(state.sessions).filter((session) => {
-    if (session.status !== 'running' || session.source !== input.source) {
-      return false;
-    }
-    return input.project ? session.project === input.project : true;
-  });
-
-  return runningSessions.sort((left, right) => right.lastHeartbeatAt - left.lastHeartbeatAt)[0];
-}
-
-export function expireStaleSessions(state: PresenceState, now: number, ttlMs: number): PresenceState {
-  for (const session of Object.values(state.sessions)) {
-    if (session.status === 'running' && now - session.lastHeartbeatAt > ttlMs) {
-      session.status = 'expired';
-    }
+/**
+ * Whether an event marks a session boundary (start or finish) worth refreshing
+ * the usage badge on. Subagent boundaries are excluded so a session spawning
+ * many subagents does not trigger a rescan per subagent.
+ */
+export function isSessionBoundaryEvent(event: string): boolean {
+  if (event === 'SubagentStart' || event === 'SubagentStop') {
+    return false;
   }
-  return state;
+  const normalized = normalizeEvent(event);
+  return normalized === 'start' || normalized === 'finish';
 }
 
-export function getActiveSessions(state: PresenceState, now: number, ttlMs: number): AgentSession[] {
-  expireStaleSessions(state, now, ttlMs);
-  return Object.values(state.sessions).filter(
-    (session) => session.status === 'running' && now - session.lastHeartbeatAt <= ttlMs
-  );
-}
-
-export function finishAllSessions(state: PresenceState, now: number): PresenceState {
-  for (const session of Object.values(state.sessions)) {
-    if (session.status === 'running') {
-      session.status = 'finished';
-      session.lastHeartbeatAt = now;
-      session.finishedAt = now;
-    }
+async function isStaleLock(lockPath: string, staleMs: number): Promise<boolean> {
+  try {
+    const info = await stat(lockPath);
+    return Date.now() - info.mtimeMs > staleMs;
+  } catch {
+    return false;
   }
-  return state;
+}
+
+function isAlreadyExists(error: unknown): boolean {
+  return hasNodeErrorCode(error, 'EEXIST');
 }
 
 export async function withStateLock<T>(
@@ -272,66 +339,4 @@ export async function withStateLock<T>(
   } finally {
     await rm(lockPath, { recursive: true, force: true });
   }
-}
-
-/**
- * Whether an event marks a session boundary (start or finish) worth refreshing
- * the usage badge on. Subagent boundaries are excluded so a session spawning
- * many subagents does not trigger a rescan per subagent.
- */
-export function isSessionBoundaryEvent(event: string): boolean {
-  if (event === 'SubagentStart' || event === 'SubagentStop') {
-    return false;
-  }
-  const normalized = normalizeEvent(event);
-  return normalized === 'start' || normalized === 'finish';
-}
-
-function normalizeEvent(event: string): NormalizedEvent {
-  if (event === 'SessionStart' || event === 'SubagentStart' || event === 'session.created' || event === 'start') {
-    return 'start';
-  }
-  if (
-    event === 'Stop' ||
-    event === 'SessionEnd' ||
-    event === 'StopFailure' ||
-    event === 'SubagentStop' ||
-    event === 'session.deleted' ||
-    event === 'session.error' ||
-    event === 'session.idle' ||
-    event === 'finish'
-  ) {
-    return 'finish';
-  }
-  if (
-    event === 'Heartbeat' ||
-    event === 'UserPromptSubmit' ||
-    event === 'PreToolUse' ||
-    event === 'PostToolUse' ||
-    event === 'command.executed' ||
-    event === 'file.edited' ||
-    event === 'message.updated' ||
-    event === 'session.status' ||
-    event === 'session.updated' ||
-    event === 'todo.updated' ||
-    event === 'tool.execute.after' ||
-    event === 'tool.execute.before' ||
-    event === 'heartbeat'
-  ) {
-    return 'heartbeat';
-  }
-  return 'heartbeat';
-}
-
-async function isStaleLock(lockPath: string, staleMs: number): Promise<boolean> {
-  try {
-    const info = await stat(lockPath);
-    return Date.now() - info.mtimeMs > staleMs;
-  } catch {
-    return false;
-  }
-}
-
-function isAlreadyExists(error: unknown): boolean {
-  return hasNodeErrorCode(error, 'EEXIST');
 }

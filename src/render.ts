@@ -77,52 +77,9 @@ export class SlotRateLimitError extends Error {
   }
 }
 
-/**
- * Render the signature value. `usageVars` maps template variable names (without
- * braces, e.g. `usage`, `usage_1d`, `usage_7d`) to their badge text; consumers
- * compose their own label by placing those tokens in a render template. When a
- * template references no `{usage*}` token but `autoAppend` is provided, it is
- * appended — the zero-config path for "just turn it on".
- */
-export function renderPresence(
-  activeSessions: AgentSession[],
-  templates: RenderTemplates = {},
-  usageVars: Record<string, string> = {},
-  autoAppend = ''
-): string {
-  const resolvedTemplates = resolveRenderTemplates(templates);
-  const details = renderDetails(activeSessions);
-  const total = activeSessions.length;
-
-  const template = total === 0 ? resolvedTemplates.zero : total === 1 ? resolvedTemplates.one : resolvedTemplates.many;
-  const hasUsageToken = USAGE_TOKEN.test(template);
-  USAGE_TOKEN.lastIndex = 0;
-
-  let rendered = formatTemplate(template, { total, details, usageVars });
-  if (!hasUsageToken && autoAppend.length > 0) {
-    rendered = `${rendered}${autoAppend}`;
-  }
-  return rendered.slice(0, 200);
-}
-
 /** Human label for a usage window: 1→"今日", 7→"近7天", N→"近N天". */
 export function usageWindowLabel(days: number): string {
   return days === 1 ? '今日' : `近${days}天`;
-}
-
-/**
- * Rolling-window day counts referenced by these templates: any `{usage_Nd}`
- * token, plus `defaultDays` whenever a bare `{usage}` token appears.
- */
-export function referencedUsageWindows(templates: RenderTemplates, defaultDays: number): number[] {
-  const resolved = resolveRenderTemplates(templates);
-  const windows = new Set<number>();
-  for (const template of [resolved.zero, resolved.one, resolved.many]) {
-    for (const match of template.matchAll(USAGE_TOKEN)) {
-      windows.add(match[1] ? Number.parseInt(match[1], 10) : defaultDays);
-    }
-  }
-  return [...windows];
 }
 
 function renderDetails(activeSessions: AgentSession[]): string {
@@ -157,53 +114,47 @@ function resolveRenderTemplates(templates: RenderTemplates): Required<RenderTemp
   };
 }
 
-export async function syncSlot(state: PresenceState, options: SyncSlotOptions): Promise<SyncSlotResult> {
-  const decision = prepareSlotSync(state, options);
-  if (decision.action === 'skip') {
-    return decision.result;
-  }
+/**
+ * Render the signature value. `usageVars` maps template variable names (without
+ * braces, e.g. `usage`, `usage_1d`, `usage_7d`) to their badge text; consumers
+ * compose their own label by placing those tokens in a render template. When a
+ * template references no `{usage*}` token but `autoAppend` is provided, it is
+ * appended — the zero-config path for "just turn it on".
+ */
+export function renderPresence(
+  activeSessions: AgentSession[],
+  templates: RenderTemplates = {},
+  usageVars: Record<string, string> = {},
+  autoAppend = ''
+): string {
+  const resolvedTemplates = resolveRenderTemplates(templates);
+  const details = renderDetails(activeSessions);
+  const total = activeSessions.length;
 
-  try {
-    await options.updateSlot(decision.value);
-  } catch (error) {
-    if (error instanceof SlotRateLimitError) {
-      return { status: 'skipped', reason: 'rate-limited', value: decision.value, retryAfterMs: error.retryAfterMs };
-    }
-    rollbackSlotSyncClaim(state, decision);
-    throw error;
-  }
+  const template = total === 0 ? resolvedTemplates.zero : total === 1 ? resolvedTemplates.one : resolvedTemplates.many;
+  const hasUsageToken = USAGE_TOKEN.test(template);
+  USAGE_TOKEN.lastIndex = 0;
 
-  markSlotSyncSuccess(state, decision);
-  return { status: 'updated', value: decision.value };
+  let rendered = formatTemplate(template, { total, details, usageVars });
+  if (!hasUsageToken && autoAppend.length > 0) {
+    rendered = `${rendered}${autoAppend}`;
+  }
+  return rendered.slice(0, 200);
 }
 
-export function prepareSlotSync(state: PresenceState, options: SlotSyncDecisionOptions): SlotSyncDecision {
-  expireStaleSessions(state, options.now, options.ttlMs);
-  const { usageVars, autoAppend } = resolveUsageForRender(state, options.usage, options.now);
-  const value = renderPresence(
-    getActiveSessions(state, options.now, options.ttlMs),
-    options.renderTemplates,
-    usageVars,
-    autoAppend
-  );
-  const elapsedMs = options.now - (state.lastSlotUpdateAt ?? 0);
-
-  if (!options.force && state.lastValue === value) {
-    return { action: 'skip', result: { status: 'skipped', reason: 'unchanged', value } };
+/**
+ * Rolling-window day counts referenced by these templates: any `{usage_Nd}`
+ * token, plus `defaultDays` whenever a bare `{usage}` token appears.
+ */
+export function referencedUsageWindows(templates: RenderTemplates, defaultDays: number): number[] {
+  const resolved = resolveRenderTemplates(templates);
+  const windows = new Set<number>();
+  for (const template of [resolved.zero, resolved.one, resolved.many]) {
+    for (const match of template.matchAll(USAGE_TOKEN)) {
+      windows.add(match[1] ? Number.parseInt(match[1], 10) : defaultDays);
+    }
   }
-
-  if (!options.force && elapsedMs < options.debounceMs) {
-    return { action: 'skip', result: { status: 'skipped', reason: 'debounced', value } };
-  }
-
-  const previousLastSlotUpdateAt = state.lastSlotUpdateAt ?? 0;
-  state.lastSlotUpdateAt = options.now;
-  return {
-    action: 'update',
-    value,
-    previousLastSlotUpdateAt,
-    claimedLastSlotUpdateAt: options.now
-  };
+  return [...windows];
 }
 
 /**
@@ -238,6 +189,35 @@ export function resolveUsageForRender(
   return { usageVars, autoAppend };
 }
 
+export function prepareSlotSync(state: PresenceState, options: SlotSyncDecisionOptions): SlotSyncDecision {
+  expireStaleSessions(state, options.now, options.ttlMs);
+  const { usageVars, autoAppend } = resolveUsageForRender(state, options.usage, options.now);
+  const value = renderPresence(
+    getActiveSessions(state, options.now, options.ttlMs),
+    options.renderTemplates,
+    usageVars,
+    autoAppend
+  );
+  const elapsedMs = options.now - (state.lastSlotUpdateAt ?? 0);
+
+  if (!options.force && state.lastValue === value) {
+    return { action: 'skip', result: { status: 'skipped', reason: 'unchanged', value } };
+  }
+
+  if (!options.force && elapsedMs < options.debounceMs) {
+    return { action: 'skip', result: { status: 'skipped', reason: 'debounced', value } };
+  }
+
+  const previousLastSlotUpdateAt = state.lastSlotUpdateAt ?? 0;
+  state.lastSlotUpdateAt = options.now;
+  return {
+    action: 'update',
+    value,
+    previousLastSlotUpdateAt,
+    claimedLastSlotUpdateAt: options.now
+  };
+}
+
 export function markSlotSyncSuccess(state: PresenceState, decision: SlotSyncDecision): void {
   if (decision.action !== 'update') {
     return;
@@ -254,4 +234,24 @@ export function rollbackSlotSyncClaim(state: PresenceState, decision: SlotSyncDe
   if ((state.lastSlotUpdateAt ?? 0) === decision.claimedLastSlotUpdateAt) {
     state.lastSlotUpdateAt = decision.previousLastSlotUpdateAt;
   }
+}
+
+export async function syncSlot(state: PresenceState, options: SyncSlotOptions): Promise<SyncSlotResult> {
+  const decision = prepareSlotSync(state, options);
+  if (decision.action === 'skip') {
+    return decision.result;
+  }
+
+  try {
+    await options.updateSlot(decision.value);
+  } catch (error) {
+    if (error instanceof SlotRateLimitError) {
+      return { status: 'skipped', reason: 'rate-limited', value: decision.value, retryAfterMs: error.retryAfterMs };
+    }
+    rollbackSlotSyncClaim(state, decision);
+    throw error;
+  }
+
+  markSlotSyncSuccess(state, decision);
+  return { status: 'updated', value: decision.value };
 }

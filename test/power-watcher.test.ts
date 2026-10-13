@@ -8,6 +8,27 @@ import { buildPowerEventWatcherSwift, buildPowerWatcherPlist, buildPowerWatcherS
 
 const execFileAsync = promisify(execFile);
 
+function withAbsoluteCliPath<T>(fn: () => T): T {
+  const previousMode = process.env.AGENT_PRESENCE_HOOK_COMMAND;
+  const previousCliPath = process.env.AGENT_PRESENCE_CLI_PATH;
+  process.env.AGENT_PRESENCE_HOOK_COMMAND = 'absolute';
+  process.env.AGENT_PRESENCE_CLI_PATH = '/usr/local/lib/node_modules/@rivus/agent-presence/dist/src/cli.js';
+  try {
+    return fn();
+  } finally {
+    if (previousMode === undefined) {
+      delete process.env.AGENT_PRESENCE_HOOK_COMMAND;
+    } else {
+      process.env.AGENT_PRESENCE_HOOK_COMMAND = previousMode;
+    }
+    if (previousCliPath === undefined) {
+      delete process.env.AGENT_PRESENCE_CLI_PATH;
+    } else {
+      process.env.AGENT_PRESENCE_CLI_PATH = previousCliPath;
+    }
+  }
+}
+
 describe('power watcher artifacts', () => {
   let tempDir: string | undefined;
 
@@ -61,6 +82,16 @@ describe('power watcher artifacts', () => {
       expect(swift).toContain('/usr/local/lib/node_modules/@rivus/agent-presence/dist/src/cli.js');
     });
   });
+
+  async function useOversizedLog(): Promise<string> {
+    tempDir = await mkdtemp(join(tmpdir(), 'agent-presence-power-watch-test-'));
+    const logPath = join(tempDir, 'power-watch.log');
+    const lines = Array.from({ length: 6_200 }, (_, index) => `sequence=${index} payload=${'x'.repeat(1_000)}\n`).join(
+      ''
+    );
+    await writeFile(logPath, lines, { mode: 0o600 });
+    return logPath;
+  }
 
   it.runIf(process.platform === 'darwin')(
     'compacts the shell watcher log in place to recent bytes',
@@ -170,35 +201,4 @@ describe('power watcher artifacts', () => {
     },
     20_000
   );
-
-  async function useOversizedLog(): Promise<string> {
-    tempDir = await mkdtemp(join(tmpdir(), 'agent-presence-power-watch-test-'));
-    const logPath = join(tempDir, 'power-watch.log');
-    const lines = Array.from({ length: 6_200 }, (_, index) => `sequence=${index} payload=${'x'.repeat(1_000)}\n`).join(
-      ''
-    );
-    await writeFile(logPath, lines, { mode: 0o600 });
-    return logPath;
-  }
 });
-
-function withAbsoluteCliPath<T>(fn: () => T): T {
-  const previousMode = process.env.AGENT_PRESENCE_HOOK_COMMAND;
-  const previousCliPath = process.env.AGENT_PRESENCE_CLI_PATH;
-  process.env.AGENT_PRESENCE_HOOK_COMMAND = 'absolute';
-  process.env.AGENT_PRESENCE_CLI_PATH = '/usr/local/lib/node_modules/@rivus/agent-presence/dist/src/cli.js';
-  try {
-    return fn();
-  } finally {
-    if (previousMode === undefined) {
-      delete process.env.AGENT_PRESENCE_HOOK_COMMAND;
-    } else {
-      process.env.AGENT_PRESENCE_HOOK_COMMAND = previousMode;
-    }
-    if (previousCliPath === undefined) {
-      delete process.env.AGENT_PRESENCE_CLI_PATH;
-    } else {
-      process.env.AGENT_PRESENCE_CLI_PATH = previousCliPath;
-    }
-  }
-}

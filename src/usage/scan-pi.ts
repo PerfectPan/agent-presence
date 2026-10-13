@@ -9,25 +9,12 @@ export function defaultPiRoot(): string {
   return join(homedir(), '.pi', 'agent', 'sessions');
 }
 
-/**
- * Scan Pi transcripts. Pi records full usage AND a resolved cost per assistant
- * message, so we trust the logged cost (display mode) rather than a pricing
- * table — even when that cost is 0 (e.g. a provider Pi has no price for).
- */
-export async function scanPi(options: ScanOptions): Promise<UsageRecord[]> {
-  const root = options.root ?? defaultPiRoot();
-  const files = await listJsonlFiles(root, options.sinceMs);
-  const records: UsageRecord[] = [];
+function asNumber(value: unknown): number {
+  return typeof value === 'number' && Number.isFinite(value) ? value : 0;
+}
 
-  for (const file of files) {
-    await forEachJsonl(file, (raw) => {
-      const record = extractMessage(raw, options.sinceMs, options.untilMs);
-      if (record) {
-        records.push(record);
-      }
-    });
-  }
-  return records;
+function asString(value: unknown): string {
+  return typeof value === 'string' ? value : '';
 }
 
 function extractMessage(raw: unknown, sinceMs: number, untilMs: number): UsageRecord | null {
@@ -77,10 +64,23 @@ function extractMessage(raw: unknown, sinceMs: number, untilMs: number): UsageRe
   };
 }
 
-function asNumber(value: unknown): number {
-  return typeof value === 'number' && Number.isFinite(value) ? value : 0;
-}
+/**
+ * Scan Pi transcripts. Pi records full usage AND a resolved cost per assistant
+ * message, so we trust the logged cost (display mode) rather than a pricing
+ * table — even when that cost is 0 (e.g. a provider Pi has no price for).
+ */
+export async function scanPi(options: ScanOptions): Promise<UsageRecord[]> {
+  const root = options.root ?? defaultPiRoot();
+  const files = await listJsonlFiles(root, options.sinceMs);
+  const records: UsageRecord[] = [];
 
-function asString(value: unknown): string {
-  return typeof value === 'string' ? value : '';
+  for (const file of files) {
+    await forEachJsonl(file, (raw) => {
+      const record = extractMessage(raw, options.sinceMs, options.untilMs);
+      if (record) {
+        records.push(record);
+      }
+    });
+  }
+  return records;
 }

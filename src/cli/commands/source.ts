@@ -6,24 +6,6 @@ import { hasFlag, optionValue } from '../args.js';
 import { errorMessage } from '../errors.js';
 import { promptConfirm, showInfo, showNote, showSuccess, showWarning } from '../ui.js';
 
-export async function source(args: string[]): Promise<void> {
-  const subcommand = args[0];
-  if (subcommand === 'add') {
-    await addSource(args.slice(1));
-    return;
-  }
-  if (subcommand === 'list' || subcommand === undefined) {
-    await listSources();
-    return;
-  }
-  if (subcommand === 'remove') {
-    await removeSource(args.slice(1));
-    return;
-  }
-  printSourceHelp();
-  process.exitCode = 1;
-}
-
 async function addSource(args: string[]): Promise<void> {
   const spec = args.find((arg) => !arg.startsWith('--'));
   if (!spec) {
@@ -145,4 +127,22 @@ Notes:
   - Built-in sources (codex/claude/gemini/opencode/pi) are managed by config, not this command;
     override or disable them via plugins.sources in config.json.
 `);
+}
+
+export async function source(args: string[]): Promise<void> {
+  const subcommand = args[0];
+  if (subcommand === 'add') {
+    await addSource(args.slice(1));
+    return;
+  }
+  if (subcommand === 'list' || subcommand === undefined) {
+    await listSources();
+    return;
+  }
+  if (subcommand === 'remove') {
+    await removeSource(args.slice(1));
+    return;
+  }
+  printSourceHelp();
+  process.exitCode = 1;
 }

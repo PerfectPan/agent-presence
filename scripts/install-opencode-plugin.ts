@@ -10,6 +10,10 @@ import {
 import { readJsonFile, writeJsonAtomic } from '../src/json-file.js';
 import { assertSupportedPlatform } from '../src/platform.js';
 
+async function loadConfig(path: string): Promise<OpenCodeConfig> {
+  return readJsonFile<OpenCodeConfig>(path, {});
+}
+
 async function main(): Promise<void> {
   assertSupportedPlatform();
   const configPath = process.env.OPENCODE_CONFIG ?? join(homedir(), '.config', 'opencode', 'opencode.json');
@@ -22,10 +26,6 @@ async function main(): Promise<void> {
   await writeJsonAtomic(configPath, withOpenCodeAgentSignaturePluginConfig(await loadConfig(configPath)));
   console.log(`installed opencode plugin: ${pluginPath}`);
   console.log(`updated opencode config: ${configPath}`);
-}
-
-async function loadConfig(path: string): Promise<OpenCodeConfig> {
-  return readJsonFile<OpenCodeConfig>(path, {});
 }
 
 main().catch((error: unknown) => {

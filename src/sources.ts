@@ -97,46 +97,190 @@ export function mergedSources(config: AppConfig): Record<string, SourcePluginCon
   return merged;
 }
 
-/**
- * Resolve a source id to its hook context through the merged source table.
- * A `builtin:` entry reuses a trusted shipped resolver (raw environment); a user
- * `handler`/`match` entry is guarded and receives a credential-stripped
- * environment. A disabled or unknown source returns `{}` (the unchanged
- * fallback), so those `--source` hooks are silently skipped.
- *
- * Fail-open: any loading or resolution error is logged with non-secret fields
- * only and degrades to `{}` — a source must never break a hook.
- */
-export async function resolveHookContextForSource(
-  source: string,
-  payload: unknown,
-  config: AppConfig
-): Promise<SourceContext> {
-  const entry = mergedSources(config)[source];
-  if (!entry) {
-    return {};
-  }
-
-  const resolved = await resolveSourcePlugin(source, entry);
-  if (!resolved) {
-    return {};
-  }
-
-  // Trusted (built-in): raw env, built-ins rely on env fallbacks. Otherwise a
-  // guarded handler/match plugin gets a credential-stripped env.
-  const env = resolved.trusted ? process.env : curatedEnv(process.env);
-  try {
-    return resolved.plugin.resolveHookContext(payload, env) ?? {};
-  } catch (error) {
-    await writeLog(`source resolve failed source=${source} error=${errorName(error)}`);
-    return {};
-  }
-}
-
 interface ResolvedSource {
   plugin: SourcePlugin;
   /** Whether this resolved via the trusted `builtin:` path (raw env) or the guarded path. */
   trusted: boolean;
+}
+
+function builtinHandlerId(handler: string | undefined): string | undefined {
+  if (handler && handler.startsWith(BUILTIN_HANDLER_PREFIX)) {
+    return handler.slice(BUILTIN_HANDLER_PREFIX.length);
+  }
+  return undefined;
+}
+
+const pluginCache = new Map<string, SourcePlugin | undefined>();
+
+/** Whether `config.json` is safe to honor `handler` entries from. */
+function isConfigFileTrusted(configPath = getConfigPath()): boolean {
+  try {
+    const info = lstatSync(configPath);
+    if (info.isSymbolicLink()) {
+      return false;
+    }
+    if (typeof process.getuid === 'function' && info.uid !== process.getuid()) {
+      return false;
+    }
+    return (info.mode & 0o022) === 0;
+  } catch {
+    // No config file means no `handler` entries to honor anyway.
+    return false;
+  }
+}
+
+function matchField(payload: unknown, env: StringEnv, field: SourceMatchField | undefined): string | undefined {
+  if (!field) {
+    return undefined;
+  }
+  return pickString(payload, {
+    env,
+    envKeys: field.envKeys,
+    payloadKeys: field.payloadKeys,
+    nestedPayloadKeys: field.nestedPayloadKeys,
+    payloadFirst: field.payloadFirst
+  });
+}
+
+/** Compile a declarative `match` spec into a no-code source. */
+export function buildMatchSource(source: string, match: SourceMatchSpec): SourcePlugin {
+  return {
+    id: source,
+    resolveHookContext(payload: unknown, env: StringEnv = {}): SourceContext {
+      return {
+        event: matchField(payload, env, match.event),
+        sessionId: matchField(payload, env, match.sessionId),
+        project: matchField(payload, env, match.project)
+      };
+    }
+  };
+}
+
+function isSourcePlugin(value: unknown): value is SourcePlugin {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    typeof (value as SourcePlugin).id === 'string' &&
+    typeof (value as SourcePlugin).resolveHookContext === 'function'
+  );
+}
+
+export type SourceValidation = { ok: true; id: string } | { ok: false; reason: string };
+
+function errorName(error: unknown): string {
+  return error instanceof Error ? error.name : 'Error';
+}
+
+/**
+ * Convert a `handler` config value into a spec `import()` can consume. Absolute
+ * paths are validated (owner, mode, symlink) and converted to `file://` URLs;
+ * bare specifiers are resolved against the plugins dir's `node_modules` (where
+ * `source add` installs packages).
+ */
+async function resolveHandlerSpecifier(source: string, handler: string): Promise<string | undefined> {
+  if (!isAbsolute(handler)) {
+    // Bare npm specifier: resolve strictly from the plugins dir's node_modules
+    // (where `source add` installs), not the user's cwd and not ancestor
+    // node_modules. The explicit `paths` confines resolution to that directory.
+    try {
+      const require = createRequire(join(getPluginsDir(), 'noop.js'));
+      return pathToFileURL(require.resolve(handler, { paths: [join(getPluginsDir(), 'node_modules')] })).href;
+    } catch (error) {
+      await writeLog(`source refused source=${source} reason=specifier-unresolved error=${errorName(error)}`);
+      return undefined;
+    }
+  }
+
+  try {
+    const info = lstatSync(handler);
+    if (info.isSymbolicLink()) {
+      await writeLog(`source refused source=${source} reason=symlink-handler`);
+      return undefined;
+    }
+    if (typeof process.getuid === 'function' && info.uid !== process.getuid()) {
+      await writeLog(`source refused source=${source} reason=handler-not-owned`);
+      return undefined;
+    }
+    if ((info.mode & 0o022) !== 0) {
+      await writeLog(`source refused source=${source} reason=handler-world-writable`);
+      return undefined;
+    }
+    // A writable parent dir lets another user swap the (otherwise fine) file, so
+    // narrow the swap window by requiring the directory be owned and not
+    // group/world-writable too. This does not fully close the check-to-import
+    // TOCTOU gap (see docs/architecture.md), but removes the easy directory-swap vector.
+    const parent = lstatSync(dirname(handler));
+    if (typeof process.getuid === 'function' && parent.uid !== process.getuid()) {
+      await writeLog(`source refused source=${source} reason=handler-dir-not-owned`);
+      return undefined;
+    }
+    if ((parent.mode & 0o022) !== 0) {
+      await writeLog(`source refused source=${source} reason=handler-dir-world-writable`);
+      return undefined;
+    }
+  } catch (error) {
+    await writeLog(`source refused source=${source} reason=handler-stat-failed error=${errorName(error)}`);
+    return undefined;
+  }
+
+  return pathToFileURL(handler).href;
+}
+
+async function loadHandlerSource(source: string, handler: string): Promise<SourcePlugin | undefined> {
+  // A handler runs in-process with full CLI trust, which includes reading the
+  // slot credential. Guard the two things an attacker who cannot touch the
+  // Keychain might still control: the config file and the handler file.
+  if (!isConfigFileTrusted()) {
+    await writeLog(`source refused source=${source} reason=untrusted-config`);
+    return undefined;
+  }
+
+  const specifier = await resolveHandlerSpecifier(source, handler);
+  if (!specifier) {
+    return undefined;
+  }
+
+  try {
+    const module = (await import(specifier)) as { default?: unknown };
+    const plugin = module.default;
+    if (!isSourcePlugin(plugin)) {
+      await writeLog(`source invalid source=${source} reason=bad-default-export`);
+      return undefined;
+    }
+    if (plugin.id !== source) {
+      await writeLog(`source id mismatch source=${source} handlerId=${plugin.id}`);
+      return undefined;
+    }
+    await writeLog(`source loaded source=${source} handler=${handler}`);
+    return plugin;
+  } catch (error) {
+    await writeLog(`source load failed source=${source} error=${errorName(error)}`);
+    return undefined;
+  }
+}
+
+async function loadConfiguredSourceUncached(
+  source: string,
+  entry: SourcePluginConfig
+): Promise<SourcePlugin | undefined> {
+  if (entry.handler) {
+    return loadHandlerSource(source, entry.handler);
+  }
+  if (entry.match) {
+    return buildMatchSource(source, entry.match);
+  }
+
+  await writeLog(`source skipped source=${source} reason=no-handler-or-match`);
+  return undefined;
+}
+
+async function loadConfiguredSource(source: string, entry: SourcePluginConfig): Promise<SourcePlugin | undefined> {
+  if (pluginCache.has(source)) {
+    return pluginCache.get(source);
+  }
+  const plugin = await loadConfiguredSourceUncached(source, entry);
+  pluginCache.set(source, plugin);
+  return plugin;
 }
 
 /**
@@ -196,181 +340,41 @@ export async function billableSources(
   return billable;
 }
 
-function builtinHandlerId(handler: string | undefined): string | undefined {
-  if (handler && handler.startsWith(BUILTIN_HANDLER_PREFIX)) {
-    return handler.slice(BUILTIN_HANDLER_PREFIX.length);
-  }
-  return undefined;
-}
-
-const pluginCache = new Map<string, SourcePlugin | undefined>();
-
-async function loadConfiguredSource(source: string, entry: SourcePluginConfig): Promise<SourcePlugin | undefined> {
-  if (pluginCache.has(source)) {
-    return pluginCache.get(source);
-  }
-  const plugin = await loadConfiguredSourceUncached(source, entry);
-  pluginCache.set(source, plugin);
-  return plugin;
-}
-
-async function loadConfiguredSourceUncached(
-  source: string,
-  entry: SourcePluginConfig
-): Promise<SourcePlugin | undefined> {
-  if (entry.handler) {
-    return loadHandlerSource(source, entry.handler);
-  }
-  if (entry.match) {
-    return buildMatchSource(source, entry.match);
-  }
-
-  await writeLog(`source skipped source=${source} reason=no-handler-or-match`);
-  return undefined;
-}
-
-async function loadHandlerSource(source: string, handler: string): Promise<SourcePlugin | undefined> {
-  // A handler runs in-process with full CLI trust, which includes reading the
-  // slot credential. Guard the two things an attacker who cannot touch the
-  // Keychain might still control: the config file and the handler file.
-  if (!isConfigFileTrusted()) {
-    await writeLog(`source refused source=${source} reason=untrusted-config`);
-    return undefined;
-  }
-
-  const specifier = await resolveHandlerSpecifier(source, handler);
-  if (!specifier) {
-    return undefined;
-  }
-
-  try {
-    const module = (await import(specifier)) as { default?: unknown };
-    const plugin = module.default;
-    if (!isSourcePlugin(plugin)) {
-      await writeLog(`source invalid source=${source} reason=bad-default-export`);
-      return undefined;
-    }
-    if (plugin.id !== source) {
-      await writeLog(`source id mismatch source=${source} handlerId=${plugin.id}`);
-      return undefined;
-    }
-    await writeLog(`source loaded source=${source} handler=${handler}`);
-    return plugin;
-  } catch (error) {
-    await writeLog(`source load failed source=${source} error=${errorName(error)}`);
-    return undefined;
-  }
-}
-
 /**
- * Convert a `handler` config value into a spec `import()` can consume. Absolute
- * paths are validated (owner, mode, symlink) and converted to `file://` URLs;
- * bare specifiers are resolved against the plugins dir's `node_modules` (where
- * `source add` installs packages).
+ * Resolve a source id to its hook context through the merged source table.
+ * A `builtin:` entry reuses a trusted shipped resolver (raw environment); a user
+ * `handler`/`match` entry is guarded and receives a credential-stripped
+ * environment. A disabled or unknown source returns `{}` (the unchanged
+ * fallback), so those `--source` hooks are silently skipped.
+ *
+ * Fail-open: any loading or resolution error is logged with non-secret fields
+ * only and degrades to `{}` — a source must never break a hook.
  */
-async function resolveHandlerSpecifier(source: string, handler: string): Promise<string | undefined> {
-  if (!isAbsolute(handler)) {
-    // Bare npm specifier: resolve strictly from the plugins dir's node_modules
-    // (where `source add` installs), not the user's cwd and not ancestor
-    // node_modules. The explicit `paths` confines resolution to that directory.
-    try {
-      const require = createRequire(join(getPluginsDir(), 'noop.js'));
-      return pathToFileURL(require.resolve(handler, { paths: [join(getPluginsDir(), 'node_modules')] })).href;
-    } catch (error) {
-      await writeLog(`source refused source=${source} reason=specifier-unresolved error=${errorName(error)}`);
-      return undefined;
-    }
+export async function resolveHookContextForSource(
+  source: string,
+  payload: unknown,
+  config: AppConfig
+): Promise<SourceContext> {
+  const entry = mergedSources(config)[source];
+  if (!entry) {
+    return {};
   }
 
+  const resolved = await resolveSourcePlugin(source, entry);
+  if (!resolved) {
+    return {};
+  }
+
+  // Trusted (built-in): raw env, built-ins rely on env fallbacks. Otherwise a
+  // guarded handler/match plugin gets a credential-stripped env.
+  const env = resolved.trusted ? process.env : curatedEnv(process.env);
   try {
-    const info = lstatSync(handler);
-    if (info.isSymbolicLink()) {
-      await writeLog(`source refused source=${source} reason=symlink-handler`);
-      return undefined;
-    }
-    if (typeof process.getuid === 'function' && info.uid !== process.getuid()) {
-      await writeLog(`source refused source=${source} reason=handler-not-owned`);
-      return undefined;
-    }
-    if ((info.mode & 0o022) !== 0) {
-      await writeLog(`source refused source=${source} reason=handler-world-writable`);
-      return undefined;
-    }
-    // A writable parent dir lets another user swap the (otherwise fine) file, so
-    // narrow the swap window by requiring the directory be owned and not
-    // group/world-writable too. This does not fully close the check-to-import
-    // TOCTOU gap (see docs/architecture.md), but removes the easy directory-swap vector.
-    const parent = lstatSync(dirname(handler));
-    if (typeof process.getuid === 'function' && parent.uid !== process.getuid()) {
-      await writeLog(`source refused source=${source} reason=handler-dir-not-owned`);
-      return undefined;
-    }
-    if ((parent.mode & 0o022) !== 0) {
-      await writeLog(`source refused source=${source} reason=handler-dir-world-writable`);
-      return undefined;
-    }
+    return resolved.plugin.resolveHookContext(payload, env) ?? {};
   } catch (error) {
-    await writeLog(`source refused source=${source} reason=handler-stat-failed error=${errorName(error)}`);
-    return undefined;
-  }
-
-  return pathToFileURL(handler).href;
-}
-
-/** Whether `config.json` is safe to honor `handler` entries from. */
-function isConfigFileTrusted(configPath = getConfigPath()): boolean {
-  try {
-    const info = lstatSync(configPath);
-    if (info.isSymbolicLink()) {
-      return false;
-    }
-    if (typeof process.getuid === 'function' && info.uid !== process.getuid()) {
-      return false;
-    }
-    return (info.mode & 0o022) === 0;
-  } catch {
-    // No config file means no `handler` entries to honor anyway.
-    return false;
+    await writeLog(`source resolve failed source=${source} error=${errorName(error)}`);
+    return {};
   }
 }
-
-/** Compile a declarative `match` spec into a no-code source. */
-export function buildMatchSource(source: string, match: SourceMatchSpec): SourcePlugin {
-  return {
-    id: source,
-    resolveHookContext(payload: unknown, env: StringEnv = {}): SourceContext {
-      return {
-        event: matchField(payload, env, match.event),
-        sessionId: matchField(payload, env, match.sessionId),
-        project: matchField(payload, env, match.project)
-      };
-    }
-  };
-}
-
-function matchField(payload: unknown, env: StringEnv, field: SourceMatchField | undefined): string | undefined {
-  if (!field) {
-    return undefined;
-  }
-  return pickString(payload, {
-    env,
-    envKeys: field.envKeys,
-    payloadKeys: field.payloadKeys,
-    nestedPayloadKeys: field.nestedPayloadKeys,
-    payloadFirst: field.payloadFirst
-  });
-}
-
-function isSourcePlugin(value: unknown): value is SourcePlugin {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    typeof (value as SourcePlugin).id === 'string' &&
-    typeof (value as SourcePlugin).resolveHookContext === 'function'
-  );
-}
-
-export type SourceValidation = { ok: true; id: string } | { ok: false; reason: string };
 
 /**
  * Import a just-installed package by name and confirm its default export is a
@@ -394,10 +398,6 @@ export async function loadSourcePluginForValidation(packageName: string): Promis
   }
 }
 
-function errorName(error: unknown): string {
-  return error instanceof Error ? error.name : 'Error';
-}
-
 export type SourceKind = 'builtin' | 'handler' | 'match' | 'invalid';
 
 export interface SourceDescriptor {
@@ -408,6 +408,19 @@ export interface SourceDescriptor {
   kind: SourceKind;
   /** Whether a user config entry has overridden the shipped default for this id. */
   overridesDefault: boolean;
+}
+
+function sourceKind(entry: SourcePluginConfig): SourceKind {
+  if (builtinHandlerId(entry.handler)) {
+    return 'builtin';
+  }
+  if (entry.handler) {
+    return 'handler';
+  }
+  if (entry.match) {
+    return 'match';
+  }
+  return 'invalid';
 }
 
 /**
@@ -427,19 +440,6 @@ export function describeSources(config: AppConfig): SourceDescriptor[] {
       overridesDefault: fromConfig && id in defaults
     };
   });
-}
-
-function sourceKind(entry: SourcePluginConfig): SourceKind {
-  if (builtinHandlerId(entry.handler)) {
-    return 'builtin';
-  }
-  if (entry.handler) {
-    return 'handler';
-  }
-  if (entry.match) {
-    return 'match';
-  }
-  return 'invalid';
 }
 
 /** Test-only: reset the per-process caches. */

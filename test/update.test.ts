@@ -22,6 +22,57 @@ afterEach(async () => {
   }
 });
 
+async function useTempFiles(): Promise<{ logPath: string; statePath: string }> {
+  tempDir = await mkdtemp(join(tmpdir(), 'agent-presence-update-test-'));
+  const logPath = join(tempDir, 'agent-presence.log');
+  process.env.AGENT_PRESENCE_LOG_FILE = logPath;
+  return {
+    logPath,
+    statePath: join(tempDir, 'state.json')
+  };
+}
+
+function coerceLogValue(value: string): unknown {
+  if (/^\d+$/.test(value)) {
+    return Number(value);
+  }
+  if (value === 'true') {
+    return true;
+  }
+  if (value === 'false') {
+    return false;
+  }
+  if (value.startsWith('"') && value.endsWith('"')) {
+    return JSON.parse(value) as string;
+  }
+  return value;
+}
+
+function parseLogLine(line: string): Record<string, unknown> {
+  const fields = Object.fromEntries(
+    line.split(' ').map((part) => {
+      const separator = part.indexOf('=');
+      const key = part.slice(0, separator);
+      const rawValue = part.slice(separator + 1);
+      return [key, coerceLogValue(rawValue)];
+    })
+  );
+  return fields;
+}
+
+async function waitForLogEvents(path: string, count: number): Promise<Array<Record<string, unknown>>> {
+  await expect
+    .poll(async () => {
+      try {
+        return (await readFile(path, 'utf8')).trim().split('\n').filter(Boolean).length;
+      } catch {
+        return 0;
+      }
+    })
+    .toBe(count);
+  return (await readFile(path, 'utf8')).trim().split('\n').map(parseLogLine);
+}
+
 describe('slot sync debounce', () => {
   it('updates when force is true even inside debounce window', async () => {
     const state = createEmptyState();
@@ -227,54 +278,3 @@ describe('slot sync debounce', () => {
     expect(persisted.lastSlotUpdateAt).toBe(0);
   });
 });
-
-async function useTempFiles(): Promise<{ logPath: string; statePath: string }> {
-  tempDir = await mkdtemp(join(tmpdir(), 'agent-presence-update-test-'));
-  const logPath = join(tempDir, 'agent-presence.log');
-  process.env.AGENT_PRESENCE_LOG_FILE = logPath;
-  return {
-    logPath,
-    statePath: join(tempDir, 'state.json')
-  };
-}
-
-async function waitForLogEvents(path: string, count: number): Promise<Array<Record<string, unknown>>> {
-  await expect
-    .poll(async () => {
-      try {
-        return (await readFile(path, 'utf8')).trim().split('\n').filter(Boolean).length;
-      } catch {
-        return 0;
-      }
-    })
-    .toBe(count);
-  return (await readFile(path, 'utf8')).trim().split('\n').map(parseLogLine);
-}
-
-function parseLogLine(line: string): Record<string, unknown> {
-  const fields = Object.fromEntries(
-    line.split(' ').map((part) => {
-      const separator = part.indexOf('=');
-      const key = part.slice(0, separator);
-      const rawValue = part.slice(separator + 1);
-      return [key, coerceLogValue(rawValue)];
-    })
-  );
-  return fields;
-}
-
-function coerceLogValue(value: string): unknown {
-  if (/^\d+$/.test(value)) {
-    return Number(value);
-  }
-  if (value === 'true') {
-    return true;
-  }
-  if (value === 'false') {
-    return false;
-  }
-  if (value.startsWith('"') && value.endsWith('"')) {
-    return JSON.parse(value) as string;
-  }
-  return value;
-}

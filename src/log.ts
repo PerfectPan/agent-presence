@@ -20,30 +20,6 @@ export interface LogWriter {
   event(event: Record<string, unknown>): Promise<void>;
 }
 
-export async function writeLog(message: string): Promise<void> {
-  await appendLogLine(
-    formatLogEvent({ time: formatLogTime(), level: 'error', app: 'agent-presence', pid: process.pid, message })
-  );
-}
-
-export async function writeLogEvent(event: Record<string, unknown>): Promise<void> {
-  return defaultLogWriter.event(event);
-}
-
-export function createLogWriter(context: Record<string, unknown>): LogWriter {
-  return {
-    event(event: Record<string, unknown>): Promise<void> {
-      return appendLogEvent({ ...baseLogContext(), ...context, ...event });
-    }
-  };
-}
-
-const defaultLogWriter = createLogWriter({});
-
-async function appendLogEvent(event: Record<string, unknown>): Promise<void> {
-  await appendLogLine(formatLogEvent({ time: formatLogTime(), level: 'info', ...event }));
-}
-
 async function appendLogLine(line: string): Promise<void> {
   const path = getLogPath();
   await mkdir(dirname(path), { recursive: true, mode: 0o700 });
@@ -63,10 +39,12 @@ export function formatLogTime(date = new Date()): string {
   return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}:${parts.second}.${milliseconds}${CHINA_TIME_OFFSET}`;
 }
 
-export function formatLogEvent(event: Record<string, unknown>): string {
-  return Object.entries(event)
-    .map(([key, value]) => `${key}=${formatLogValue(value)}`)
-    .join(' ');
+function quoteLogString(value: string | undefined): string {
+  const text = value ?? '';
+  if (text !== '' && /^[A-Za-z0-9_./:@+,[\]-]+$/.test(text)) {
+    return text;
+  }
+  return JSON.stringify(text);
 }
 
 function formatLogValue(value: unknown): string {
@@ -85,10 +63,32 @@ function formatLogValue(value: unknown): string {
   return quoteLogString(JSON.stringify(value));
 }
 
-function quoteLogString(value: string | undefined): string {
-  const text = value ?? '';
-  if (text !== '' && /^[A-Za-z0-9_./:@+,[\]-]+$/.test(text)) {
-    return text;
-  }
-  return JSON.stringify(text);
+export function formatLogEvent(event: Record<string, unknown>): string {
+  return Object.entries(event)
+    .map(([key, value]) => `${key}=${formatLogValue(value)}`)
+    .join(' ');
+}
+
+export async function writeLog(message: string): Promise<void> {
+  await appendLogLine(
+    formatLogEvent({ time: formatLogTime(), level: 'error', app: 'agent-presence', pid: process.pid, message })
+  );
+}
+
+async function appendLogEvent(event: Record<string, unknown>): Promise<void> {
+  await appendLogLine(formatLogEvent({ time: formatLogTime(), level: 'info', ...event }));
+}
+
+export function createLogWriter(context: Record<string, unknown>): LogWriter {
+  return {
+    event(event: Record<string, unknown>): Promise<void> {
+      return appendLogEvent({ ...baseLogContext(), ...context, ...event });
+    }
+  };
+}
+
+const defaultLogWriter = createLogWriter({});
+
+export async function writeLogEvent(event: Record<string, unknown>): Promise<void> {
+  return defaultLogWriter.event(event);
 }
