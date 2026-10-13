@@ -39,7 +39,7 @@ Out of scope: everything else. See "Unchanged behavior".
 - New `agent-presence doctor` and `agent-presence inventory` commands report installation health (duplicate, drifted, or legacy-hook problems) and the installed artifact ledger.
 - While an agent target still holds entries that a previous version installed and `setup` can detect (the paired Plan 3.5 lists the ones it cannot), `agent-presence setup` writes nothing to the agent targets: it lists the entries it found and exits with an error asking the user to run the previous version's `agent-presence uninstall` first. It never removes those entries itself.
 - `agent-presence uninstall` removes the artifacts this version installed and reports anything it kept. It leaves entries that a previous version installed; that version's own uninstall removes them.
-- The kit's SQLite-backed process lock replaces the mkdir-based state lock and the hardlink-based log lock; a crashed process no longer leaves a lock that others must time out or reclaim. Both call sites keep today's bounded waits (about 2 seconds for state writes, about 2.5 seconds for log appends).
+- The kit's SQLite-backed process lock replaces the mkdir-based state lock and the hardlink-based log lock; a crashed process no longer leaves a lock that others must time out or reclaim. Both call sites keep today's bounded waits (about 2 seconds for state writes, about 2.5 seconds for log appends), except that the worker of [Spec 0003](0003-hook-event-queue.md) waits for the log lock before a dsh usage append instead of skipping the append; a handover interrupts that wait and leaves the append to the next worker.
 
 ## Unchanged Behavior
 
@@ -47,10 +47,11 @@ Everything not listed above stays unchanged, explicitly including:
 
 - The npx-form installed hook command stays recognizable by its markers (`@rivus/agent-presence`, `agent-presence hook`); the absolute-path form keeps carrying `dist/src/cli.js hook` in its command text, but that generic fragment is not a marker — the paired Plan records which old command forms `setup` detects and which it does not.
 - Presence source ids stay `claude`, `codex`, `gemini`, `opencode`, `pi`, `dsh` (plus the new `grok`); persisted state, render templates, and user configuration keep working.
-- The presence state file format is unchanged: this adoption adds no fields (usage scans are stateless), and older versions load files this version writes.
+- The presence state file format is unchanged: this adoption adds no state fields beyond Spec 0003's optional `queueApplied` and `queueOwed`, which older versions drop (usage scans are stateless — this depends on the paired Plan's usage-scan-state owner decision, whose alternative persists scan state), and older versions load files this version writes.
 - Render templates, providers, keyring credentials, the power watcher, the dsh plugin flow, and the source-table mechanism.
 - The hook path stays fast, bounded, non-interactive, and fail-open; Codex hooks still print `{}` — on every event, including successful context events.
 - Presence still expires sessions after the inactivity TTL, still reopens a finished session on a new user prompt, and still falls back to finishing the most recent matching session.
+- An opencode file edit still refreshes the running session, and an opencode `session.error` that names no session still finishes it: from kit 0.13.0 (agent-kit#86) the kit bridge carries the latest session id into such events, as the old bridge did.
 
 ## Domain Invariants
 
@@ -140,7 +141,7 @@ Everything not listed above stays unchanged, explicitly including:
 ### S12: Uninstall and documented downgrade
 
 - Given this version is installed
-- When `agent-presence uninstall` runs, then the previous version installs and sets up again
+- When `agent-presence uninstall` runs, then `agent-presence worker --stop` (Spec 0003), then the previous version installs and sets up again
 - Then uninstall reports everything removed, and the previous version's hooks fire exactly once per event with no leftovers from this version
 
 ### S13: Everything else unchanged
@@ -153,9 +154,9 @@ Everything not listed above stays unchanged, explicitly including:
 
 - Public API: none (no exported library surface). CLI: `hook`, `setup`, `uninstall`, `update` keep their names and existing flags; `doctor` and `inventory` are new.
 - Upgrade from a previous version: run that version's `agent-presence uninstall` (without `--credentials` or `--all`, so credentials, configuration, and state stay), then install this version and run `setup`. When the previous version was set up with install-target override variables such as `CLAUDE_SETTINGS_FILE`, its uninstall runs with the same variables set; this version ignores them and `setup` warns when one is set. Later upgrades from this version need no uninstall.
-- Persisted data: `PresenceState`'s usage shape is unchanged — scans are stateless and no new fields are added. The kit's install ledger is a JSON file under `$XDG_STATE_HOME/agent-kit/harness/<scope>` (default `~/.local/state/agent-kit/harness`) with its own SQLite ledger lock, and the presence-side lock databases are new local files under the presence state directory.
+- Persisted data: `PresenceState`'s usage shape is unchanged — scans are stateless and no usage fields are added, which depends on the paired Plan's usage-scan-state owner decision; the only new state fields are Spec 0003's optional `queueApplied` and `queueOwed`, which older versions drop. The kit's install ledger is a JSON file under `$XDG_STATE_HOME/agent-kit/harness/<scope>` (default `~/.local/state/agent-kit/harness`) with its own SQLite ledger lock, and the presence-side lock databases are new local files under the presence state directory.
 - Configuration: no existing key changes meaning. `effect` is added as an exact dependency (`4.0.1`, required by the kit's `/harness` entry), and `engines.node` rises to `>= 22.13` (the kit's Node adapters).
-- Package policy: the kit versions are excluded from the repository's `minimumReleaseAge` window (`pnpm-workspace.yaml`), or the adoption waits until the versions age past it.
+- Package policy: `@rivus/agent-kit` is excluded from the repository's `minimumReleaseAge` window (`pnpm-workspace.yaml`, documented in `CONTRIBUTING.md`); whether `@rivus/agent-kit-collab` is excluded too is an owner decision recorded in the paired Plan; without that exclusion, collab versions age past the window before they are adopted.
 - Operational bounds: the hook cold start must not get slower; Gemini CLI must be a version that reads extensions from its extensions directory (the version bound is unconfirmed and is verified during acceptance).
 
 ## Acceptance Evidence

@@ -9,9 +9,9 @@ import { hook } from '../src/cli/commands/hook.js';
 import { buildOpenCodePluginSource, buildPiExtensionSource } from '../src/installers.js';
 import { createEmptyState, loadState, saveState, type AgentSession } from '../src/state.js';
 
-// Regression oracle for today's hook-event mapping: one case per row of the
-// agent-kit adoption plan's event table (docs/plans/0002-agent-kit-adoption.md
-// section 3.4) that has a today-rule. Existing-source cases run the way today's
+// Regression oracle for today's hook-event mapping: one case per event the
+// `--source/--event` form handles (the source mapping in docs/architecture.md,
+// "Hook Normalization"). Existing-source cases run the way today's
 // installed hooks run them: Claude/Codex/Gemini/Grok cases call
 // `hook --source <id> --event <Name>` directly; opencode and Pi cases go
 // through the generated old bridge/extension themselves, so the row asserts
@@ -124,7 +124,8 @@ function toSnakeEvent(event: string): string {
 
 interface HookRun {
   source: string;
-  event: string;
+  /** Omitted to run without --event, so the source resolver names the event. */
+  event?: string;
   payload: unknown;
   env?: Record<string, string>;
   /** Installed Codex hooks run without --silent; everything else is silent. */
@@ -137,7 +138,10 @@ async function runHook(run: HookRun): Promise<void> {
     process.env[key] = value;
   }
   stdoutWrites.length = 0;
-  const args = ['--source', run.source, '--event', run.event];
+  const args = ['--source', run.source];
+  if (run.event !== undefined) {
+    args.push('--event', run.event);
+  }
   if (!run.loud) {
     args.push('--silent');
   }
@@ -248,14 +252,15 @@ async function runCaptured(captures: CaptureReader): Promise<void> {
   });
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
-}
-
 interface OpenCodeBridgeHandlers {
   event: (input: { event: Record<string, unknown> }) => Promise<void>;
   'tool.execute.before': (input: Record<string, unknown>) => Promise<void>;
   'tool.execute.after': (input: Record<string, unknown>) => Promise<void>;
+}
+
+// The generated bridge's export, called with the fake plugin input.
+interface OpenCodeBridgeModule {
+  AgentSignaturePlugin: (ctx: { directory: string }) => Promise<OpenCodeBridgeHandlers>;
 }
 
 interface OpenCodeBridge {
@@ -271,11 +276,8 @@ async function loadOpenCodeBridge(): Promise<OpenCodeBridge> {
   await writeFile(scriptFile, CAPTURE_SCRIPT);
   const pluginFile = join(homeDir, 'opencode-bridge.mjs');
   await writeFile(pluginFile, buildOpenCodePluginSource(['node', scriptFile, captureFile]));
-  const module: unknown = await import(pathToFileURL(pluginFile).href);
-  if (!isRecord(module) || typeof module.AgentSignaturePlugin !== 'function') {
-    throw new Error('the generated opencode plugin does not export AgentSignaturePlugin');
-  }
-  const handlers: OpenCodeBridgeHandlers = await module.AgentSignaturePlugin({ directory: '/work/repo' });
+  const module: OpenCodeBridgeModule = await import(pathToFileURL(pluginFile).href);
+  const handlers = await module.AgentSignaturePlugin({ directory: '/work/repo' });
   return {
     busEvent: (event) => handlers.event({ event }),
     toolBefore: (input) => handlers['tool.execute.before'](input),
@@ -291,6 +293,11 @@ interface PiHostContext {
   cwd: string;
 }
 
+// The generated extension's default export, called with the fake host.
+interface PiExtensionModule {
+  default: (host: { on: (name: string, handler: PiEventHandler) => void }) => void;
+}
+
 interface PiExtensionHost {
   handlers: Map<string, PiEventHandler>;
   context: PiHostContext;
@@ -302,17 +309,14 @@ async function loadPiExtension(): Promise<PiExtensionHost> {
   const scriptFile = join(homeDir, 'capture-hook.mjs');
   await writeFile(scriptFile, CAPTURE_SCRIPT);
   // A broken transpile surfaces as the import below failing with a syntax
-  // error; the default-export check then reports the missing extension.
+  // error.
   const transpiled = await transformWithOxc(
     buildPiExtensionSource(['node', scriptFile, captureFile]),
     'pi-extension.ts'
   );
   const extensionFile = join(homeDir, 'pi-extension.mjs');
   await writeFile(extensionFile, transpiled.code);
-  const module: unknown = await import(pathToFileURL(extensionFile).href);
-  if (!isRecord(module) || typeof module.default !== 'function') {
-    throw new Error('the generated Pi extension has no default export');
-  }
+  const module: PiExtensionModule = await import(pathToFileURL(extensionFile).href);
   const handlers = new Map<string, PiEventHandler>();
   module.default({
     on: (name: string, handler: PiEventHandler) => {
@@ -1134,6 +1138,39 @@ describe('hook event table — Grok (driven via --event, presence-only source)',
       runningSession('grok', 'grok-session-1:subagent:sub-1')
     );
     await run('SubagentStop', { subagentId: 'sub-1' });
+
+    const state = await readState();
+    expect(state.sessions['grok-session-1:subagent:sub-1']).toMatchObject({
+      status: 'finished',
+      finishedAt: NOW
+    });
+    expect(state.sessions['grok-session-1']).toMatchObject({ status: 'running' });
+    expect(state.usageBadgesAt).toBeUndefined();
+  });
+});
+
+describe('hook --source grok without --event', () => {
+  const run = (hookEventName: string, extra: Record<string, unknown> = {}) =>
+    runHook({
+      source: 'grok',
+      payload: { hookEventName, sessionId: 'grok-session-1', cwd: '/work/repo', ...extra }
+    });
+
+  it('stop finishes the running session and refreshes the usage badge', async () => {
+    await seedSessions(runningSession('grok', 'grok-session-1'));
+    await run('stop', { reason: 'end_turn' });
+
+    const state = await readState();
+    expect(state.sessions['grok-session-1']).toMatchObject({ status: 'finished', finishedAt: NOW });
+    expect(state.usageBadgesAt).toBe(NOW);
+  });
+
+  it('subagent_stop finishes only the subagent session', async () => {
+    await seedSessions(
+      runningSession('grok', 'grok-session-1'),
+      runningSession('grok', 'grok-session-1:subagent:sub-1')
+    );
+    await run('subagent_stop', { subagentId: 'sub-1' });
 
     const state = await readState();
     expect(state.sessions['grok-session-1:subagent:sub-1']).toMatchObject({

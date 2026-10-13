@@ -196,7 +196,7 @@ describe('opencode hook context', () => {
 });
 
 describe('Grok hook context', () => {
-  it('reads Grok snake_case wire names from the payload', () => {
+  it('maps a Grok snake_case wire name from the payload to the presence event', () => {
     expect(
       resolveGrokHookContext({
         hook_event_name: 'user_prompt_submit',
@@ -204,7 +204,7 @@ describe('Grok hook context', () => {
         cwd: '/repo'
       })
     ).toEqual({
-      event: 'user_prompt_submit',
+      event: 'UserPromptSubmit',
       project: '/repo',
       sessionId: 'grok-session-1'
     });
@@ -218,7 +218,7 @@ describe('Grok hook context', () => {
         cwd: '/repo'
       })
     ).toEqual({
-      event: 'stop',
+      event: 'Stop',
       project: '/repo',
       sessionId: 'grok-session-2'
     });
@@ -235,7 +235,7 @@ describe('Grok hook context', () => {
         }
       )
     ).toEqual({
-      event: 'session_start',
+      event: 'SessionStart',
       project: '/env-repo',
       sessionId: 'env-grok-session'
     });
@@ -256,7 +256,7 @@ describe('Grok hook context', () => {
         }
       )
     ).toEqual({
-      event: 'stop',
+      event: 'Stop',
       project: '/repo',
       sessionId: 'payload-grok-session'
     });
@@ -271,7 +271,7 @@ describe('Grok hook context', () => {
         cwd: '/repo'
       })
     ).toEqual({
-      event: 'subagent_start',
+      event: 'SubagentStart',
       project: '/repo',
       sessionId: 'grok-session-1:subagent:sub-1'
     });
@@ -286,7 +286,7 @@ describe('Grok hook context', () => {
         cwd: '/repo'
       })
     ).toEqual({
-      event: 'subagent_stop',
+      event: 'SubagentStop',
       project: '/repo',
       sessionId: 'grok-session-1:subagent:explorer'
     });
@@ -301,7 +301,17 @@ describe('Grok hook context', () => {
         cwd: '/repo'
       })
     ).toEqual({
-      event: 'stop',
+      event: 'Stop',
+      project: '/repo',
+      sessionId: 'grok-session-1'
+    });
+  });
+
+  it('returns a name outside the Grok event table as Grok sent it', () => {
+    expect(
+      resolveGrokHookContext({ hookEventName: 'notification', sessionId: 'grok-session-1', cwd: '/repo' })
+    ).toEqual({
+      event: 'notification',
       project: '/repo',
       sessionId: 'grok-session-1'
     });
@@ -309,7 +319,7 @@ describe('Grok hook context', () => {
 
   it('routes through resolveHookContext when source is grok', () => {
     expect(resolveHookContext('grok', { hookEventName: 'stop', sessionId: 'grok-session-3', cwd: '/repo' })).toEqual({
-      event: 'stop',
+      event: 'Stop',
       project: '/repo',
       sessionId: 'grok-session-3'
     });
@@ -410,13 +420,48 @@ describe('opencode hook context — kit bridge session ids', () => {
     });
   });
 
-  it('still falls back to the env id when the payload carries none', () => {
+  it('falls back to the env id for an old bridge payload that names no session', () => {
     expect(
-      resolveOpenCodeHookContext({ type: 'tool.execute.before' }, { OPENCODE_SESSION_ID: 'ses_remembered' })
+      resolveOpenCodeHookContext(
+        { event: { type: 'tool.execute.before' }, input: { tool: 'bash', callID: 'call-1' } },
+        { OPENCODE_SESSION_ID: 'ses_remembered' }
+      )
     ).toEqual({
       event: 'Heartbeat',
       project: undefined,
       sessionId: 'ses_remembered'
+    });
+  });
+
+  it('reads the bridge currentSessionId for a kit bus event that names no session', () => {
+    expect(
+      resolveOpenCodeHookContext({
+        type: 'file.edited',
+        directory: '/work/repo',
+        properties: { file: '/work/repo/src/index.ts' },
+        currentSessionId: 'ses_current'
+      })
+    ).toEqual({
+      event: 'Heartbeat',
+      project: '/work/repo',
+      sessionId: 'ses_current'
+    });
+  });
+
+  it('takes no env or payload fallback for a kit bus event the kit reads no session id from', () => {
+    expect(
+      resolveOpenCodeHookContext(
+        {
+          type: 'message.updated',
+          directory: '/work/repo',
+          properties: { info: { id: 'msg_1' }, session: { id: 'ses_nested' } }
+        },
+        { OPENCODE_SESSION_ID: 'ses_remembered' }
+      )
+    ).toEqual({
+      event: 'Heartbeat',
+      project: '/work/repo',
+      sessionId: undefined
     });
   });
 

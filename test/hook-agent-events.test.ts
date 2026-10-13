@@ -6,9 +6,11 @@ import { beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 import { hook } from '../src/cli/commands/hook.js';
 import { createEmptyState, loadState, saveState, type AgentSession, type PresenceState } from '../src/state.js';
 
-// `hook --agent <kitAgentId>` interpreted with readHookEvent. One case per row of
-// Plan 0002 §3.4, including grouped names and payload branches. Where a
-// today-rule exists, the state outcome matches test/hook-event-table.test.ts.
+// `hook --agent <kitAgentId>` interpreted with readHookEvent. One case per
+// event of the signal rule in docs/architecture.md ("Hook Normalization"),
+// including grouped names and payload branches. Where the `--source/--event`
+// form handles the same event, the state outcome matches
+// test/hook-event-table.test.ts.
 
 const publishValueMock = vi.hoisted(() => vi.fn<(value: string) => Promise<void>>());
 const stdinPayload = vi.hoisted(() => {
@@ -681,20 +683,55 @@ describe('hook --agent opencode', () => {
     expect(finishedView(await readState(), session)).toEqual(finishedExpected());
   });
 
-  it('file.edited has no session id and is skipped', async () => {
+  // agent-kit#86: for an event that names no session (file.edited never does,
+  // session.error's sessionID is optional) the kit bridge adds the session it
+  // last saw as currentSessionId, and adds nothing before it has seen one.
+  const withCurrentSession = (type: string, properties: Record<string, unknown>) =>
+    runAgent({ agent: 'opencode', payload: { ...openCodeBus(type, properties), currentSessionId: session } });
+
+  it('file.edited is a heartbeat for the bridge current session', async () => {
     await seedSessions(runningSession('opencode', session));
-    // agent-kit#86: the kit bridge forwards the bus event plus directory and does not remember OPENCODE_SESSION_ID.
+    await withCurrentSession('file.edited', { file: '/work/repo/src/index.ts' });
+    expect(keptView(await readState(), session)).toEqual(runningKept('opencode'));
+  });
+
+  it('session.error without sessionID finishes the bridge current session', async () => {
+    await seedSessions(runningSession('opencode', session));
+    await withCurrentSession('session.error', { error: { name: 'UnknownError', data: { message: 'failed' } } });
+    expect(finishedView(await readState(), session)).toEqual(finishedExpected());
+  });
+
+  it('a message event takes the bridge current session, not its message id', async () => {
+    await seedSessions(runningSession('opencode', session));
+    await withCurrentSession('message.updated', { info: { id: 'msg_1' } });
+    const state = await readState();
+    expect(Object.keys(state.sessions)).toEqual([session]);
+    expect(keptView(state, session)).toEqual(runningKept('opencode'));
+  });
+
+  it('file.edited before the bridge has seen a session is skipped', async () => {
+    await seedSessions(runningSession('opencode', session));
     await run('file.edited', { file: '/work/repo/src/index.ts' });
     expect(settledView(await readState(), session)).toEqual(untouchedRunning('opencode', session));
     expect(await readLog()).toContain('hook skipped: missing session id for source=opencode event=Heartbeat');
   });
 
-  it('session.error without sessionID is skipped', async () => {
+  it('session.error without sessionID before the bridge has seen a session is skipped', async () => {
     await seedSessions(runningSession('opencode', session));
-    // agent-kit#86: session.error.sessionID is optional, and the kit bridge does not remember OPENCODE_SESSION_ID.
     await run('session.error', { error: { name: 'UnknownError', data: { message: 'failed' } } });
     expect(settledView(await readState(), session)).toEqual(untouchedRunning('opencode', session));
     expect(await readLog()).toContain('hook skipped: missing session id for source=opencode event=Stop');
+  });
+
+  it('an event that names no session ignores OPENCODE_SESSION_ID', async () => {
+    await seedSessions(runningSession('opencode', session));
+    await runAgent({
+      agent: 'opencode',
+      payload: openCodeBus('file.edited', { file: '/work/repo/src/index.ts' }),
+      env: { OPENCODE_SESSION_ID: session }
+    });
+    expect(settledView(await readState(), session)).toEqual(untouchedRunning('opencode', session));
+    expect(await readLog()).toContain('hook skipped: missing session id for source=opencode event=Heartbeat');
   });
 
   it.each([
@@ -884,6 +921,18 @@ describe('hook --agent grok', () => {
       runningSession('grok', 'grok-session-1:subagent:sub-1')
     );
     await run('subagent_stop', { subagentId: 'sub-1' });
+    const state = await readState();
+    expect(state.sessions['grok-session-1:subagent:sub-1']).toMatchObject({ status: 'finished', finishedAt: NOW });
+    expect(state.sessions['grok-session-1']).toMatchObject({ status: 'running' });
+    expect(state.usageBadgesAt).toBeUndefined();
+  });
+
+  it('a PascalCase SubagentStop spelling finishes only the subagent session', async () => {
+    await seedSessions(
+      runningSession('grok', 'grok-session-1'),
+      runningSession('grok', 'grok-session-1:subagent:sub-1')
+    );
+    await run('SubagentStop', { subagentId: 'sub-1' });
     const state = await readState();
     expect(state.sessions['grok-session-1:subagent:sub-1']).toMatchObject({ status: 'finished', finishedAt: NOW });
     expect(state.sessions['grok-session-1']).toMatchObject({ status: 'running' });

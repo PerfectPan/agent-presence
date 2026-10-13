@@ -24,7 +24,8 @@ interpreted (Spec and Plan 0002).
 ## Behavioral Requirements
 
 - The hook command prints its output (`{}` unless `--silent`) and exits 0 once it has recorded the event. On its way it
-  takes no lock, writes no log line, reads no credential, scans no transcript and makes no network call.
+  takes no lock (it only checks, without waiting, whether a worker is running), writes no log line, reads no credential,
+  scans no transcript and makes no network call.
 - A recorded event has the effect the current hook has on presence state (session, status, timestamps, reopen and
   session-boundary behavior, the fallback finish of the latest matching session), computed from the time the hook
   recorded it.
@@ -156,7 +157,7 @@ interpreted (Spec and Plan 0002).
 - Downgrade: run `agent-presence worker --stop` with the new release, then install the previous release, which ignores
   the queue.
 - One state file uses one configuration: the worker reads the configuration file before each batch and uses the
-  environment of the hook that started it for credentials.
+  environment of the process that started it (a hook or a command that took over) for credentials.
 - The worker uses `@rivus/agent-kit-collab`'s process lock and needs Node.js 22.13 or later, which presence already
   requires.
 
