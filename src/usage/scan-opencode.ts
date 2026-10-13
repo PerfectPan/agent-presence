@@ -203,10 +203,10 @@ async function scanLegacyJson(messageRoot: string, options: ScanOptions): Promis
  * cost, so we trust it (like Pi) rather than repricing — even a `0` cost.
  *
  * Preference order, all read-only and fail-soft:
- * 1. SQLite via node's builtin `node:sqlite`. `engines.node` allows `>=22`, but
- *    the builtin does not exist on Node.js 22.0-22.4, needs
- *    `--experimental-sqlite` on 22.5-22.12, and is unflagged from 22.13.
- *    Imported dynamically so such a runtime never fails at load.
+ * 1. SQLite via node's builtin `node:sqlite`, unflagged from Node.js 22.13,
+ *    which `engines.node` (`>=22.13`) requires. It is imported dynamically so
+ *    a runtime that ignores `engines` never fails at load: the builtin does not
+ *    exist on 22.0-22.4 and needs `--experimental-sqlite` on 22.5-22.12.
  * 2. Legacy (<1.2) JSON at `<dir>/storage/message/{sessionId}/*.json`, same
  *    per-message shape.
  * 3. Nothing present -> `[]`.
