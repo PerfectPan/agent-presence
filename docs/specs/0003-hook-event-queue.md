@@ -24,7 +24,8 @@ interpreted (Spec and Plan 0002).
 ## Behavioral Requirements
 
 - The hook command prints its output (`{}` unless `--silent`) and exits 0 once it has recorded the event. On its way it
-  takes no lock, writes no log line, reads no credential, scans no transcript and makes no network call.
+  takes no lock (it only checks, without waiting, whether a worker is running), writes no log line, reads no credential,
+  scans no transcript and makes no network call.
 - A recorded event has the effect the current hook has on presence state (session, status, timestamps, reopen and
   session-boundary behavior, the fallback finish of the latest matching session), computed from the time the hook
   recorded it.
