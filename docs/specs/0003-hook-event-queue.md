@@ -156,7 +156,7 @@ interpreted (Spec and Plan 0002).
 - Downgrade: run `agent-presence worker --stop` with the new release, then install the previous release, which ignores
   the queue.
 - One state file uses one configuration: the worker reads the configuration file before each batch and uses the
-  environment of the hook that started it for credentials.
+  environment of the process that started it (a hook or a command that took over) for credentials.
 - The worker uses `@rivus/agent-kit-collab`'s process lock and needs Node.js 22.13 or later, which presence already
   requires.
 

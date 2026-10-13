@@ -20,7 +20,8 @@
 
 ### 1.1 Current behavior and constraints
 
-Line references are to the code at the head of the Plan 0002 stack (batch 4).
+Line references are to the code on `main` after Plan 0002 batch 4
+([#98](https://github.com/PerfectPan/agent-presence/pull/98)).
 
 - The hook command does presence's work before it answers. `hook` (`src/cli/commands/hook.ts`) writes a diagnostic log
   line (`:35`), appends a dsh usage event before the usage refresh (`:56-58`), rescans transcripts for usage at a session
@@ -51,12 +52,15 @@ Line references are to the code at the head of the Plan 0002 stack (batch 4).
   `CLAUDE_CONFIG_DIR` (`src/usage/scan-claude.ts:11-16`).
 - Source resolution writes log lines when it loads or refuses a configured handler and when a resolver fails
   (`src/sources.ts:189-273`, `:304-309`, `:371-375`), and the hook-module load fallback writes one
-  (`src/cli/hook-output.ts:16-18`), all through the log lock (`src/log.ts:23-26`). The diagnostic log records payload key
+  (`src/cli/hook-output.ts:18-21`), all through the log lock (`src/log.ts:23-26`). The diagnostic log records payload key
   names and a redacted session id, never payload values (`src/cli/hook-diagnostics.ts`).
 - Measured on macOS (median of 20 runs, a fresh `HOME` each): one Codex `Heartbeat` run takes six locks (four log, two
-  state). Hook cold start is 143 ms on `main` and 124 ms after Plan 0002's build split. With the kit's process lock in
-  place of both locks (Plan 0002 batch 1, with PerfectPan/agent-kit#78) it measured 176 ms, mostly about 4-5 ms per
-  acquisition, six times per run.
+  state). The baseline for every figure in this Plan is 143 ms: `main` before Plan 0002's build split (batch 3,
+  [#97](https://github.com/PerfectPan/agent-presence/pull/97)), with the mkdir and hardlink locks. On that baseline the
+  build split alone measured 124 ms. The kit's process lock in place of both locks (Plan 0002 batch 1, with
+  PerfectPan/agent-kit#78) measured 176 ms on the same pre-split code, 33 ms over the baseline
+  ([agent-kit#74](https://github.com/PerfectPan/agent-kit/issues/74)): the first acquire's `sysctl` and `ps` (about
+  7 ms) plus six acquisitions at about 4-5 ms each (24-30 ms). The lock was not measured on top of the build split.
 
 ### 1.2 Problem
 
@@ -67,7 +71,7 @@ those locks to the kit's crash-safe process lock, which Plan 0002 batch 1 needs,
 
 - The hook records the event and returns: no lock, log line, credential read, transcript scan or network call on its path
   (Spec 0003).
-- Hook cold start at most 60 percent of `main`'s (about 85 ms against 143 ms, same measurement).
+- Hook cold start at most 60 percent of the 143 ms baseline (1.1), about 85 ms, in the same measurement.
 - One process per state file applies events in the Spec's order; each event's state change, dsh usage and usage refresh
   take effect exactly once across crashes; publishing behaves as today.
 - The kit's process lock is used for what it is built for: one worker instance; the state and log locks leave the hook
@@ -98,7 +102,7 @@ those locks to the kit's crash-safe process lock, which Plan 0002 batch 1 needs,
 | Queue (`<state>.queue/`)  | Durable records; nothing else                                                                          |
 | Worker (`worker` command) | Applying records (apply lane) and owed follow-up work and publishing (follow-up lane)                  |
 | Commands                  | `status`, `reset`, `flush`, `update`, `worker --stop`, `uninstall --all`: take over, then act          |
-| `@rivus/agent-kit-collab` | `acquireProcessLock` for the applier and for `withStateLock`                                           |
+| `@rivus/agent-kit-collab` | `acquireProcessLock` for the applier, `withStateLock` and the log lock                                 |
 
 ### 2.3 Main path
 
@@ -143,7 +147,9 @@ those locks to the kit's crash-safe process lock, which Plan 0002 batch 1 needs,
 - Location: `<state file>.queue/` (mode 0700), so every state file has its own queue and worker. File name
   `<recordedAt, 13 digits>-<pid>-<4 random hex>.json` (mode 0600), written as `.tmp-<name>` and renamed. The worker
   removes `.tmp-*` files older than one hour.
-- Variants, all with `v` (record version), `id` (the file name without extension) and `recordedAt` (wall-clock ms):
+- Variants, all with `v` (record version), `id` (the file name without extension), `recordedAt` (wall-clock ms) and
+  `epoch` (the number in `<state>.epoch` when the producer recorded it, 3.8; `0` while that file does not exist, as on
+  a first install before any `setup` removed a tombstone):
 
   | `kind`  | Fields                                                                                                                                        |
   | ------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -157,6 +163,9 @@ those locks to the kit's crash-safe process lock, which Plan 0002 batch 1 needs,
   - `payloadKeys` holds key names, for the diagnostic log.
 
 - `v` increases on an incompatible change. A worker never applies a record with a higher `v` (3.7).
+- A record is parsed once when read, with a zod/mini schema per `kind`; a record that fails it is a bad record (3.10).
+  No hand-written shape checks. Its `v` is read first, and a record with a higher `v` is left in place unparsed (3.5),
+  so an older worker never moves a newer release's record to the failed records.
 
 ### 3.3 Starting a worker
 
@@ -178,7 +187,8 @@ those locks to the kit's crash-safe process lock, which Plan 0002 batch 1 needs,
 
 ### 3.5 Applying exactly once
 
-The state file gains two optional fields that `normalizeState` keeps and older releases drop:
+The state file gains two optional fields, parsed in `normalizeState` with a zod/mini schema (an invalid value loads as
+absent, never as a failed load); older releases drop them:
 
 - `queueApplied`: ids of applied records whose files may still exist.
 - `queueOwed`: `dshUsage` (usage events still to append, each with its record id), `usageRefresh` (one entry per source
@@ -197,8 +207,9 @@ Apply lane, every 250 ms, unless a stop request it did not write exists (3.7):
 Follow-up lane, one item at a time, concurrently with the apply lane, checking for a stop request between items:
 
 - dsh usage append: through the retained-log append, but waiting until it holds the log lock instead of skipping (the
-  lane is off the hook path), with the record id in the entry; the usage scanner skips a repeated id. The item leaves
-  `queueOwed` only after the append wrote.
+  lane is off the hook path), with the record id in the entry; the dsh usage scanner reads the optional `id` through
+  its zod/mini line schema, which replaces the hand-written `asUsageEvent` (`src/usage-events.ts:75-92`), and skips a
+  repeated id. The item leaves `queueOwed` only after the append wrote.
 - Usage refresh: through the existing refresh for that source, with its `scanEnv` and boundary time so the day rule
   (`usage-badge.ts:71-79`) holds. The refresh gains an abort signal and returns whether it completed. Afterwards, under
   the state lock, the entry is removed only if its generation is still the one the refresh started with; a boundary that
@@ -254,7 +265,8 @@ renamed after it is followed by a check that finds no liveness file, so its prod
 ### 3.8 Uninstall and setup
 
 - `<state>.epoch` holds a number that producers copy into each record; workers and commands apply only records whose
-  epoch matches the file. `setup`, when it removes a tombstone, increases it.
+  epoch matches the file. `setup`, when it removes a tombstone, increases it. A missing file counts as `0` for
+  producers and appliers alike, so a first install records and applies epoch `0`, and the first increase writes `1`.
 - `<state>.disabled` is a tombstone. Producers check it before recording, workers before starting and at every
   iteration, and `status`, `reset`, `flush` and `update` right after taking over. While it exists, producers record
   nothing, workers exit, and those commands change nothing.
@@ -273,8 +285,9 @@ renamed after it is followed by a check that finds no liveness file, so its prod
 ### 3.9 Configuration and credentials
 
 - One state file, one configuration. The worker reads the configuration file before each batch and uses the environment
-  of the hook that started it for credentials (`src/secret.ts:41-57`) and provider overrides. A hook whose environment
-  differs (another credential, another state or config path) for the same state file is not supported; section 7.
+  of the process that started it (a hook or a command that took over, 3.7) for credentials (`src/secret.ts:41-57`) and
+  provider overrides. A hook or command whose environment differs (another credential, another state or config path)
+  for the same state file is not supported; section 7.
 - Transcript roots travel with boundary events in `scanEnv`.
 - Records never carry credentials.
 
@@ -307,7 +320,7 @@ records and backlog warnings.
   timer the uninstall does not stop. It still runs that release's `flush` when due, and its retries while the provider
   rate-limits it (`deferred-update.ts:78-87`); it ignores the queue and the tombstone, and each of its saves drops
   `queueApplied` and `queueOwed`, so at most the records of one batch can be applied twice and the owed items of that
-  moment are lost. By decision this is not handled.
+  moment are lost. Proposed (owner to confirm): this is not handled.
 - Upgrades between releases that both have the queue use the record version and the takeover (3.3, 3.7).
 - Downgrade: `agent-presence worker --stop` with the new release, then install the previous release, which ignores the
   queue and the worker files.
@@ -323,7 +336,8 @@ records and backlog warnings.
 ### 4.1 Gates and rollout stages
 
 The queue, the producer, the worker, the takeover by commands, the tombstone and `worker --stop` ship together in one
-release (Q1). There is no mode switch.
+release (Q1). There is no mode switch. That release is the one that ships Plan 0002 batch 5 (Plan 0002 ships no release
+before batch 5, its 4.1), so one upgrade, uninstalling the previous release first (3.12), covers both.
 
 ### 4.2 Signals and alerts
 
@@ -338,6 +352,9 @@ The worker's log lines (3.11). `status` output does not change.
 ### 5.1 Functional checks
 
 - Record codec, writer and sorter; interpretation to record, one case per row of Plan 0002's event table.
+- Parsing: every malformed record (each `kind` with a missing or mistyped field, unknown `kind`, invalid JSON) is
+  rejected as a bad record, and a record with a higher `v` is left in place; a state file with a malformed `queueOwed`
+  (or `queueApplied`) loads with that field absent.
 - The 67-case event table from Plan 0002 batch 4, run through producer and worker: every case ends in the state the direct
   path produces.
 - Publishing with a fake clock: an event outside the interval publishes, one inside it schedules the forced flush one
@@ -375,7 +392,8 @@ The worker's log lines (3.11). `status` output does not change.
 
 ### 5.4 Performance
 
-- Hook cold start, median of 20 runs with a fresh `HOME`: `main` against the Q1 producer; target at most 60 percent.
+- Hook cold start, median of 20 runs with a fresh `HOME`: the Q1 producer against the 143 ms baseline (1.1), with the
+  baseline re-measured on the same machine; target at most 60 percent.
 - Event-to-state latency with a running worker and a slow publish in progress: under 1 second.
 - 100 concurrent hooks: one worker, every event applied (Spec S3).
 
@@ -383,9 +401,13 @@ The worker's log lines (3.11). `status` output does not change.
 
 ### 6.1 Preconditions
 
-- Plan 0002 batches 3 and 4 merged (lazy command loading, the interpretation the producer reuses).
-- The kit release with PerfectPan/agent-kit#78, for `acquireProcessLock` with the zod-free platform entry.
-- The decisions in section 7 marked as needed before Q1 settled.
+- Plan 0002 batches 3 and 4 merged (#97, #98: lazy command loading, the interpretation the producer reuses).
+- Kit 0.13.0, which Plan 0002 batch 4 pins, for `acquireProcessLock`: since PerfectPan/agent-kit#78 (0.11.0) the
+  `/node` and `/process-lock` entries bundle `zod/mini` and load no module from the `zod` package (kit adoption guide,
+  "Choose the runtime boundary").
+- The owner picks option (c) of Plan 0002's hook-path lock cost decision, so Q1 replaces batch 1, and decides Plan
+  0002's collab release-age exclusion, which applies to Q1a because it adds `@rivus/agent-kit-collab`.
+- The owner confirms the proposals in section 7.
 
 ### 6.2 Completion contract
 
@@ -401,10 +423,17 @@ The worker's log lines (3.11). `status` output does not change.
 
 #### Q1a: queue and worker, not yet wired (one PR)
 
-- Files: new `src/queue/` (record codec, writer, reader, liveness, stop request, tombstone), `src/cli/commands/worker.ts`,
-  `src/state.ts` (`queueApplied`, `queueOwed`, `withStateLock` on the kit's process lock, from the Plan 0002 batch 1
-  branch), the shared lazy platform module from that branch, `src/usage-events.ts` (an append that waits for the log lock and carries the record id) and
-  the dsh usage scanner (skip repeated ids), `src/cli/usage-badge.ts` (an abort signal and a completion result), `package.json` (`@rivus/agent-kit-collab`), tests.
+- Files: new `src/queue/` (record codec with its zod/mini schemas, writer, reader, liveness, stop request, tombstone),
+  `src/cli/commands/worker.ts`, `src/state.ts` (`queueApplied` and `queueOwed` with their schema; `withStateLock` on
+  the kit's process lock), `src/log-retention.ts` (the log lock on the kit's process lock, with an append that waits
+  until it holds the lock; the hardlink lock and its marker deleted), the shared lazy platform module (the lock changes
+  and this module as Plan 0002 3.1 and its batch 1 describe them), `src/usage-events.ts` (the dsh append waits for the
+  log lock and carries the record id; the dsh usage scanner's line schema reads the optional `id` and skips repeated
+  ids), `src/cli/usage-badge.ts` (an abort signal and a completion result), `package.json` (+`@rivus/agent-kit-collab`
+  at the version of `@rivus/agent-kit`, because collab's peer range spans one kit minor: `^0.13.0` for collab 0.13.0;
+  +`zod` at the kit's range, `^4.6.5`, shared with the kit so the lockfile resolves one copy), `pnpm-workspace.yaml`
+  and `CONTRIBUTING.md` only if the owner excludes collab from the release-age window (Plan 0002's collab release-age
+  exclusion), tests.
 - The worker runs from tests and from `agent-presence worker`; nothing writes records yet, so behavior does not change.
 - Exit: 5.2's worker checks pass; gates.
 
@@ -419,8 +448,11 @@ The worker's log lines (3.11). `status` output does not change.
 
 - Remove the direct application path from `hook` and the code only it used.
 
-Relation to Plan 0002: Q1 replaces batch 1's design; the batch 1 branch supplies `withStateLock` on the kit lock, the
-shared platform module and their tests.
+Relation to Plan 0002: Q1 is option (c) of Plan 0002's hook-path lock cost decision. If the owner picks it, Q1 replaces
+batch 1, and Q1a carries batch 1's whole lock change: `withStateLock` and the log lock on the kit lock, the shared
+platform module, their tests, and the deletion of the mkdir and hardlink locks (Plan 0002 3.1). Off the hook path both
+locks keep batch 1's bounded waits, except the follow-up lane's dsh append, which waits until it holds the log lock
+(3.5).
 
 ### 6.4 Validation ledger
 
@@ -434,21 +466,22 @@ shared platform module and their tests.
 
 ### 6.5 Work split and schedule
 
-| Batch | Owner       | Depends on                                 | When        |
-| ----- | ----------- | ------------------------------------------ | ----------- |
-| Q1a   | unconfirmed | Plan 0002 batches 3 and 4, the kit release | unconfirmed |
-| Q1b   | unconfirmed | Q1a                                        | unconfirmed |
-| Q2    | unconfirmed | Q1b released                               | unconfirmed |
+| Batch | Owner       | Depends on                                | When        |
+| ----- | ----------- | ----------------------------------------- | ----------- |
+| Q1a   | unconfirmed | The owner's decisions in 6.1              | unconfirmed |
+| Q1b   | unconfirmed | Q1a                                       | unconfirmed |
+| Q2    | unconfirmed | Q1b released with Plan 0002 batch 5 (4.1) | unconfirmed |
 
 ## 7. Risks, open questions, and follow-up
 
-| Item                                                                                                                                                            | Type          | Next step                                                                                                                                |
-| --------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| Idle interval                                                                                                                                                   | Decided       | 5 minutes                                                                                                                                |
-| One configuration per state file; credentials from the environment of the hook that started the worker                                                          | Decided       | As 3.9                                                                                                                                   |
-| Node-free shell producer as the stable hook shim (Plan 0002's hook-command decision)                                                                            | Owner         | A few milliseconds per hook, but `sh` cannot parse JSON, so it would record the raw payload, against S9; recommend not now               |
-| A worker stuck in an iteration blocks takeovers and new workers until it is killed                                                                              | Risk          | Abort signals and timeouts on external calls; automatic takeover after a stuck period as a follow-up                                     |
-| A worker pid reused within the 3-second liveness window hides a dead worker until the window passes                                                             | Accepted risk | The next hook after the window starts a worker                                                                                           |
-| A crash right after a producer saw the old worker alive leaves that record pending until a later hook                                                           | Accepted risk | As the Spec states                                                                                                                       |
-| Upgrading from a release before the queue                                                                                                                       | Decided       | Uninstall the previous release with its own `agent-presence uninstall` first; no handling of a previous release running alongside (3.12) |
-| A flush the previous release scheduled before its uninstall still runs when due, and retries while the provider rate-limits it; its saves drop the queue fields | Decided       | Not handled (3.12)                                                                                                                       |
+| Item                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | Type                        | Next step                                                                                                                                |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| Idle interval                                                                                                                                                                                                                                                                                                                                                                                                                                                               | Proposed (owner to confirm) | 5 minutes                                                                                                                                |
+| One configuration per state file; credentials from the environment of the process that started the worker (a hook or a command that took over)                                                                                                                                                                                                                                                                                                                              | Proposed (owner to confirm) | As 3.9                                                                                                                                   |
+| Node-free shell producer as the stable hook shim (Plan 0002's hook-command decision)                                                                                                                                                                                                                                                                                                                                                                                        | Owner                       | A few milliseconds per hook, but `sh` cannot parse JSON, so it would record the raw payload, against S9; recommend not now               |
+| A producer's stop request for an older-version worker (3.3) carries the producer's own pid, but under 3.7 a request whose pid is no longer alive is stale and ignored, and the producer exits within milliseconds, so the old worker would ignore it; S7 relies on the new worker writing its own request (3.7). Same-version workers also yield the lock to each other's requests, so several new workers started during an upgrade burst may pass the lock back and forth | Open question               | Settle before Q1a; not resolved in this Plan                                                                                             |
+| A worker stuck in an iteration blocks takeovers and new workers until it is killed                                                                                                                                                                                                                                                                                                                                                                                          | Risk                        | Abort signals and timeouts on external calls; automatic takeover after a stuck period as a follow-up                                     |
+| A worker pid reused within the 3-second liveness window hides a dead worker until the window passes                                                                                                                                                                                                                                                                                                                                                                         | Accepted risk               | The next hook after the window starts a worker                                                                                           |
+| A crash right after a producer saw the old worker alive leaves that record pending until a later hook                                                                                                                                                                                                                                                                                                                                                                       | Accepted risk               | As the Spec states                                                                                                                       |
+| Upgrading from a release before the queue                                                                                                                                                                                                                                                                                                                                                                                                                                   | Proposed (owner to confirm) | Uninstall the previous release with its own `agent-presence uninstall` first; no handling of a previous release running alongside (3.12) |
+| A flush the previous release scheduled before its uninstall still runs when due, and retries while the provider rate-limits it; its saves drop the queue fields                                                                                                                                                                                                                                                                                                             | Proposed (owner to confirm) | Not handled (3.12)                                                                                                                       |
