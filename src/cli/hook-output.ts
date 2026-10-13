@@ -13,8 +13,10 @@ export function writeHookOutput(silent: boolean): void {
 // output for the --silent flag, with the exit code left at 0, so a broken
 // install never breaks the agent that runs the hook. It covers the load only:
 // the hook command handles its own failures, and an error that escapes it
-// reaches the generic CLI catch. The dispatcher imports this statically, which
-// is safe because it pulls in nothing heavy.
+// reaches the generic CLI catch. The dispatcher imports this statically, so
+// every command loads what `writeLog` reaches: the log lock and with it
+// `@rivus/agent-kit-collab/process-lock` and `@rivus/agent-kit/node`, which the
+// hook path loads anyway, but no schema or zod (test/hook-graph.test.ts).
 export async function writeHookLoadFailure(args: string[], error: unknown): Promise<void> {
   await writeLog(`hook failed: ${errorMessage(error)}`);
   writeHookOutput(hasFlag(args, '--silent'));
