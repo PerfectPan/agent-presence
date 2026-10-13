@@ -43,6 +43,8 @@ export default defineConfig({
     // Transpile each module. Tree-shaking would drop statements that nothing imports.
     treeshake: false,
     sourcemap: true,
+    // Source maps keep paths and mappings only; `sourcesContent` would ship every TypeScript source in the tarball.
+    outputOptions: { sourcemapExcludeSources: true },
     // Oxc's declaration generator requires isolatedDeclarations, which this source does not enable.
     // TypeScript 7 is installed, so tsdown's tsgo generator emits the .d.ts files.
     dts: { generator: 'tsgo' },
