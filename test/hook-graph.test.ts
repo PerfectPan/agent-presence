@@ -7,6 +7,8 @@ import { describe, expect, it } from 'vite-plus/test';
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const cliEntry = resolve(repoRoot, 'src/cli.ts');
 const hookCommandEntry = resolve(repoRoot, 'src/cli/commands/hook.ts');
+// The queue producer the hook records through (Plan 0003 3.3), walked on its own.
+const producerEntry = resolve(repoRoot, 'src/queue/produce.ts');
 
 // The hook path's static graph loads only repository modules, Node built-ins,
 // and the npm entries in hookGraphPackages (docs/architecture.md, "CLI"). Any
@@ -170,5 +172,15 @@ describe('hook static import graph', () => {
     );
     expect(reachedForbidden).toEqual([]);
     expect(graph.packageSpecifiers).toEqual(hookGraphPackages);
+  });
+
+  it('keeps the queue producer free of schema modules and zod', () => {
+    const graph = walkStaticGraph([producerEntry]);
+
+    // The producer reaches the shared queue files module, so the walk followed its imports.
+    expect(graph.files).toEqual(expect.arrayContaining([producerEntry, resolve(repoRoot, 'src/queue/files.ts')]));
+    expect(graph.files.filter((file) => forbiddenHookGraphModules.includes(file))).toEqual([]);
+    expect(graph.packageSpecifiers.filter((specifier) => !hookGraphPackages.includes(specifier))).toEqual([]);
+    expect(graph.packageSpecifiers).toContain('@rivus/agent-kit-collab/process-lock');
   });
 });
