@@ -124,7 +124,7 @@ export function resolveOpenCodeHookContext(payload: unknown, env: StringEnv = pr
   // names a previous session.
   const sessionId =
     readHookEvent('opencode', payload, env).sessionId ??
-    pickString(undefined, { env, envKeys: ['OPENCODE_SESSION_ID'] }) ??
+    (env.OPENCODE_SESSION_ID || undefined) ??
     pickOpenCodeSessionId(payload);
   return {
     event: event ? event : mapOpenCodeEvent(payload),
