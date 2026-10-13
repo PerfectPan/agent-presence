@@ -46,10 +46,11 @@ Everything not listed above stays unchanged, explicitly including:
 
 - The npx-form installed hook command stays recognizable by its markers (`@rivus/agent-presence`, `agent-presence hook`); the absolute-path form keeps carrying `dist/src/cli.js hook` in its command text, but that generic fragment is not a legacy marker — the paired Plan records which old command forms are recognized and which are not.
 - Presence source ids stay `claude`, `codex`, `gemini`, `opencode`, `pi`, `dsh` (plus the new `grok`); persisted state, render templates, and user configuration keep working.
-- The presence state file format is unchanged: this adoption adds no fields (usage scans are stateless), and older versions load files this version writes.
+- The presence state file format is unchanged: this adoption adds no fields (usage scans are stateless — this depends on the paired Plan's usage-scan-state owner decision, whose alternative persists scan state), and older versions load files this version writes.
 - Render templates, providers, keyring credentials, the power watcher, the dsh plugin flow, and the source-table mechanism.
 - The hook path stays fast, bounded, non-interactive, and fail-open; Codex hooks still print `{}` — on every event, including successful context events.
 - Presence still expires sessions after the inactivity TTL, still reopens a finished session on a new user prompt, and still falls back to finishing the most recent matching session.
+- An opencode file edit still refreshes the running session, and an opencode `session.error` that names no session still finishes it: from kit 0.13.0 (agent-kit#86) the kit bridge carries the latest session id into such events, as the old bridge did.
 
 ## Domain Invariants
 
@@ -149,9 +150,9 @@ Everything not listed above stays unchanged, explicitly including:
 ## Compatibility And Constraints
 
 - Public API: none (no exported library surface). CLI: `hook`, `setup`, `uninstall`, `update` keep their names and existing flags; `doctor` and `inventory` are new.
-- Persisted data: `PresenceState`'s usage shape is unchanged — scans are stateless and no new fields are added. The kit's install ledger is a JSON file under `$XDG_STATE_HOME/agent-kit/harness/<scope>` (default `~/.local/state/agent-kit/harness`) with its own SQLite ledger lock, and the presence-side lock databases are new local files under the presence state directory.
+- Persisted data: `PresenceState`'s usage shape is unchanged — scans are stateless and no new fields are added, which depends on the paired Plan's usage-scan-state owner decision. The kit's install ledger is a JSON file under `$XDG_STATE_HOME/agent-kit/harness/<scope>` (default `~/.local/state/agent-kit/harness`) with its own SQLite ledger lock, and the presence-side lock databases are new local files under the presence state directory.
 - Configuration: no existing key changes meaning. `effect` is added as an exact dependency (`4.0.1`, required by the kit's `/harness` entry), and `engines.node` rises to `>= 22.13` (the kit's Node adapters).
-- Package policy: the kit versions are excluded from the repository's `minimumReleaseAge` window (`pnpm-workspace.yaml`), or the adoption waits until the versions age past it.
+- Package policy: `@rivus/agent-kit` is excluded from the repository's `minimumReleaseAge` window (`pnpm-workspace.yaml`, documented in `CONTRIBUTING.md`); whether `@rivus/agent-kit-collab` is excluded too is an owner decision recorded in the paired Plan; without that exclusion, collab versions age past the window before they are adopted.
 - Operational bounds: the hook cold start must not get slower; Gemini CLI must be a version that reads extensions from its extensions directory (the version bound is unconfirmed and is verified during acceptance).
 
 ## Acceptance Evidence

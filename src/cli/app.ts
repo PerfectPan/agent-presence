@@ -77,14 +77,14 @@ export async function runCli(argv: string[]): Promise<void> {
       return;
     }
     case 'hook': {
-      // A rejected load of the hook command module fails open exactly like a
-      // failure inside it: same log line, same hook output, exit code 0.
+      let hook: (args: string[]) => Promise<void>;
       try {
-        const { hook } = await import('./commands/hook.js');
-        await hook(parsed.args);
+        ({ hook } = await import('./commands/hook.js'));
       } catch (error) {
         await writeHookLoadFailure(parsed.args, error);
+        return;
       }
+      await hook(parsed.args);
       return;
     }
   }

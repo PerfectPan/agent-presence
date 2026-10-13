@@ -1,11 +1,11 @@
 import { builtinHookDialects, readHookEvent, type LifecycleEvent } from '@rivus/agent-kit/harness/events';
+import { GROK_EVENTS } from '../hooks/grok.js';
 
-// Presence keeps the internal event names normalizeEvent, applyAgentEvent, and
-// isSessionBoundaryEvent already understand. Each agent's table is Plan 0002
-// §3.4: a listed name maps to that row's signal, including where the kit phase
-// disagrees. `null` ignores the event. A name the table does not list takes
-// SessionStart, Stop, or Heartbeat from the kit phase (start, finish, or
-// activity/blocked/unknown).
+// The signal rule these tables implement, including the kit-phase fallback
+// for a name a table does not list and why rows differ from the kit phase:
+// docs/architecture.md, "Hook Normalization". A table value is the internal
+// event name normalizeEvent, applyAgentEvent, and isSessionBoundaryEvent
+// understand; `null` ignores the event.
 
 type KitAgentId = LifecycleEvent['agent'];
 type EventTable = Readonly<Record<string, string | null>>;
@@ -32,8 +32,7 @@ const CODEX_EVENTS: EventTable = {
 const GEMINI_EVENTS: EventTable = {
   SessionStart: 'SessionStart',
   SessionEnd: 'SessionEnd',
-  // Old registrations Gemini never dispatched. The old form keeps today's
-  // signal; the same names do too when they arrive on --agent.
+  // The Claude-style names old installs registered.
   UserPromptSubmit: 'UserPromptSubmit',
   PreToolUse: 'PreToolUse',
   PostToolUse: 'PostToolUse',
@@ -42,30 +41,6 @@ const GEMINI_EVENTS: EventTable = {
   BeforeTool: 'Heartbeat',
   AfterTool: 'Heartbeat',
   AfterAgent: 'Stop'
-};
-
-const GROK_EVENTS: EventTable = {
-  session_start: 'SessionStart',
-  user_prompt_submit: 'UserPromptSubmit',
-  pre_tool_use: 'PreToolUse',
-  post_tool_use: 'PostToolUse',
-  stop: 'Stop',
-  stop_failure: 'StopFailure',
-  session_end: 'SessionEnd',
-  subagent_start: 'SubagentStart',
-  subagent_stop: 'SubagentStop',
-  // Registration keys. nativeEvent is usually the snake_case wire name; the
-  // PascalCase spelling is the same event, and phase fallback would turn
-  // UserPromptSubmit into a session start and SubagentStop into a boundary.
-  SessionStart: 'SessionStart',
-  UserPromptSubmit: 'UserPromptSubmit',
-  PreToolUse: 'PreToolUse',
-  PostToolUse: 'PostToolUse',
-  Stop: 'Stop',
-  StopFailure: 'StopFailure',
-  SessionEnd: 'SessionEnd',
-  SubagentStart: 'SubagentStart',
-  SubagentStop: 'SubagentStop'
 };
 
 const OPENCODE_EVENTS: EventTable = {
@@ -92,8 +67,6 @@ const OPENCODE_EVENTS: EventTable = {
 };
 
 const PI_EVENTS: EventTable = {
-  // Opening the Pi UI is not active work. The kit phase is start; the old
-  // extension never forwarded this event.
   session_start: null,
   before_agent_start: 'SessionStart',
   agent_start: 'SessionStart',
@@ -167,9 +140,8 @@ function eventFromPhase(phase: LifecycleEvent['phase']): string {
   return 'Heartbeat';
 }
 
-// session.status's busy case is a kit start phase. Presence keeps every
-// non-idle status a heartbeat, matching the old bridge: only idle finishes,
-// and a busy blip must not take the start signal.
+// session.status: idle (the kit's finish phase) finishes; every other status
+// is a heartbeat, although the kit gives busy a start phase.
 function openCodeStatusEvent(event: LifecycleEvent): string {
   return event.phase === 'finish' ? 'Stop' : 'Heartbeat';
 }
@@ -188,14 +160,6 @@ function internalEvent(agent: KitAgentId, event: LifecycleEvent): string | null 
   return eventFromPhase(event.phase);
 }
 
-function hookEnvironment(env: NodeJS.ProcessEnv): Readonly<Record<string, string | undefined>> {
-  const copy: Record<string, string | undefined> = {};
-  for (const key of Object.keys(env)) {
-    copy[key] = env[key];
-  }
-  return copy;
-}
-
 /**
  * Interpret one `hook --agent` payload. The presence source is the sniffed
  * `LifecycleEvent.agent`, not the declared flag: Grok and Cursor also run
@@ -206,7 +170,7 @@ export function interpretAgentHook(agentId: string, payload: unknown, env: NodeJ
   if (declared === undefined) {
     throw new Error(`Agent "${agentId}" has no hook dialect`);
   }
-  const event = readHookEvent(declared, payload, hookEnvironment(env));
+  const event = readHookEvent(declared, payload, env);
   const source = presenceSource(event.agent);
   const nativeEvent = event.nativeEvent === '' ? 'unknown' : event.nativeEvent;
   if (source === undefined) {

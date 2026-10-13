@@ -61,8 +61,6 @@ export const BUILTIN_SOURCE_PLUGINS: Record<string, SourcePlugin> = {
   gemini: { id: 'gemini', resolveHookContext: resolveGeminiHookContext, scanUsage: scanGemini },
   opencode: { id: 'opencode', resolveHookContext: resolveOpenCodeHookContext, scanUsage: scanOpenCode },
   pi: { id: 'pi', resolveHookContext: resolvePiHookContext, scanUsage: scanPi },
-  // Grok contributes presence only for now; hooks are driven by explicit
-  // --event names (its installer and transcript scanner are not wired yet).
   grok: { id: 'grok', resolveHookContext: resolveGrokHookContext },
   // dsh has no managed hook installer; presence is opt-in via dsh's own
   // `dsh-hooks-claude-code` bridge (see src/hooks/dsh.ts). Usage scanning is
