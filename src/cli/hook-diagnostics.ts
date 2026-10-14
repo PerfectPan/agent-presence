@@ -1,4 +1,3 @@
-import { writeLogEvent } from '../log.js';
 import { redactSessionId } from '../log-sanitize.js';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -41,15 +40,4 @@ export function hookEventLogEvent(options: {
     project: options.project,
     payloadKeys: options.payloadKeys
   };
-}
-
-export async function writeHookDiagnostic(options: {
-  source: string;
-  event: string;
-  payload: unknown;
-  sessionId?: string;
-  project?: string;
-}): Promise<void> {
-  const { payload, ...line } = options;
-  await writeLogEvent(hookEventLogEvent({ ...line, payloadKeys: describePayloadKeys(payload) }));
 }

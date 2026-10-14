@@ -15,7 +15,9 @@ const producerEntry = resolve(repoRoot, 'src/queue/produce.ts');
 // other bare specifier is an npm package loaded on every hook run, so the walk
 // fails on it; this keeps `effect`, `zod`, and `@clack/prompts` out. The
 // forbidden modules are the setup/installer cluster, the Clack wrapper, the
-// helpers only setup, uninstall, and login use, and the modules that hold
+// helpers only setup, uninstall, and login use, the direct application path
+// the producer replaced (`src/cli/hook-apply.ts`; Q2 deletes it), and the
+// modules that hold
 // schemas or scan transcripts: the state store, the queue's schemas and
 // reader, the usage events log, the billable source table, every usage
 // scanner, and the queue's appliers: the worker, the takeover, and the modules
@@ -44,6 +46,7 @@ const forbiddenHookGraphModules = [
   'src/queue/reader.ts',
   'src/usage-events-log.ts',
   'src/usage/billable-sources.ts',
+  'src/cli/hook-apply.ts',
   'src/queue/apply.ts',
   'src/queue/follow-up.ts',
   'src/queue/owed.ts',
