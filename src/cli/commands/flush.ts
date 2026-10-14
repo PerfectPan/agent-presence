@@ -27,7 +27,6 @@ export async function flush(args: string[], takeover: TakeoverOptions = {}): Pro
   const statePath = getStatePath();
   const force = hasFlag(args, '--force');
   const silent = hasFlag(args, '--silent');
-  const now = Date.now();
   const usagePlan = usageRenderPlan(config);
 
   const result = await takeOver(
@@ -39,6 +38,9 @@ export async function flush(args: string[], takeover: TakeoverOptions = {}): Pro
       if (queue.disabled) {
         return disabledSlotResult(statePath);
       }
+      // Read after the apply: an applied record can be newer than the command's start, and `now` must not be earlier
+      // than an applied record's time (Plan 0003 3.7).
+      const now = Date.now();
       return syncRenderedSlotWithDeferredFlush(
         statePath,
         {

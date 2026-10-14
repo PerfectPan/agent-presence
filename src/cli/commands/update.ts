@@ -27,7 +27,6 @@ export async function update(args: string[], takeover: TakeoverOptions = {}): Pr
   const statePath = getStatePath();
   const force = hasFlag(args, '--force');
   const silent = hasFlag(args, '--silent');
-  const now = Date.now();
   const explicitValue = optionValue(args, '--value');
 
   if (explicitValue !== undefined) {
@@ -40,6 +39,9 @@ export async function update(args: string[], takeover: TakeoverOptions = {}): Pr
         if (queue.disabled) {
           return disabledSlotResult(statePath);
         }
+        // Read after the apply: an applied record can be newer than the command's start, and `now` must not be earlier
+        // than an applied record's time (Plan 0003 3.7).
+        const now = Date.now();
         return syncExplicitSlotValueWithStateLock(
           statePath,
           {
@@ -71,6 +73,8 @@ export async function update(args: string[], takeover: TakeoverOptions = {}): Pr
       if (queue.disabled) {
         return disabledSlotResult(statePath);
       }
+      // Read after the apply, for the same reason as the explicit branch above.
+      const now = Date.now();
       // An explicit update is infrequent, so establish a complete usage snapshot
       // before rendering. Hook boundaries are source-scoped after the day's first
       // boundary has established a complete built-in snapshot.

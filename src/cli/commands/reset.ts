@@ -25,7 +25,6 @@ export async function reset(args: string[], takeover: TakeoverOptions = {}): Pro
   const provider = createProvider(activeProvider, { config, credential });
   assertSupportsPublish(provider);
   const statePath = getStatePath();
-  const now = Date.now();
   const force = hasFlag(args, '--force');
   const silent = hasFlag(args, '--silent');
   const usagePlan = usageRenderPlan(config);
@@ -39,6 +38,9 @@ export async function reset(args: string[], takeover: TakeoverOptions = {}): Pro
       if (queue.disabled) {
         return disabledSlotResult(statePath);
       }
+      // Read after the apply: an applied record can be newer than the command's start, and `now` must not be earlier
+      // than an applied record's time, or reset would finish a session before it started (Plan 0003 3.7).
+      const now = Date.now();
       return syncRenderedSlotWithDeferredFlush(
         statePath,
         {

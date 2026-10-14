@@ -1,3 +1,4 @@
+import { acquireLock } from '../src/process-lock.js';
 import { readFile } from 'node:fs/promises';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 import { flush } from '../src/cli/commands/flush.js';
@@ -7,8 +8,15 @@ import { update } from '../src/cli/commands/update.js';
 import { readWorkerVersion, writeTombstone } from '../src/queue/files.js';
 import { checkWorkerLock, produceRecord } from '../src/queue/produce.js';
 import { listQueue } from '../src/queue/reader.js';
-import { dshUsage, eventBody, readRawState, readState, recordAt, until, writeState, T0 } from './queue-support.js';
-import { capturePrint, createCommandHarness, mockNow, type CommandHarness } from './queue-command-harness.js';
+import { dshUsage, eventBody, readState, recordAt, until, writeState, T0 } from './queue-support.js';
+import {
+  capturePrint,
+  createCommandHarness,
+  mockNow,
+  movableNow,
+  TEMPLATES,
+  type CommandHarness
+} from './queue-command-harness.js';
 
 // Plan 0003 3.7 and 3.8 for the state-changing commands: they take over, apply what is pending, and run today's code;
 // under the tombstone they change nothing. The argv path is exercised through the takeover seam the commands accept
@@ -31,6 +39,16 @@ vi.mock('../src/providers/registry.js', () => ({
   createProvider: () => ({ id: 'feishu-signature', publishValue: publishValueMock })
 }));
 
+// The command's own usage refresh, spied so the tombstone pin can show it does not run. The rest of the module stays
+// real, and the worker's refreshes run through the injected effects, not through this.
+const refreshUsageMock = vi.hoisted(() =>
+  vi.fn<typeof import('../src/cli/usage-badge.js').refreshSignatureUsageBadges>()
+);
+vi.mock('../src/cli/usage-badge.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../src/cli/usage-badge.js')>()),
+  refreshSignatureUsageBadges: refreshUsageMock
+}));
+
 vi.mock('../src/secret.js', () => ({
   readCredential: vi
     .fn<typeof import('../src/secret.js').readCredential>()
@@ -46,6 +64,7 @@ let printed: ReturnType<typeof capturePrint> | undefined;
 
 beforeEach(async () => {
   publishValueMock.mockReset().mockResolvedValue(undefined);
+  refreshUsageMock.mockReset();
   spawnMock.mockClear();
   h = await createCommandHarness();
 });
@@ -97,6 +116,30 @@ describe('status', () => {
     expect((await checkWorkerLock(h.home.statePath)).held).toBe(false);
     expect(await readWorkerVersion(h.home.statePath)).toBe(0);
   });
+
+  it('completes and prints with the log lock held: its dsh append waits the bounded wait and stays owed', async () => {
+    nowAt(T0 + 2_000);
+    await recordAt(
+      h.home.statePath,
+      T0 + 1_000,
+      eventBody('Heartbeat', 'd1', { source: 'dsh', usage: dshUsage, payloadKeys: ['usage'] })
+    );
+    const lock = await acquireLock(`${h.home.usageEventsPath}.lock.db`, new AbortController().signal, { retryMs: 10 });
+    const out = capture();
+    const starts = h.countingStarts();
+    try {
+      await printStatus([], h.takeoverOptions({ logLockWaitMs: 0, startWorker: starts.startWorker }));
+
+      expect(out.lines).toHaveLength(1);
+      expect(JSON.parse(out.lines[0]!)).toMatchObject({ activeCount: 1 });
+      expect(h.fake.appended).toEqual([]);
+      expect((await readState(h.home.statePath)).queueOwed?.dshUsage).toHaveLength(1);
+      // The append is left to the worker status starts when it leaves (3.6); the test counts instead of running it.
+      expect(starts.count()).toBe(1);
+    } finally {
+      await lock.release();
+    }
+  });
 });
 
 describe('update', () => {
@@ -122,8 +165,7 @@ describe('update', () => {
 
     expect(publishValueMock).toHaveBeenCalledWith('explicit value');
     expect((await readState(h.home.statePath)).sessions.s1).toMatchObject({ status: 'running' });
-    const raw = await readRawState(h.home.statePath);
-    expect((raw.queueOwed as { renderedSync?: boolean } | undefined)?.renderedSync).toBeUndefined();
+    expect((await readState(h.home.statePath)).queueOwed?.renderedSync).toBeUndefined();
 
     expect(await h.pool.start()).toBe('idle');
     await h.pool.settled();
@@ -233,6 +275,33 @@ describe('reset during a slow usage refresh (Spec S6)', () => {
     expect(publishValueMock).toHaveBeenCalledWith('ZERO');
     expect((await listQueue(h.home.statePath)).records).toEqual([]);
   });
+
+  it('reads its now after the apply, so an applied record is never finished before it started', async () => {
+    // A holder keeps reset waiting for the lock while the record is written, so the record can carry a later recorded
+    // time than reset's first read of `now`.
+    const now = movableNow(T0);
+    restoreNow = () => now.restore();
+    await writeState(h.home.statePath, { sessions: {} });
+    const running = h.pool.start(1, { idleMs: 300_000 });
+    await until(async () => (await readWorkerVersion(h.home.statePath)) === 1, 'the holder running');
+
+    const command = reset(['--force', '--silent'], h.takeoverOptions());
+    await until(async () => (await h.requestFiles()).length === 1, 'reset waiting for the lock');
+    await recordAt(h.home.statePath, T0 + 3_000, eventBody('SessionStart', 's1'));
+    now.set(T0 + 4_000);
+
+    await command;
+    await h.pool.settled();
+
+    expect(await running).toBe('stop-request');
+    const session = (await readState(h.home.statePath)).sessions.s1;
+    expect(session).toMatchObject({
+      status: 'finished',
+      startedAt: T0 + 3_000,
+      finishedAt: T0 + 4_000
+    });
+    expect((await readState(h.home.statePath)).lastSlotUpdateAt).toBe(T0 + 4_000);
+  });
 });
 
 describe('commands under the tombstone', () => {
@@ -292,6 +361,26 @@ describe('commands under the tombstone', () => {
     expect(publishValueMock).not.toHaveBeenCalled();
   });
 
+  it('update --force changes nothing and reports the skipped disabled result', async () => {
+    // Usage rendering on, so the tombstone check is what keeps the command's own usage refresh from running.
+    await h.home.writeConfig({
+      provider: 'feishu-signature',
+      render: TEMPLATES,
+      usage: { showInSignature: true, signatureWindowDays: 1 }
+    });
+    const before = await tombstoned();
+    const out = capture();
+
+    await update(['--force'], h.takeoverOptions());
+
+    expect(JSON.parse(out.lines[0]!)).toEqual({ status: 'skipped', reason: 'disabled', value: 'kept value' });
+    expect(await readFile(h.home.statePath, 'utf8')).toBe(before);
+    expect((await listQueue(h.home.statePath)).records).toHaveLength(1);
+    expect(publishValueMock).not.toHaveBeenCalled();
+    expect(refreshUsageMock).not.toHaveBeenCalled();
+    expect(h.fake.published).toEqual([]);
+  });
+
   it('status prints from the loaded state without saving', async () => {
     nowAt(T0 + 1_000);
     const before = await tombstoned();
@@ -348,8 +437,7 @@ describe('commands of an older release (section 7, option (a))', () => {
     expect(await h.pool.start(NEWER)).toBe('idle');
     const state = await readState(h.home.statePath);
     expect(state.sessions.fresh).toMatchObject({ status: 'running', startedAt: T0 + 1_000 });
-    const raw = await readRawState(h.home.statePath);
-    expect((raw.queueOwed as { renderedSync?: boolean } | undefined)?.renderedSync).toBeUndefined();
+    expect(state.queueOwed?.renderedSync).toBeUndefined();
     expect((await listQueue(h.home.statePath)).records).toEqual([]);
   });
 

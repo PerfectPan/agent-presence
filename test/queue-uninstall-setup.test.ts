@@ -1,13 +1,14 @@
-import { readdir, stat } from 'node:fs/promises';
-import { basename } from 'node:path';
+import { stat, writeFile } from 'node:fs/promises';
+import { basename, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 import { setup } from '../src/cli/commands/setup.js';
 import { uninstall } from '../src/cli/commands/uninstall.js';
 import { fileExists, isDisabled, queuePaths, readEpoch, readWorkerVersion } from '../src/queue/files.js';
+import type { Delay } from '../src/queue/stop-request.js';
 import { produceRecord } from '../src/queue/produce.js';
 import { listQueue } from '../src/queue/reader.js';
 import { stopWorker } from '../src/queue/takeover.js';
-import { eventBody, readState, recordAt, T0 } from './queue-support.js';
+import { eventBody, readState, recordAt, until, writeState, T0 } from './queue-support.js';
 import { createCommandHarness, type CommandHarness } from './queue-command-harness.js';
 
 // Plan 0003 3.8: `uninstall --all` writes the tombstone, empties the queue under a takeover, and keeps the lock and
@@ -97,27 +98,56 @@ afterEach(async () => {
   await h.dispose();
 });
 
-async function requestFiles(): Promise<string[]> {
-  const prefix = basename(queuePaths(h.home.statePath).stopRequestPrefix);
-  return (await readdir(h.home.dir)).filter((name) => name.startsWith(prefix));
+async function plantStopRequest(): Promise<string> {
+  // A stop request of another, dead command: the file format with a pid of a process that is not there (999999999 is
+  // above macOS's pid range).
+  const path = join(h.home.dir, `${basename(queuePaths(h.home.statePath).stopRequestPrefix)}deadbeef`);
+  await writeFile(path, '999999999\n', { mode: 0o600 });
+  return path;
 }
 
 const SETUP_ARGS = ['--provider', 'feishu-signature', '--no-hooks', '--skip-login'];
 
 describe('uninstall --all (Spec S10)', () => {
-  it('stops the worker, removes the queue, the requests, the worker version and the state, and keeps the lock and epoch', async () => {
+  it('stops a worker busy in a follow-up item, removes the planted requests and the state, and keeps the lock and epoch', async () => {
+    // The worker picks the owed refresh first, so it is busy in the follow-up lane when the records are still pending.
+    await writeState(h.home.statePath, {
+      sessions: {},
+      queueOwed: { usageRefresh: [{ source: 'codex', scanEnv: {}, boundaryAt: T0, generation: 1 }] }
+    });
+    // Every worker delay waits for the gate: with the refresh held in its lane, the worker freezes at the end of its
+    // first iteration, before any batch can list the records the test writes next.
+    let releaseWorker: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      releaseWorker = resolve;
+    });
+    const gatedDelay: Delay = (ms, signal) => gate.then(() => h.vt.delay(ms, signal));
+    const hold = h.fake.holdRefreshes();
+    const running = h.pool.start(1, { idleMs: 300_000, delay: gatedDelay });
+    const busyWith = await hold.started;
+    await plantStopRequest();
     await recordAt(h.home.statePath, T0, eventBody('SessionStart', 's1'));
-    const running = h.pool.start(1, { idleMs: 300_000 });
-    await vi.waitFor(async () => expect(await readWorkerVersion(h.home.statePath)).toBe(1));
+    await recordAt(h.home.statePath, T0 + 1_000, eventBody('SessionStart', 's2'));
+    expect(await readWorkerVersion(h.home.statePath)).toBe(1);
+    expect((await listQueue(h.home.statePath)).records).toHaveLength(2);
     const starts = h.countingStarts();
 
-    await uninstall(['--all'], h.takeoverOptions({ startWorker: starts.startWorker }));
+    const removing = uninstall(['--all'], h.takeoverOptions({ startWorker: starts.startWorker }));
+    // The tombstone is already down while uninstall waits for the worker's lock.
+    await until(async () => (await h.requestFiles()).length === 2, 'the live and the planted stop request');
+    expect(await produceRecord(h.home.statePath, eventBody('SessionStart', 'late'), { clock: h.vt.clock })).toEqual({
+      status: 'disabled'
+    });
+    releaseWorker();
+
+    await removing;
     await h.pool.settled();
 
-    expect(['tombstone', 'stop-request']).toContain(await running);
+    expect(await running).toBe('tombstone');
+    expect(busyWith.source).toBe('codex');
     expect(starts.count()).toBe(0);
     await expect(stat(queuePaths(h.home.statePath).queueDir)).rejects.toMatchObject({ code: 'ENOENT' });
-    expect(await requestFiles()).toEqual([]);
+    expect(await h.requestFiles()).toEqual([]);
     expect(await readWorkerVersion(h.home.statePath)).toBe(0);
     await expect(stat(h.home.statePath)).rejects.toMatchObject({ code: 'ENOENT' });
     expect(await fileExists(queuePaths(h.home.statePath).workerLock)).toBe(true);

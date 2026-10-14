@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 import { runCli } from '../src/cli/app.js';
+import { acquireLock } from '../src/process-lock.js';
 import { isDisabled, readWorkerVersion, writeTombstone } from '../src/queue/files.js';
 import { listQueue } from '../src/queue/reader.js';
 import { stopWorker } from '../src/queue/takeover.js';
@@ -97,6 +98,28 @@ describe('worker --stop', () => {
     expect(fake.appended).toHaveLength(1);
     expect(fake.published).toHaveLength(1);
     expect(await readWorkerVersion(home.statePath)).toBe(0);
+  });
+
+  it('completes with the log lock held: its dsh append waits the bounded wait and stays owed', async () => {
+    await recordAt(
+      home.statePath,
+      T0 + 1_000,
+      eventBody('Heartbeat', 'd1', { source: 'dsh', usage: dshUsage, payloadKeys: ['usage'] })
+    );
+    const lock = await acquireLock(`${home.usageEventsPath}.lock.db`, new AbortController().signal, { retryMs: 10 });
+    const starts = { count: 0 };
+    try {
+      await stopWorker(home.statePath, { ...stopOptions(starts), logLockWaitMs: 0 });
+
+      expect(await isDisabled(home.statePath)).toBe(true);
+      expect(starts.count).toBe(0);
+      expect(fake.appended).toEqual([]);
+      expect((await readState(home.statePath)).queueOwed?.dshUsage).toHaveLength(1);
+      // The rest of the owed work was done: the rendered sync published through the fake effects.
+      expect(fake.published).toHaveLength(1);
+    } finally {
+      await lock.release();
+    }
   });
 
   it('applies nothing while the tombstone exists, and a worker started afterwards exits at once', async () => {

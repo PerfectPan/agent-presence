@@ -1,8 +1,11 @@
 // Shared by the Q1b command tests: a queue home on virtual time with fake owed-work effects and a worker pool, the
 // takeover seam the tests pass to the commands, and stdout capture. Kept out of queue-support.ts so part A's edits
 // there do not conflict. Nothing here waits on the wall clock.
+import { readdir } from 'node:fs/promises';
+import { basename } from 'node:path';
 import { vi } from 'vite-plus/test';
 import type { AppConfig } from '../src/config.js';
+import { queuePaths } from '../src/queue/files.js';
 import type { StartWorker } from '../src/queue/start-worker.js';
 import type { TakeoverOptions } from '../src/queue/takeover.js';
 import {
@@ -28,6 +31,8 @@ export interface CommandHarness {
   takeoverOptions(extra?: TakeoverOptions): TakeoverOptions;
   /** A `startWorker` that only counts, for a command whose leaving worker the test does not run. */
   countingStarts(): { count(): number; startWorker: StartWorker };
+  /** The stop-request files next to the state file, live or not. */
+  requestFiles(): Promise<string[]>;
   dispose(): Promise<void>;
 }
 
@@ -72,6 +77,10 @@ export async function createCommandHarness(
         }
       };
     },
+    async requestFiles() {
+      const prefix = basename(queuePaths(home.statePath).stopRequestPrefix);
+      return (await readdir(home.dir)).filter((name) => name.startsWith(prefix));
+    },
     dispose: async () => {
       await pool.stop();
       await home.dispose();
@@ -101,4 +110,16 @@ export function capturePrint(): PrintCapture {
 export function mockNow(at: number): () => void {
   const spy = vi.spyOn(Date, 'now').mockReturnValue(at);
   return () => spy.mockRestore();
+}
+
+/** `Date.now` the test moves between the command's reads, so a record can be newer than its first read. */
+export function movableNow(at: number): { set(next: number): void; restore(): void } {
+  let current = at;
+  const spy = vi.spyOn(Date, 'now').mockImplementation(() => current);
+  return {
+    set: (next: number) => {
+      current = next;
+    },
+    restore: () => spy.mockRestore()
+  };
 }
