@@ -45,6 +45,9 @@ interpreted (Spec and Plan 0002).
   follow-up work is pending; a publish scheduled for later is handed to the deferred flush, as the hook hands it today.
 - While a worker runs, a recorded event is applied to the state within 1 second, also while a publish or a usage scan is
   in progress. After a worker crash, the events pending at that moment are applied when a later hook or command runs.
+  So are the events pending when a command that took over from the worker is killed (for example by a signal) before
+  it exits, including every event recorded while it made its own change; that case waits for the owner to confirm it
+  (paired Plan, section 7).
 - The commands that change state (`status`, `reset`, `flush`, `update`, including the shutdown watcher's `reset`) take
   over from a running worker, apply every event recorded before them, make their own change and report as they do today,
   with every option keeping its meaning. A running worker hands over within about a second. `reset` leaves usage
