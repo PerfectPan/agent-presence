@@ -29,18 +29,27 @@ export interface VirtualTime {
   jump(ms: number): void;
 }
 
+/** How many ticks in a row file I/O may hold time still before it moves anyway, so that nothing waits forever. */
+const MAX_TICKS_HELD_BY_IO = 2_000;
+
+/** Whether a file system request of this process is in flight. */
+function fileIoInFlight(): boolean {
+  return process.getActiveResourcesInfo().some((resource) => resource.startsWith('FSReq'));
+}
+
 /**
- * Time that passes only through timers: while a timer is pending, time moves to the earliest one at each tick of the
- * event loop's timer phase and resolves the timers due then. Every actor in a test (workers, commands, request
- * touches) waits on these timers, so the 250 ms rounds, the 2-second touches, the 60-second limit and the idle
- * interval keep their order without any wall-clock wait. Work that does not wait on a timer (file and lock I/O) takes
- * as much virtual time as other actors' timers move it meanwhile, a few steps at most; ticking in the timer phase
- * rather than at every turn keeps that small, since a turn with pending callbacks does not wait for I/O.
+ * Time that passes only through timers: at a tick of the event loop's timer phase with no file I/O in flight, time
+ * moves to the earliest pending timer and resolves the timers due then. Every actor in a test (workers, commands,
+ * request touches) waits on these timers, so the 250 ms rounds, the 2-second touches, the 60-second limit and the
+ * idle interval keep their order without any wall-clock wait. An actor's file and lock work runs between ticks: time
+ * holds still while a file request is in flight, so a slow or busy machine does not make another actor's wait run out
+ * during that work.
  */
 export function virtualTime(start = T0): VirtualTime {
   let mono = 0;
   let wallOffset = start;
   let scheduled = false;
+  let heldTicks = 0;
   const timers = new Set<{ at: number; fire: () => void }>();
 
   function schedule(): void {
@@ -53,6 +62,12 @@ export function virtualTime(start = T0): VirtualTime {
       if (timers.size === 0) {
         return;
       }
+      if (fileIoInFlight() && heldTicks < MAX_TICKS_HELD_BY_IO) {
+        heldTicks += 1;
+        schedule();
+        return;
+      }
+      heldTicks = 0;
       mono = Math.max(mono, Math.min(...[...timers].map((timer) => timer.at)));
       for (const timer of timers) {
         if (timer.at <= mono) {
@@ -180,14 +195,17 @@ export async function readRawState(statePath: string): Promise<Record<string, un
   return JSON.parse(await readFile(statePath, 'utf8')) as Record<string, unknown>;
 }
 
-/** Resolves once `ready` holds, checking at every turn of the event loop; for evidence that comes from I/O. */
+/**
+ * Resolves once `ready` holds, checking at every tick of the event loop's timer phase; for evidence that comes from
+ * I/O. Checking at every turn would keep a file request in flight all the time and hold virtual time still.
+ */
 export async function until(ready: () => boolean | Promise<boolean>, what = 'the condition'): Promise<void> {
-  // Bounded by turns, not time: a test that never gets there fails instead of hanging.
-  for (let turn = 0; turn < 2_000_000; turn += 1) {
+  // Bounded by checks, not time: a test that never gets there fails instead of hanging.
+  for (let check = 0; check < 100_000; check += 1) {
     if (await ready()) {
       return;
     }
-    await new Promise((resolve) => setImmediate(resolve));
+    await new Promise((resolve) => setTimeout(resolve, 0));
   }
   throw new Error(`never reached ${what}`);
 }

@@ -19,10 +19,10 @@ import {
   eventBody,
   fakeEffects,
   readRawState,
+  randomTurns,
   readState,
   recordAt,
   T0,
-  until,
   writeState,
   type QueueHome
 } from './queue-support.js';
@@ -106,7 +106,8 @@ describe('owed dsh usage', () => {
     // The other writer appends past the size bound and compacts the file, all while holding the lock.
     await writeFile(home.usageEventsPath, `${JSON.stringify({ ...dshUsage, id: 'other' })}\n`.repeat(10));
     await truncate(home.usageEventsPath, 0);
-    await until(() => spawnMock.mock.calls.length === 0, 'a few turns');
+    // The append waits for the lock however long the writer holds it.
+    await randomTurns(1_000);
     expect(settled).toBe(false);
     expect(await usageLines()).toEqual([]);
     await writer.release();
