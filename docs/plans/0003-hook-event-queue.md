@@ -387,8 +387,8 @@ after the new holder starts.
 ### 3.6 Leaving the lock and idle exit
 
 A worker leaves after the idle interval with an empty queue and no owed work it can do (3.5), when it must stop
-(3.7), or when it finds the tombstone (3.8); a command leaves when its run ends, whether it succeeded or failed. Every
-holder leaves in this order:
+(3.7), when it finds the tombstone (3.8), or when applying keeps failing for a whole idle interval (3.10); a command
+leaves when its run ends, whether it succeeded or failed. Every holder leaves in this order:
 
 1. Note whether owed work it can do (3.5) remains, then delete `<state>.worker.v` (3.3).
 2. Release the lock.
@@ -451,12 +451,12 @@ a worker of its own release, which waits for the lock (3.3).
   the request would otherwise keep every worker from the lock (3.3) and make every holder stop. Producers and workers
   write no request: a producer's would be stale milliseconds after it was written (3.3), and no worker needs another
   worker's place.
-- A worker that holds the lock stops at its next apply-lane iteration or between follow-up items when it finds a live
-  request, or when its apply-lane listing reaches a record with a higher `v` (3.5): it aborts the item in progress and
-  leaves (3.6). It never stops for another worker. Started workers and an idle worker's retake make no try for the lock
-  while a request is live (3.3, 3.6), so the lock goes to the command; a worker that took the lock just before the
-  request appeared stops at its first iteration. A command that holds the lock does not yield to requests: it keeps the
-  lock for its own bounded run and releases it when it leaves; a second command waits for it.
+- A worker that holds the lock stops at its next apply-lane iteration when it finds a live request, or when its
+  apply-lane listing reaches a record with a higher `v` (3.5); the iteration aborts the follow-up item in progress, and
+  the worker leaves (3.6). It never stops for another worker. Started workers and an idle worker's retake make no try
+  for the lock while a request is live (3.3, 3.6), so the lock goes to the command; a worker that took the lock just
+  before the request appeared stops at its first iteration. A command that holds the lock does not yield to requests:
+  it keeps the lock for its own bounded run and releases it when it leaves; a second command waits for it.
 - A worker that stops for a record with a higher `v`, an older worker after an upgrade between queue releases, first
   applies and saves the records listed before that one, so order holds, and leaves without starting a worker (3.6). The
   record's producer read the older version in `<state>.worker.v` and started a worker of its own release (3.3), which
