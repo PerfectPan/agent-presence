@@ -831,12 +831,12 @@ queue (3.12).
 
 - Files: `src/cli/commands/hook.ts` (the producer, through a static import of `src/queue/produce.ts`; it no longer loads
   the direct path), `src/sources.ts` (diagnostics returned instead of written), `src/cli/hook-output.ts` (error record),
-  `src/cli/commands/{status,reset,flush,update,uninstall}.ts` (takeover), `src/setup.ts`
+  `src/cli/commands/{status,reset,flush,update,uninstall}.ts` (takeover), `src/cli/commands/setup.ts`
   (tombstone removal), `docs/architecture.md` (the hook runtime: producer, queue, worker, takeover and tombstone), a
   changeset.
 - Tests: every scenario in 6.2, and 5.3's producer and command checks: the upgrade burst, producers while a command
   holds the lock or before a holder writes its version, no stop request from a producer, the older-command checks
-  (which follow option (a) of section 7's older-release item and change if the owner picks (b)), and the downgrade
+  (which follow option (a) of section 7's older-release item, the owner's decision of 2026-10-14), and the downgrade
   between queue releases. `test/hook-graph.test.ts`'s allowlist
   stays exactly `@rivus/agent-kit/harness/events`,
   `@rivus/agent-kit-collab/process-lock` and `@rivus/agent-kit/node`, now for the producer's lock check (3.3) and the

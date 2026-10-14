@@ -321,12 +321,15 @@ describe('a worker holding the lock', () => {
 
     for (let index = 1; index <= 5; index += 1) {
       // The write itself takes no virtual time: its file I/O holds the ticks.
+      const before = saves.length;
       const writtenAt = vt.monotonic.now();
       await recordAt(home.statePath, vt.clock.now(), eventBody('SessionStart', `s${index}`));
-      // A save happens only for a batch with a pending record, and the only record that can be pending here is this
-      // one, so the first save at or after the write is the batch that applied it.
-      await until(() => saves.some((at) => at >= writtenAt), `s${index} applied`);
-      expect(saves.find((at) => at >= writtenAt)! - writtenAt).toBeLessThanOrEqual(1_000);
+      // A save happens only for a batch with a pending record, and the only record that can be pending now is this
+      // one, so the first save after this write is the batch that applied it. Counted, not searched: a previous
+      // batch's save can sit at the same virtual time as the write.
+      await until(() => saves.length > before, `s${index} applied`);
+      expect(saves[before]! - writtenAt).toBeLessThanOrEqual(1_000);
+      expect(`s${index}` in (await readState(home.statePath)).sessions).toBe(true);
     }
     // The publish stayed hung the whole time: the apply lane applied without it.
     expect(fake.published).toHaveLength(0);

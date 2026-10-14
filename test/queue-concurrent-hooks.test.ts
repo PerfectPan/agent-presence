@@ -21,6 +21,19 @@ import {
 const payloads = vi.hoisted(() => ({
   remaining: [] as Array<Record<string, unknown>>
 }));
+// A rendered sync inside the debounce window schedules a detached flush; record it instead of forking vitest's
+// process, the way the sibling queue tests do.
+const spawnMock = vi.hoisted(() =>
+  vi.fn<(...args: unknown[]) => { unref: () => void; on: () => void }>(() => ({
+    unref: () => undefined,
+    on: () => undefined
+  }))
+);
+
+vi.mock('node:child_process', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('node:child_process')>()),
+  spawn: spawnMock
+}));
 
 vi.mock('../src/cli/io.js', async () => {
   const actual = await vi.importActual<typeof import('../src/cli/io.js')>('../src/cli/io.js');
@@ -35,12 +48,6 @@ vi.mock('../src/cli/io.js', async () => {
     }
   };
 });
-
-vi.mock('../src/secret.js', () => ({
-  readCredential: vi
-    .fn<typeof import('../src/secret.js').readCredential>()
-    .mockResolvedValue({ token: 'test-token', slotId: 'test-slot' })
-}));
 
 let home: QueueHome;
 let vt: VirtualTime;

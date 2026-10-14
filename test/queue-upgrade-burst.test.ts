@@ -15,7 +15,9 @@ import {
   fakeEffects,
   readState,
   until,
+  T0,
   virtualTime,
+  writeState,
   type FakeEffects,
   type QueueHome,
   type VirtualTime,
@@ -70,17 +72,39 @@ afterEach(async () => {
 
 describe('the upgrade burst', () => {
   it('of 100 newer producers while an older worker runs leaves one newer worker applying every event once', async () => {
+    // A running session older than every burst event: the burst's fallback finish must never reach it.
+    await writeState(home.statePath, {
+      sessions: {
+        keep: {
+          id: 'keep',
+          source: 'codex',
+          kind: 'coding',
+          status: 'running',
+          startedAt: T0 - 60_000,
+          lastHeartbeatAt: T0 - 60_000
+        }
+      }
+    });
     // A long idle interval keeps the older worker at the lock until the burst's first record arrives.
     const older = pool.start(OLDER, { idleMs: 300_000 });
     await until(async () => (await readWorkerVersion(home.statePath)) === OLDER, 'the older worker holding the lock');
 
+    // 99 starts at once, then one `Stop` for a session none of them names, recorded after every start. Its fallback
+    // finish consumes the running session with the latest heartbeat, so a batch applied twice consumes a second one:
+    // every event applied once shows as exactly one burst session finished, the rest and `keep` still running.
     const produced = await Promise.all(
-      Array.from({ length: 100 }, (_, index) =>
+      Array.from({ length: 99 }, (_, index) =>
         produceRecord(home.statePath, eventBody('SessionStart', `s${index}`), {
           version: NEWER,
           clock: vt.clock
         })
       )
+    );
+    produced.push(
+      await produceRecord(home.statePath, eventBody('Stop', 'gone'), {
+        version: NEWER,
+        clock: { now: () => vt.clock.now() + 1_000 }
+      })
     );
     expect(produced.every((outcome) => outcome.status === 'recorded')).toBe(true);
 
@@ -94,13 +118,17 @@ describe('the upgrade burst', () => {
 
     // The older worker stops at the first newer record and starts no worker; one newer worker applies the burst.
     expect(await older).toBe('newer-record');
+    expect(pool.startedByLeavers()).toBe(0);
     const reasons = await Promise.all(newerRuns);
     expect(reasons.filter((reason) => reason === 'idle')).toHaveLength(1);
     expect(reasons.filter((reason) => reason === 'holder')).toHaveLength(reasons.length - 1);
 
     const state = await readState(home.statePath);
-    expect(Object.keys(state.sessions)).toHaveLength(100);
-    expect(new Set(Object.keys(state.sessions)).size).toBe(100);
+    const burst = Object.values(state.sessions).filter((session) => session.id !== 'keep');
+    expect(burst).toHaveLength(99);
+    expect(burst.filter((session) => session.status === 'finished')).toHaveLength(1);
+    expect(burst.filter((session) => session.status === 'running')).toHaveLength(98);
+    expect(state.sessions.keep).toMatchObject({ status: 'running' });
     expect((await listQueue(home.statePath)).records).toEqual([]);
   }, 120_000);
 });
