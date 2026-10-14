@@ -2,7 +2,7 @@ import { join } from 'node:path';
 import { ttlMs, type AppConfig } from '../config.js';
 import { hookEventLogEvent } from '../cli/hook-diagnostics.js';
 import { usageRenderPlan } from '../cli/usage-badge.js';
-import { appendLogLines, errorLogLine, infoLogLine, writeLogEvent } from '../log.js';
+import { appendLogLines, errorLogLine, infoLogLine } from '../log.js';
 import { applyAgentEvent, expireStaleSessions, type PresenceState } from '../state.js';
 import { loadState, saveState, withStateLock } from '../state-store.js';
 import { fileExists, queuePaths, readEpoch, RECORD_EXTENSION, type QueueClock } from './files.js';
@@ -12,6 +12,35 @@ import type { QueueRecord, SkipRecord } from './schema.js';
 
 /** Above this many listed records the applier logs a backlog warning (Plan 0003 3.10). */
 export const BACKLOG_WARNING_RECORDS = 10_000;
+
+/**
+ * The backlog-warning state of one applier run: the warning is logged once per run, and again only after the backlog
+ * has fallen below the threshold (Plan 0003 3.10), so a holder reading every 250 ms does not log it every batch.
+ */
+export interface BacklogWarning {
+  /** Whether a listing of `listed` records logs the warning now. */
+  due(listed: number): boolean;
+}
+
+export function createBacklogWarning(): BacklogWarning {
+  let warned = false;
+  return {
+    due(listed: number): boolean {
+      if (listed <= BACKLOG_WARNING_RECORDS) {
+        warned = false;
+        return false;
+      }
+      if (warned) {
+        return false;
+      }
+      warned = true;
+      return true;
+    }
+  };
+}
+
+// A worker run is one process, so this warns once per run.
+const processBacklogWarning = createBacklogWarning();
 
 /** The points of a batch where tests pause or kill the applier: after reading, after the save, after deleting. */
 export type BatchStep = 'read' | 'saved' | 'deleted';
@@ -23,6 +52,8 @@ export interface ApplyBatchOptions {
   readonly config: AppConfig;
   /** Dates the records moved to `failed/`. */
   readonly clock: QueueClock;
+  /** The backlog-warning state; this process's by default (a worker run is one process, Plan 0003 3.10). */
+  readonly backlogWarning?: BacklogWarning;
   /** Called at each step of the batch; tests pause or kill the applier there. */
   readonly onStep?: (step: BatchStep) => Promise<void>;
 }
@@ -121,8 +152,11 @@ export async function applyQueueBatch(statePath: string, options: ApplyBatchOpti
   if (files.length === 0) {
     return NOTHING_LISTED;
   }
-  if (files.length > BACKLOG_WARNING_RECORDS) {
-    await logQuietly(() => writeLogEvent({ type: 'queue.backlog', records: files.length }));
+  const backlogWarning = options.backlogWarning ?? processBacklogWarning;
+  // The batch's log lines go into one append, so a batch takes the log lock once (Plan 0003 3.11).
+  const lines: string[] = [];
+  if (backlogWarning.due(files.length)) {
+    lines.push(infoLogLine({ type: 'queue.backlog', records: files.length }));
   }
 
   const applied = new Set((await loadState(statePath)).queueApplied);
@@ -141,18 +175,21 @@ export async function applyQueueBatch(statePath: string, options: ApplyBatchOpti
     }
     if (read.status === 'bad') {
       await moveToFailed(statePath, file, options.clock);
-      await logQuietly(() => writeLogEvent({ type: 'queue.record.failed', id: file.id, reason: read.reason }));
+      lines.push(infoLogLine({ type: 'queue.record.failed', id: file.id, reason: read.reason }));
     } else if (read.status === 'record') {
       if (read.record.epoch === epoch) {
         pending.push({ file, record: read.record });
       } else {
         await deleteQueueFile(file);
-        await logQuietly(() => writeLogEvent({ type: 'queue.record.stale-epoch', id: file.id }));
+        lines.push(infoLogLine({ type: 'queue.record.stale-epoch', id: file.id }));
       }
     }
   }
   await options.onStep?.('read');
   if (pending.length === 0) {
+    if (lines.length > 0) {
+      await logQuietly(() => appendLogLines(lines));
+    }
     return { listed: files.length, applied: 0, appliedEvents: false, newer };
   }
   // Checked before taking the state lock, since a backlog makes this list long. An id may leave `queueApplied` only
@@ -193,6 +230,7 @@ export async function applyQueueBatch(statePath: string, options: ApplyBatchOpti
   // One append for the whole batch: each line would otherwise take the log lock on its own.
   await logQuietly(() =>
     appendLogLines([
+      ...lines,
       ...saved.map(({ record }) => recordLogLine(record)),
       infoLogLine({ type: 'queue.batch', applied: saved.length, listed: files.length })
     ])

@@ -2,7 +2,7 @@ import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 import { loadConfig } from '../src/config.js';
-import { applyQueueBatch, type BatchStep } from '../src/queue/apply.js';
+import { applyQueueBatch, createBacklogWarning, BACKLOG_WARNING_RECORDS, type BatchStep } from '../src/queue/apply.js';
 import { increaseEpoch, queuePaths, recordFileName } from '../src/queue/files.js';
 import type { PresenceState } from '../src/state.js';
 import {
@@ -69,6 +69,21 @@ async function recordNames(): Promise<string[]> {
 function sessionsOf(state: PresenceState) {
   return state.sessions;
 }
+
+describe('createBacklogWarning', () => {
+  it('warns once per run, and again only after the backlog fell below the threshold', () => {
+    const warning = createBacklogWarning();
+    const above = BACKLOG_WARNING_RECORDS + 1;
+    const below = BACKLOG_WARNING_RECORDS;
+
+    expect(warning.due(below)).toBe(false);
+    expect(warning.due(above)).toBe(true);
+    expect(warning.due(above)).toBe(false);
+
+    expect(warning.due(below)).toBe(false);
+    expect(warning.due(above)).toBe(true);
+  });
+});
 
 describe('applyQueueBatch', () => {
   it('applies records in recorded-time order at their recorded times, saves their ids, and deletes their files', async () => {
