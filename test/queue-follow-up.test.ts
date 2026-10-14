@@ -21,10 +21,10 @@ import {
   eventBody,
   fakeEffects,
   readRawState,
-  randomTurns,
   readState,
   recordAt,
   T0,
+  until,
   writeState,
   type QueueHome
 } from './queue-support.js';
@@ -41,6 +41,15 @@ vi.mock('node:child_process', async (importOriginal) => ({
   spawn: spawnMock
 }));
 
+const collectWindowUsageMock = vi.hoisted(() => vi.fn());
+
+// The default effects' refresh scans for real; the scan is stood in for so a test reaches no transcript root outside
+// its own home, while the env, signal and onSave the refresh passes on stay the ones under test.
+vi.mock('../src/usage/index.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../src/usage/index.js')>()),
+  collectWindowUsage: collectWindowUsageMock
+}));
+
 let home: QueueHome;
 let now = T0;
 const clock = { now: () => now };
@@ -53,7 +62,19 @@ beforeEach(async () => {
   home = await createQueueHome();
   now = T0 + 10 * 60_000;
   spawnMock.mockClear();
+  collectWindowUsageMock.mockReset();
 });
+
+/**
+ * `AbortSignal.timeout` on the fake clock: the native timer behind it cannot be faked, so tests that must tell a wait
+ * from a give-up stand in for it (only `setTimeout` is faked; the watched work reaches its file I/O through real
+ * event-loop turns).
+ */
+function timeoutOnFakeClock(ms: number): AbortSignal {
+  const controller = new AbortController();
+  setTimeout(() => controller.abort(new Error(`timed out after ${ms}ms`)), ms);
+  return controller.signal;
+}
 
 afterEach(async () => {
   await home.dispose();
@@ -103,24 +124,35 @@ describe('owed dsh usage', () => {
     const id = await recordAt(home.statePath, T0, eventBody('Heartbeat', 'd1', { source: 'dsh', usage: dshUsage }));
     await applyRecords();
     const fake = fakeEffects();
+    // The production append: while the lane's signal is live it waits for the lock instead of the 2.5 s default.
+    const effects: OwedWorkEffects = { ...fake.effects, appendUsage: defaultOwedWorkEffects.appendUsage };
     const writer = await acquireLock(`${home.usageEventsPath}.lock.db`, AbortSignal.timeout(5_000));
+    const timeoutSpy = vi.spyOn(AbortSignal, 'timeout').mockImplementation(timeoutOnFakeClock);
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      let settled = false;
+      const appending = workOff(await nextItem('dshUsage'), effects).finally(() => {
+        settled = true;
+      });
+      // The other writer appends past the size bound and compacts the file, all while holding the lock.
+      await writeFile(home.usageEventsPath, `${JSON.stringify({ ...dshUsage, id: 'other' })}\n`.repeat(10));
+      await truncate(home.usageEventsPath, 0);
+      // Longer than the 2.5 s default bound: the append waits for the lock however long the writer holds it.
+      await vi.advanceTimersByTimeAsync(3_000);
+      expect(settled).toBe(false);
+      expect(timeoutSpy).not.toHaveBeenCalled();
+      expect(await usageLines()).toEqual([]);
+      await writer.release();
+      await vi.advanceTimersByTimeAsync(1_000);
 
-    let settled = false;
-    const appending = workOff(await nextItem('dshUsage'), fake.effects).finally(() => {
-      settled = true;
-    });
-    // The other writer appends past the size bound and compacts the file, all while holding the lock.
-    await writeFile(home.usageEventsPath, `${JSON.stringify({ ...dshUsage, id: 'other' })}\n`.repeat(10));
-    await truncate(home.usageEventsPath, 0);
-    // The append waits for the lock however long the writer holds it.
-    await randomTurns(1_000);
-    expect(settled).toBe(false);
-    expect(await usageLines()).toEqual([]);
-    await writer.release();
-
-    expect(await appending).toBe('done');
-    expect(await usageLines()).toEqual([{ ...dshUsage, id }]);
-    expect(await readUsageEvents('dsh', 0, T0 + 1)).toHaveLength(1);
+      expect(await appending).toBe('done');
+      expect(await usageLines()).toEqual([{ ...dshUsage, id }]);
+      expect(await readUsageEvents('dsh', 0, T0 + 1)).toHaveLength(1);
+    } finally {
+      vi.useRealTimers();
+      vi.restoreAllMocks();
+      await writer.release().catch(() => undefined);
+    }
   });
 
   it('stays owed when its wait for the usage log is aborted', async () => {
@@ -444,6 +476,153 @@ describe('owed rendered sync', () => {
 
     expect(fake.published).toHaveLength(1);
     expect((await readState(home.statePath)).queueOwed?.renderedSync).toBeUndefined();
+  });
+});
+
+describe('defaultOwedWorkEffects', () => {
+  it('append waits for the usage log lock while the lane signal is live, past the default bound, and writes once it holds the lock', async () => {
+    const writer = await acquireLock(`${home.usageEventsPath}.lock.db`, AbortSignal.timeout(5_000));
+    const timeoutSpy = vi.spyOn(AbortSignal, 'timeout').mockImplementation(timeoutOnFakeClock);
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      let settled = false;
+      const appending = defaultOwedWorkEffects.appendUsage(dshUsage, 'r1', new AbortController().signal).then(
+        (written) => {
+          settled = true;
+          return written;
+        }
+      );
+      // Longer than the 2.5 s default bound: with the lane's signal, the wait does not give up.
+      await vi.advanceTimersByTimeAsync(3_000);
+      expect(settled).toBe(false);
+      expect(timeoutSpy).not.toHaveBeenCalled();
+      expect(await usageLines()).toEqual([]);
+      await writer.release();
+      await vi.advanceTimersByTimeAsync(1_000);
+
+      expect(await appending).toBe(true);
+      expect(await usageLines()).toEqual([{ ...dshUsage, id: 'r1' }]);
+    } finally {
+      vi.useRealTimers();
+      vi.restoreAllMocks();
+      await writer.release().catch(() => undefined);
+    }
+  });
+
+  it('append stops on the lane signal while it waits for the usage log lock, and writes nothing', async () => {
+    const writer = await acquireLock(`${home.usageEventsPath}.lock.db`, AbortSignal.timeout(5_000));
+    vi.spyOn(AbortSignal, 'timeout').mockImplementation(timeoutOnFakeClock);
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      const controller = new AbortController();
+      const appending = defaultOwedWorkEffects.appendUsage(dshUsage, 'r1', controller.signal);
+      await vi.advanceTimersByTimeAsync(100);
+      controller.abort();
+
+      expect(await appending).toBe(false);
+      expect(await usageLines()).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+      vi.restoreAllMocks();
+      await writer.release().catch(() => undefined);
+    }
+  });
+
+  it('refresh scans with the item scan environment and saves through onSave', async () => {
+    await recordAt(
+      home.statePath,
+      T0,
+      eventBody('SessionStart', 'c1', { source: 'claude', scanEnv: { CLAUDE_CONFIG_DIR: '/fake-home/a' } })
+    );
+    await applyRecords();
+    collectWindowUsageMock.mockResolvedValue({ bySource: [{ source: 'claude', totalTokens: 500, costUsd: 0.5 }] });
+
+    expect(await workOff(await nextItem('usageRefresh'), defaultOwedWorkEffects)).toBe('done');
+
+    const scan = collectWindowUsageMock.mock.calls[0]?.[0] as {
+      env: Record<string, string | undefined>;
+      now: number;
+    };
+    expect(scan.env.CLAUDE_CONFIG_DIR).toBe('/fake-home/a');
+    expect(scan.now).toBe(T0);
+    const raw = await readRawState(home.statePath);
+    expect(raw.usageSnapshots).toMatchObject({ '1': { claude: { totalTokens: 500 } } });
+    // The entry's removal and the owed sync were saved through onSave, in the refresh's own save.
+    expect(raw.queueOwed).toEqual({ usageRefresh: [], renderedSync: true });
+  });
+
+  it('refresh stops on the lane signal', async () => {
+    await recordAt(
+      home.statePath,
+      T0,
+      eventBody('SessionStart', 'c1', { source: 'claude', scanEnv: { CLAUDE_CONFIG_DIR: '/fake-home/a' } })
+    );
+    await applyRecords();
+    const controller = new AbortController();
+    controller.abort();
+
+    expect(await workOff(await nextItem('usageRefresh'), defaultOwedWorkEffects, controller.signal)).toBe('aborted');
+
+    expect(collectWindowUsageMock).not.toHaveBeenCalled();
+    expect((await readState(home.statePath)).queueOwed?.usageRefresh).toHaveLength(1);
+  });
+
+  it('publish gets the lane signal: the provider request ends when the lane aborts', async () => {
+    const saved = { token: process.env.AGENT_PRESENCE_TOKEN, slotId: process.env.AGENT_PRESENCE_SLOT_ID };
+    process.env.AGENT_PRESENCE_TOKEN = 'token_test';
+    process.env.AGENT_PRESENCE_SLOT_ID = 'slot_test';
+    process.env.AGENT_PRESENCE_LOG_FILE = join(home.dir, 'agent-presence.log');
+    const fetchMock = vi.fn<(url: unknown, init: { signal?: AbortSignal }) => Promise<never>>(
+      (_url, init) =>
+        new Promise<never>((_, reject) => {
+          init.signal?.addEventListener('abort', () => reject(init.signal?.reason), { once: true });
+        })
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    try {
+      const controller = new AbortController();
+      const publishing = defaultOwedWorkEffects.publish('idle', await loadConfig(), controller.signal).then(
+        () => 'published' as const,
+        (error: unknown) => error
+      );
+      // The chain reaches the fetch through file I/O, which needs real event-loop turns; the wait is bounded, never
+      // on the clock.
+      for (let waited = 0; waited < 30_000 && fetchMock.mock.calls.length === 0; waited += 100) {
+        await realSleep(100);
+      }
+      expect(fetchMock.mock.calls).toHaveLength(1);
+      const init = fetchMock.mock.calls[0]?.[1] as { signal?: AbortSignal };
+      expect(init.signal?.aborted).toBe(false);
+
+      controller.abort();
+
+      const ended = (await publishing) as Error;
+      expect(init.signal?.aborted).toBe(true);
+      expect(ended.name).toBe('AbortError');
+      // The request's diagnostic line is written without being awaited; let it land before the home goes away.
+      await until(
+        () =>
+          readFile(join(home.dir, 'agent-presence.log'), 'utf8').then(
+            (text) => text.includes('type=provider.request'),
+            () => false
+          ),
+        'the provider request line'
+      );
+    } finally {
+      vi.unstubAllGlobals();
+      if (saved.token === undefined) {
+        delete process.env.AGENT_PRESENCE_TOKEN;
+      } else {
+        process.env.AGENT_PRESENCE_TOKEN = saved.token;
+      }
+      if (saved.slotId === undefined) {
+        delete process.env.AGENT_PRESENCE_SLOT_ID;
+      } else {
+        process.env.AGENT_PRESENCE_SLOT_ID = saved.slotId;
+      }
+      delete process.env.AGENT_PRESENCE_LOG_FILE;
+    }
   });
 });
 
