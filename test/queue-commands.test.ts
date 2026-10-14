@@ -201,6 +201,36 @@ describe('reset during a slow usage refresh (Spec S6)', () => {
     // Reset left the refresh to a worker: it starts one when it leaves (3.6), and the test counts instead of running it.
     expect(starts.count()).toBe(1);
   });
+
+  it('reset applies a pending SessionStart, at its recorded time, before it finishes every session', async () => {
+    // No worker runs, so only reset's takeover can apply the record.
+    nowAt(T0 + 2_000);
+    await writeState(h.home.statePath, {
+      sessions: {
+        old: {
+          id: 'old',
+          source: 'codex',
+          kind: 'coding',
+          status: 'running',
+          startedAt: T0 - 60_000,
+          lastHeartbeatAt: T0 - 1_000
+        }
+      }
+    });
+    await recordAt(h.home.statePath, T0, eventBody('SessionStart', 's1'));
+
+    await reset(['--force', '--silent'], h.takeoverOptions());
+
+    const state = await readState(h.home.statePath);
+    expect(state.sessions.s1).toMatchObject({
+      status: 'finished',
+      startedAt: T0,
+      lastHeartbeatAt: T0 + 2_000,
+      finishedAt: T0 + 2_000
+    });
+    expect(publishValueMock).toHaveBeenCalledWith('ZERO');
+    expect((await listQueue(h.home.statePath)).records).toEqual([]);
+  });
 });
 
 describe('commands under the tombstone', () => {
