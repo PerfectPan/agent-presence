@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 import { loadConfig, type AppConfig } from '../src/config.js';
 import { scheduleDeferredRenderedUpdate } from '../src/cli/deferred-update.js';
 import { acquireLock } from '../src/process-lock.js';
+import type { CollectOptions, WindowUsage } from '../src/usage/index.js';
 import { applyQueueBatch } from '../src/queue/apply.js';
 import {
   createOwedAttempts,
@@ -42,7 +43,7 @@ vi.mock('node:child_process', async (importOriginal) => ({
   spawn: spawnMock
 }));
 
-const collectWindowUsageMock = vi.hoisted(() => vi.fn());
+const collectWindowUsageMock = vi.hoisted(() => vi.fn<(options: CollectOptions) => Promise<WindowUsage>>());
 
 // The default effects' refresh scans for real; the scan is stood in for so a test reaches no transcript root outside
 // its own home, while the env, signal and onSave the refresh passes on stay the ones under test.
@@ -126,7 +127,10 @@ describe('owed dsh usage', () => {
     await applyRecords();
     const fake = fakeEffects();
     // The production append: while the lane's signal is live it waits for the lock instead of the 2.5 s default.
-    const effects: OwedWorkEffects = { ...fake.effects, appendUsage: defaultOwedWorkEffects.appendUsage };
+    const effects: OwedWorkEffects = {
+      ...fake.effects,
+      appendUsage: (usage, id, signal) => defaultOwedWorkEffects.appendUsage(usage, id, signal)
+    };
     const writer = await acquireLock(`${home.usageEventsPath}.lock.db`, AbortSignal.timeout(5_000));
     const timeoutSpy = vi.spyOn(AbortSignal, 'timeout').mockImplementation(timeoutOnFakeClock);
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
@@ -555,7 +559,30 @@ describe('defaultOwedWorkEffects', () => {
       eventBody('SessionStart', 'c1', { source: 'claude', scanEnv: { CLAUDE_CONFIG_DIR: '/fake-home/a' } })
     );
     await applyRecords();
-    collectWindowUsageMock.mockResolvedValue({ bySource: [{ source: 'claude', totalTokens: 500, costUsd: 0.5 }] });
+    collectWindowUsageMock.mockResolvedValue({
+      sinceMs: T0 - 86_400_000,
+      untilMs: T0,
+      bySource: [
+        {
+          source: 'claude',
+          entries: 2,
+          inputTokens: 400,
+          outputTokens: 100,
+          cacheWriteTokens: 0,
+          cacheReadTokens: 0,
+          totalTokens: 500,
+          costUsd: 0.5
+        }
+      ],
+      total: {
+        inputTokens: 400,
+        outputTokens: 100,
+        cacheWriteTokens: 0,
+        cacheReadTokens: 0,
+        totalTokens: 500,
+        costUsd: 0.5
+      }
+    });
 
     expect(await workOff(await nextItem('usageRefresh'), defaultOwedWorkEffects)).toBe('done');
 
