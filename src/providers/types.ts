@@ -20,7 +20,10 @@ export interface PresenceProvider {
   /** QR login (slot-style providers). */
   createQrCode?(): Promise<QrCodeResponse>;
   getLoginStatus?(sceneId: string): Promise<LoginStatus>;
-  /** Publish the rendered presence value to wherever this provider stores it; `signal` aborts the request. */
+  /**
+   * Publish the rendered presence value to wherever this provider stores it; `signal` aborts the request, and so does
+   * a 30-second timeout even when the caller waits forever.
+   */
   publishValue?(value: string, options?: { signal?: AbortSignal }): Promise<void>;
   /** Raw backend info, used by `status --remote`. */
   getInfo?(): Promise<unknown>;

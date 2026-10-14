@@ -535,7 +535,7 @@ a worker of its own release, which waits for the lock (3.3).
 | Bad record               | Moved to `<state>.queue/failed/` (kept 7 days), logged, skipped                                                      |
 | Applying keeps failing   | Retried every iteration; after a whole idle interval of failures the worker leaves, starting no worker; records wait |
 | Large backlog            | Nothing is dropped; above 10,000 records the worker logs a warning                                                   |
-| External call hangs      | Scans and the publish take an abort signal and a timeout; the apply lane continues                                   |
+| External call hangs      | Scans take an abort signal, and each provider publish takes the caller's abort signal combined with a 30-second timeout (`AbortSignal.any` with `AbortSignal.timeout`), so a hanging provider cannot hold the applier and a timed-out publish counts as a failed attempt; the apply lane continues |
 
 ### 3.11 Logs
 

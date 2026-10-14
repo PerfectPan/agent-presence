@@ -1,10 +1,12 @@
 import { readFile, truncate, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 import { loadConfig, type AppConfig } from '../src/config.js';
 import { acquireLock } from '../src/process-lock.js';
 import { applyQueueBatch } from '../src/queue/apply.js';
 import {
   createOwedAttempts,
+  defaultOwedWorkEffects,
   knownSources,
   scanEnvironmentFor,
   workOffOwedItem,
@@ -311,6 +313,73 @@ describe('owed rendered sync', () => {
 
     expect(await syncing).toBe('aborted');
     expect((await readState(home.statePath)).queueOwed?.renderedSync).toBe(true);
+  });
+
+  it('counts a publish that the provider timeout aborts as a failed attempt', async () => {
+    await owedSync();
+    const saved = { token: process.env.AGENT_PRESENCE_TOKEN, slotId: process.env.AGENT_PRESENCE_SLOT_ID };
+    process.env.AGENT_PRESENCE_TOKEN = 'token_test';
+    process.env.AGENT_PRESENCE_SLOT_ID = 'slot_test';
+    process.env.AGENT_PRESENCE_LOG_FILE = join(home.dir, 'agent-presence.log');
+    // The provider hangs forever; the native timer behind `AbortSignal.timeout` cannot be faked, so the test
+    // stands in for it on the fake clock and still pins the 30-second timeout the publish asked for. Only
+    // `setTimeout` is faked: the chain reaches the fetch through file I/O, which needs real event-loop turns.
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    const timeoutSignal = vi.spyOn(AbortSignal, 'timeout').mockImplementation((ms: number) => {
+      const controller = new AbortController();
+      setTimeout(() => controller.abort(new Error(`publish timed out after ${ms}ms`)), ms);
+      return controller.signal;
+    });
+    const fetchMock = vi.fn(
+      (_url: unknown, init: { signal?: AbortSignal }) =>
+        new Promise<never>((_, reject) => {
+          init.signal?.addEventListener('abort', () => reject(init.signal?.reason), { once: true });
+        })
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    try {
+      // The real publish chain: credential, provider, fetch.
+      const syncing = workOffOwedItem(await nextItem('renderedSync'), {
+        statePath: home.statePath,
+        config: await loadConfig(),
+        clock,
+        effects: defaultOwedWorkEffects,
+        signal: new AbortController().signal
+      }).then(
+        (ended) => ended,
+        (error: unknown) => error
+      );
+      for (let turn = 0; turn < 1_000 && fetchMock.mock.calls.length === 0; turn += 1) {
+        await new Promise((resolveTurn) => setImmediate(resolveTurn));
+      }
+      expect(fetchMock.mock.calls).toHaveLength(1);
+
+      await vi.advanceTimersByTimeAsync(30_000);
+
+      expect(await syncing).toBe('failed');
+      expect(timeoutSignal).toHaveBeenCalledWith(30_000);
+      const state = await readState(home.statePath);
+      expect(state.queueOwed?.renderedSync).toBe(true);
+      expect(state.lastSlotUpdateAt).toBe(0);
+      // Run every timer the call left on the fake clock, so nothing rejects after the test is over.
+      await vi.advanceTimersByTimeAsync(60_000);
+    } finally {
+      vi.unstubAllGlobals();
+      vi.useRealTimers();
+      vi.restoreAllMocks();
+      if (saved.token === undefined) {
+        delete process.env.AGENT_PRESENCE_TOKEN;
+      } else {
+        process.env.AGENT_PRESENCE_TOKEN = saved.token;
+      }
+      if (saved.slotId === undefined) {
+        delete process.env.AGENT_PRESENCE_SLOT_ID;
+      } else {
+        process.env.AGENT_PRESENCE_SLOT_ID = saved.slotId;
+      }
+      delete process.env.AGENT_PRESENCE_LOG_FILE;
+    }
   });
 
   it('keeps the sync owed when records applied during the publish render another value', async () => {

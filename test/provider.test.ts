@@ -2,7 +2,10 @@ import { afterEach, describe, expect, it, vi } from 'vite-plus/test';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+import type { AppConfig } from '../src/config.js';
 import { base62Encode, LGaryYangSlotBackend } from '../src/providers/l-garyyang.js';
+import { createProvider } from '../src/providers/registry.js';
+import type { PresenceProvider } from '../src/providers/types.js';
 
 describe('l.garyyang signature URL', () => {
   it('encodes the slot helper in t2 instead of exposing slotId as an ignored query param', () => {
@@ -176,5 +179,99 @@ describe('l.garyyang request logging', () => {
         }
       })
       .toBe('');
+  });
+});
+
+describe('publish timeout', () => {
+  let tempDir: string | undefined;
+
+  afterEach(async () => {
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+    delete process.env.AGENT_PRESENCE_LOG_FILE;
+    if (tempDir) {
+      await rm(tempDir, { recursive: true, force: true });
+      tempDir = undefined;
+    }
+  });
+
+  const config: AppConfig = { provider: 'feishu-signature', providerBaseUrl: 'https://provider.test' };
+  const credential = { token: 'token_test', slotId: 'slot_test' };
+
+  /** The failed publish logs its request; keep that write in a temporary log file of this describe. */
+  async function useTempLogFile(): Promise<void> {
+    tempDir = await mkdtemp(join(tmpdir(), 'agent-presence-provider-timeout-'));
+    process.env.AGENT_PRESENCE_LOG_FILE = join(tempDir, 'agent-presence.log');
+  }
+
+  /** A fetch that never answers unless its signal aborts; it then rejects with that signal's reason. */
+  function hangingFetch(): ReturnType<typeof vi.fn> {
+    return vi.fn(
+      (_url: unknown, init: { signal?: AbortSignal }) =>
+        new Promise<never>((_, reject) => {
+          init.signal?.addEventListener('abort', () => reject(init.signal?.reason), { once: true });
+        })
+    );
+  }
+
+  /**
+   * The native timer behind `AbortSignal.timeout` cannot be faked; stand in for it on the fake clock, so the test
+   * still pins that the publish asked for a 30-second timeout and aborts when it fires.
+   */
+  function fakeTimeoutSignal(): ReturnType<typeof vi.spyOn> {
+    vi.useFakeTimers();
+    return vi.spyOn(AbortSignal, 'timeout').mockImplementation((ms: number) => {
+      const controller = new AbortController();
+      setTimeout(() => controller.abort(new Error(`publish timed out after ${ms}ms`)), ms);
+      return controller.signal;
+    });
+  }
+
+  function publishingProvider(): PresenceProvider {
+    return createProvider('feishu-signature', { config, credential });
+  }
+
+  /**
+   * Attach the outcome handler before any timer can fire: the rejection is then consumed in the same turn it
+   * happens, whatever the fake clock's tick does around it.
+   */
+  function outcome(publishing: Promise<void>): Promise<unknown> {
+    return publishing.then(
+      () => 'resolved',
+      (error: unknown) => error
+    );
+  }
+
+  it('aborts the publish 30 seconds in even though the caller never aborts', async () => {
+    await useTempLogFile();
+    const timeoutSignal = fakeTimeoutSignal();
+    const fetchMock = hangingFetch();
+    vi.stubGlobal('fetch', fetchMock);
+
+    const ended = outcome(publishingProvider().publishValue('2 agents'));
+    await vi.advanceTimersByTimeAsync(29_999);
+    const sent = fetchMock.mock.calls[0]?.[1] as { signal: AbortSignal };
+    expect(sent.signal.aborted).toBe(false);
+
+    await vi.advanceTimersByTimeAsync(1);
+
+    expect(((await ended) as Error).message).toBe('publish timed out after 30000ms');
+    expect(timeoutSignal).toHaveBeenCalledWith(30_000);
+    // Run every timer the call left on the fake clock, so nothing rejects after the test is over.
+    await vi.advanceTimersByTimeAsync(60_000);
+  });
+
+  it('aborts the publish when the caller aborts, with the reason the caller aborted it with', async () => {
+    await useTempLogFile();
+    fakeTimeoutSignal();
+    vi.stubGlobal('fetch', hangingFetch());
+    const caller = new AbortController();
+
+    const ended = outcome(publishingProvider().publishValue('2 agents', { signal: caller.signal }));
+    caller.abort(new Error('the worker stopped'));
+
+    expect(((await ended) as Error).message).toBe('the worker stopped');
+    await vi.advanceTimersByTimeAsync(60_000);
   });
 });
