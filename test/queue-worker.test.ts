@@ -402,9 +402,12 @@ describe('a command taking over', () => {
   });
 
   it('leaves the lock to the worker the holder started when the command dies while it waits', async () => {
+    await recordAt(home.statePath, T0, eventBody('SessionStart', 's0'));
+    // The holder's publish is still running when the command asks, so owed work remains and it starts a worker.
+    const publish = fake.holdPublishes();
     const pool = workers({ idleMs: 1_000 });
     const holder = pool.start();
-    await until(async () => (await readWorkerVersion(home.statePath)) === 1, 'the worker holding');
+    await publish.started;
 
     // A producer records while the holder holds the lock, and a command asks for it.
     writeRecordSync(vt.clock.now(), 's1');
@@ -415,7 +418,8 @@ describe('a command taking over', () => {
     alive.delete(COMMAND_PID);
 
     expect(await pool.settled()).toEqual(['stop-request', 'idle']);
-    expect(sessionIds(await readState(home.statePath))).toEqual(['s1']);
+    expect(sessionIds(await readState(home.statePath))).toEqual(['s0', 's1']);
+    expect(fake.published).toHaveLength(1);
     expect(await requestFiles()).toEqual([]);
   });
 
