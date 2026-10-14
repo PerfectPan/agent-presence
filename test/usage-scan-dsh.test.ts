@@ -3,7 +3,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vite-plus/test';
 
-import { appendUsageEvent, type UsageEvent } from '../src/usage-events.js';
+import type { UsageEvent } from '../src/usage-events.js';
+import { appendUsageEvent } from '../src/usage-events-log.js';
 import { scanDsh } from '../src/usage/scan-dsh.js';
 
 const NOW = Date.now();

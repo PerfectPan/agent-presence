@@ -1,26 +1,11 @@
-import {
-  configSlotId,
-  debounceMs,
-  getStatePath,
-  loadConfig,
-  providerId,
-  renderTemplates,
-  ttlMs
-} from '../../config.js';
-import { createProvider } from '../../providers/registry.js';
-import { assertSupportsPublish } from '../../providers/types.js';
-import { readCredential } from '../../secret.js';
+import { loadConfig } from '../../config.js';
 import { resolveHookContextForSource } from '../../sources.js';
-import { applyAgentEvent, isSessionBoundaryEvent } from '../../state.js';
 import { hasFlag, optionValue } from '../args.js';
 import { errorMessage } from '../errors.js';
 import { writeHookOutput } from '../hook-output.js';
 import { writeHookDiagnostic } from '../hook-diagnostics.js';
 import { readStdinJson, writeLog } from '../io.js';
-import { syncRenderedSlotWithDeferredFlush } from '../rendered-slot-sync.js';
-import { appendUsageEvent, usageEventFromPayload } from '../../usage-events.js';
 import { interpretAgentHook } from '../hook-interpret.js';
-import { refreshSignatureUsageBadges, usageRenderPlan } from '../usage-badge.js';
 
 async function applyHook(options: {
   source: string;
@@ -47,52 +32,9 @@ async function applyHook(options: {
     return true;
   }
 
-  const statePath = getStatePath();
-  const now = Date.now();
-
-  // Ingest real-time usage reported by a source plugin (dsh) before the
-  // boundary refresh below, so a Stop carrying usage is counted in the same
-  // boundary's scan. Best-effort: a failed append must never break the hook.
-  const usageEvent = usageEventFromPayload(source, payload, now);
-  if (usageEvent) {
-    await appendUsageEvent(usageEvent).catch(() => {});
-  }
-
-  // Refresh cached usage badges only at session boundaries. Same-day events
-  // scan their owning source; the first boundary after midnight scans all
-  // built-ins once so inactive sources cannot block the new day's aggregate.
-  const usagePlan = usageRenderPlan(config);
-  if (usagePlan.enabled && isSessionBoundaryEvent(event)) {
-    await refreshSignatureUsageBadges(config, statePath, now, source);
-  }
-
-  await syncRenderedSlotWithDeferredFlush(
-    statePath,
-    {
-      force: false,
-      now,
-      debounceMs: debounceMs(config),
-      ttlMs: ttlMs(config),
-      renderTemplates: renderTemplates(config),
-      usage: { enabled: usagePlan.enabled, defaultWindow: usagePlan.defaultWindow }
-    },
-    async (value) => {
-      // Keep Keychain/provider IO after the local state mutation has been persisted.
-      const credential = await readCredential(configSlotId(config));
-      const provider = createProvider(providerId(config), { config, credential });
-      assertSupportsPublish(provider);
-      await provider.publishValue(value);
-    },
-    (state) => {
-      applyAgentEvent(state, {
-        source,
-        event,
-        sessionId,
-        project: context.project,
-        now
-      });
-    }
-  );
+  // Loaded at run time so the hook's static graph reaches no state store, schema, usage log or scanner.
+  const { applyHookEvent } = await import('../hook-apply.js');
+  await applyHookEvent({ config, source, event, sessionId, project: context.project, payload });
   return false;
 }
 

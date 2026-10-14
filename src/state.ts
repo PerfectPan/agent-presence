@@ -1,8 +1,8 @@
-import { mkdir, rm, stat } from 'node:fs/promises';
-import { dirname } from 'node:path';
-import { setTimeout as delay } from 'node:timers/promises';
-import { getStatePath } from './config.js';
-import { hasNodeErrorCode, readJsonFile, writeJsonAtomic } from './json-file.js';
+// Presence state types and the pure session rules. Loading, saving and the state lock live in
+// `src/state-store.ts`, whose schemas load zod; keep this module free of schemas and I/O so the hook path can use it.
+
+// Type-only, so erased: an inline `type` specifier would keep the module edge.
+import type { QueueOwed } from './queue/schema.js';
 
 export type AgentStatus = 'running' | 'finished' | 'expired';
 
@@ -27,6 +27,10 @@ export interface PresenceState {
   usageBadgesAt?: number;
   /** Per-window source contributions used to rebuild aggregate usage badges. */
   usageSnapshots?: Record<string, Record<string, UsageSnapshot>>;
+  /** Ids of applied queue records whose files may still exist (Plan 0003 3.5). */
+  queueApplied?: string[];
+  /** Follow-up work that applied queue records owe, with what this release does not know kept (Plan 0003 3.5). */
+  queueOwed?: QueueOwed;
 }
 
 export interface UsageSnapshot {
@@ -51,104 +55,6 @@ export function createEmptyState(): PresenceState {
     lastSlotUpdateAt: 0,
     lastValue: ''
   };
-}
-
-export async function saveState(state: PresenceState, statePath = getStatePath()): Promise<void> {
-  await writeJsonAtomic(statePath, state);
-}
-
-function normalizeUsageBadges(raw: unknown): Record<string, string> | undefined {
-  if (typeof raw !== 'object' || raw === null) {
-    return undefined;
-  }
-  const badges: Record<string, string> = {};
-  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
-    if (/^\d+$/.test(key) && typeof value === 'string') {
-      badges[key] = value;
-    }
-  }
-  return Object.keys(badges).length > 0 ? badges : undefined;
-}
-
-function normalizeUsageSnapshots(raw: unknown): Record<string, Record<string, UsageSnapshot>> | undefined {
-  if (typeof raw !== 'object' || raw === null) {
-    return undefined;
-  }
-  const windows: Record<string, Record<string, UsageSnapshot>> = {};
-  for (const [days, rawSources] of Object.entries(raw as Record<string, unknown>)) {
-    if (!/^\d+$/.test(days) || typeof rawSources !== 'object' || rawSources === null) {
-      continue;
-    }
-    const sources: Record<string, UsageSnapshot> = {};
-    for (const [source, rawSnapshot] of Object.entries(rawSources as Record<string, unknown>)) {
-      if (!source || typeof rawSnapshot !== 'object' || rawSnapshot === null) {
-        continue;
-      }
-      const snapshot = rawSnapshot as Partial<UsageSnapshot>;
-      if (
-        typeof snapshot.totalTokens !== 'number' ||
-        !Number.isFinite(snapshot.totalTokens) ||
-        snapshot.totalTokens < 0 ||
-        (snapshot.costUsd !== null &&
-          (typeof snapshot.costUsd !== 'number' || !Number.isFinite(snapshot.costUsd) || snapshot.costUsd < 0)) ||
-        typeof snapshot.scannedAt !== 'number' ||
-        !Number.isFinite(snapshot.scannedAt)
-      ) {
-        continue;
-      }
-      sources[source] = {
-        totalTokens: snapshot.totalTokens,
-        costUsd: snapshot.costUsd,
-        scannedAt: snapshot.scannedAt
-      };
-    }
-    if (Object.keys(sources).length > 0) {
-      windows[days] = sources;
-    }
-  }
-  return Object.keys(windows).length > 0 ? windows : undefined;
-}
-
-// The input is untrusted disk JSON (state.json may be hand-edited, truncated,
-// or written by an older version), so every field is read as optional.
-export function normalizeState(raw: Partial<PresenceState> | null): PresenceState {
-  const state = raw && typeof raw === 'object' ? raw : createEmptyState();
-  const sessions: Record<string, AgentSession> = {};
-
-  for (const [id, rawSession] of Object.entries(state.sessions ?? {})) {
-    const legacy = rawSession as Partial<Omit<AgentSession, 'kind' | 'source'>> & {
-      kind?: string;
-      source?: string;
-    };
-    const source = legacy.source ?? (legacy.kind && legacy.kind !== 'coding' ? legacy.kind : undefined);
-    if (!legacy.id || !source || !legacy.status || !legacy.startedAt || !legacy.lastHeartbeatAt) {
-      continue;
-    }
-    sessions[id] = {
-      id: legacy.id,
-      source,
-      kind: 'coding',
-      status: legacy.status,
-      startedAt: legacy.startedAt,
-      lastHeartbeatAt: legacy.lastHeartbeatAt,
-      finishedAt: legacy.status === 'running' ? undefined : legacy.finishedAt,
-      project: legacy.project
-    };
-  }
-
-  return {
-    sessions,
-    lastSlotUpdateAt: state.lastSlotUpdateAt ?? 0,
-    lastValue: state.lastValue ?? '',
-    pendingSlotFlushAt: typeof state.pendingSlotFlushAt === 'number' ? state.pendingSlotFlushAt : undefined,
-    usageBadges: normalizeUsageBadges(state.usageBadges),
-    usageBadgesAt: typeof state.usageBadgesAt === 'number' ? state.usageBadgesAt : undefined,
-    usageSnapshots: normalizeUsageSnapshots(state.usageSnapshots)
-  };
-}
-
-export async function loadState(statePath = getStatePath()): Promise<PresenceState> {
-  return normalizeState(await readJsonFile<PresenceState>(statePath, createEmptyState()));
 }
 
 function isReopenHeartbeat(event: string): boolean {
@@ -289,54 +195,4 @@ export function isSessionBoundaryEvent(event: string): boolean {
   }
   const normalized = normalizeEvent(event);
   return normalized === 'start' || normalized === 'finish';
-}
-
-async function isStaleLock(lockPath: string, staleMs: number): Promise<boolean> {
-  try {
-    const info = await stat(lockPath);
-    return Date.now() - info.mtimeMs > staleMs;
-  } catch {
-    return false;
-  }
-}
-
-function isAlreadyExists(error: unknown): boolean {
-  return hasNodeErrorCode(error, 'EEXIST');
-}
-
-export async function withStateLock<T>(
-  statePath: string,
-  fn: () => Promise<T>,
-  options: { waitMs?: number; staleMs?: number } = {}
-): Promise<T> {
-  const lockPath = `${statePath}.lock`;
-  const waitMs = options.waitMs ?? 2_000;
-  const staleMs = options.staleMs ?? 10_000;
-  const startedAt = Date.now();
-
-  await mkdir(dirname(statePath), { recursive: true, mode: 0o700 });
-  while (true) {
-    try {
-      await mkdir(lockPath, { mode: 0o700 });
-      break;
-    } catch (error) {
-      if (!isAlreadyExists(error)) {
-        throw error;
-      }
-      if (await isStaleLock(lockPath, staleMs)) {
-        await rm(lockPath, { recursive: true, force: true });
-        continue;
-      }
-      if (Date.now() - startedAt > waitMs) {
-        throw new Error(`timed out waiting for state lock: ${lockPath}`);
-      }
-      await delay(50);
-    }
-  }
-
-  try {
-    return await fn();
-  } finally {
-    await rm(lockPath, { recursive: true, force: true });
-  }
 }

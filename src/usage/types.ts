@@ -18,13 +18,22 @@ export interface ScanWindow {
   untilMs: number;
   /** Override the transcript root (mainly for tests). */
   root?: string;
+  /**
+   * The environment the scanner reads its transcript-root variables (`SCAN_ENV`) from; `process.env` when absent. A
+   * worker passes the values a hook recorded, so a scan finds the transcripts of the agent that ran that hook.
+   */
+  env?: ScanEnvironment;
 }
+
+/** Environment values by variable name, as `process.env` holds them. */
+export type ScanEnvironment = Readonly<Record<string, string | undefined>>;
 
 /**
  * A merged-table source that exposes usage scanning. `billableSources()` in
- * `src/sources.ts` resolves these from the source table (in table order) and
- * `collectWindowUsage()` iterates them. Kept in this leaf module so both
- * `src/usage/` and `src/sources.ts` can name it without an import cycle.
+ * `src/usage/billable-sources.ts` resolves these from the source table (in
+ * table order) and `collectWindowUsage()` iterates them. Kept in this leaf
+ * module, like the other usage types, so `src/usage/` and the source table can
+ * name them without an import cycle.
  */
 export interface BillableSource {
   id: string;

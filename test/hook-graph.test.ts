@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseAst } from 'vite-plus';
@@ -7,16 +7,25 @@ import { describe, expect, it } from 'vite-plus/test';
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const cliEntry = resolve(repoRoot, 'src/cli.ts');
 const hookCommandEntry = resolve(repoRoot, 'src/cli/commands/hook.ts');
+// The queue producer the hook records through (Plan 0003 3.3), walked on its own.
+const producerEntry = resolve(repoRoot, 'src/queue/produce.ts');
 
 // The hook path's static graph loads only repository modules, Node built-ins,
 // and the npm entries in hookGraphPackages (docs/architecture.md, "CLI"). Any
 // other bare specifier is an npm package loaded on every hook run, so the walk
 // fails on it; this keeps `effect`, `zod`, and `@clack/prompts` out. The
-// forbidden modules are the setup/installer cluster, the Clack wrapper, and
-// the helpers only setup, uninstall, and login use. The bin entry and the
-// dispatcher are walked as well as the hook command, because a static setup
-// import in `src/cli/app.ts` pulls the whole graph into every hook run just as
-// one in the hook command does.
+// forbidden modules are the setup/installer cluster, the Clack wrapper, the
+// helpers only setup, uninstall, and login use, and the modules that hold
+// schemas or scan transcripts: the state store, the queue's schemas and
+// reader, the usage events log, the billable source table, every usage
+// scanner, and the queue's appliers: the worker, the takeover, and the modules
+// only they use. The bin entry and the dispatcher are walked as well as the
+// hook command, because a static setup import in `src/cli/app.ts` pulls the
+// whole graph into every hook run just as one in the hook command does.
+const usageDir = resolve(repoRoot, 'src/usage');
+const usageScanners = readdirSync(usageDir)
+  .filter((name) => name.startsWith('scan-') && name.endsWith('.ts'))
+  .map((name) => resolve(usageDir, name));
 const forbiddenHookGraphModules = [
   'src/setup.ts',
   'src/installers.ts',
@@ -29,16 +38,37 @@ const forbiddenHookGraphModules = [
   'src/cli/ui.ts',
   'src/cli/commands/setup.ts',
   'src/cli/commands/uninstall.ts',
-  'src/cli/commands/login.ts'
-].map((relative) => resolve(repoRoot, relative));
+  'src/cli/commands/login.ts',
+  'src/state-store.ts',
+  'src/queue/schema.ts',
+  'src/queue/reader.ts',
+  'src/usage-events-log.ts',
+  'src/usage/billable-sources.ts',
+  'src/queue/apply.ts',
+  'src/queue/follow-up.ts',
+  'src/queue/owed.ts',
+  'src/queue/takeover.ts',
+  'src/queue/worker.ts',
+  'src/queue/worker-lock.ts',
+  'src/cli/commands/worker.ts'
+]
+  .map((relative) => resolve(repoRoot, relative))
+  .concat(usageScanners);
 const scriptsDir = resolve(repoRoot, 'scripts');
 // Every npm entry the hook path loads statically, by exact specifier. A batch
-// that brings a package into the hook path adds it here; `effect` never goes
-// on this list (docs/architecture.md, "CLI").
-const hookGraphPackages = ['@rivus/agent-kit/harness/events'];
-// Imported by the hook command, not by the dispatcher, so its presence in the
-// graph shows the walk followed the hook command's imports.
-const deepHookModule = resolve(repoRoot, 'src/state.ts');
+// that brings a package into the hook path adds it here; `effect` and `zod`
+// never go on this list (docs/architecture.md, "CLI"). The kit's process lock
+// and Node platform are here because the log lock reaches them through
+// `src/sources.ts`, `src/cli/hook-output.ts`, and `src/cli/io.ts`.
+const hookGraphPackages = [
+  '@rivus/agent-kit-collab/process-lock',
+  '@rivus/agent-kit/harness/events',
+  '@rivus/agent-kit/node'
+];
+// Imported by the hook command (through `src/sources.ts`), not by the
+// dispatcher, so its presence in the graph shows the walk followed the hook
+// command's imports.
+const deepHookModule = resolve(repoRoot, 'src/cli/hook-context.ts');
 
 function staticImportSpecifiers(source: string): string[] {
   const specifiers: string[] = [];
@@ -139,7 +169,9 @@ describe('static import scanning', () => {
 });
 
 describe('hook static import graph', () => {
-  it('loads only Node built-ins and the allowed npm entries and never reaches setup, installer, or prompt modules', () => {
+  it('loads only Node built-ins and the allowed npm entries and never reaches setup, installer, prompt, schema, or scanner modules', () => {
+    // The scanner list comes from a directory listing; an empty one would forbid nothing.
+    expect(usageScanners).toContain(resolve(usageDir, 'scan-dsh.ts'));
     const graph = walkStaticGraph([cliEntry, hookCommandEntry]);
 
     expect(graph.files).toEqual(expect.arrayContaining([cliEntry, hookCommandEntry, deepHookModule]));
@@ -148,5 +180,15 @@ describe('hook static import graph', () => {
     );
     expect(reachedForbidden).toEqual([]);
     expect(graph.packageSpecifiers).toEqual(hookGraphPackages);
+  });
+
+  it('keeps the queue producer free of schema modules and zod', () => {
+    const graph = walkStaticGraph([producerEntry]);
+
+    // The producer reaches the shared queue files module, so the walk followed its imports.
+    expect(graph.files).toEqual(expect.arrayContaining([producerEntry, resolve(repoRoot, 'src/queue/files.ts')]));
+    expect(graph.files.filter((file) => forbiddenHookGraphModules.includes(file))).toEqual([]);
+    expect(graph.packageSpecifiers.filter((specifier) => !hookGraphPackages.includes(specifier))).toEqual([]);
+    expect(graph.packageSpecifiers).toContain('@rivus/agent-kit-collab/process-lock');
   });
 });

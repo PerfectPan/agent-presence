@@ -6,12 +6,6 @@ import { resolveGrokHookContext } from '../hooks/grok.js';
 import { resolveOpenCodeHookContext } from '../hooks/opencode.js';
 import { resolvePiHookContext } from '../hooks/pi.js';
 import { resolveDshHookContext } from '../hooks/dsh.js';
-import { scanClaude } from '../usage/scan-claude.js';
-import { scanCodex } from '../usage/scan-codex.js';
-import { scanDsh } from '../usage/scan-dsh.js';
-import { scanGemini } from '../usage/scan-gemini.js';
-import { scanOpenCode } from '../usage/scan-opencode.js';
-import { scanPi } from '../usage/scan-pi.js';
 import type { ScanWindow, UsageRecord } from '../usage/types.js';
 
 export interface HookContext {
@@ -49,23 +43,40 @@ export interface SourcePlugin {
 }
 
 /**
+ * Environment variables that locate built-in sources' transcripts. The built-in usage scanners read these variables
+ * only through these names, and each built-in lists the ones its scanner reads as its `scanEnv`, so a hook can copy
+ * every variable a later scan reads without loading a scanner.
+ */
+export const SCAN_ENV = {
+  claudeConfigDir: 'CLAUDE_CONFIG_DIR',
+  geminiCliHome: 'GEMINI_CLI_HOME',
+  xdgDataHome: 'XDG_DATA_HOME'
+} as const;
+
+/** A source that ships in core: its presence resolver and the `SCAN_ENV` names its usage scanner reads. */
+export interface BuiltinSource extends Omit<SourcePlugin, 'scanUsage'> {
+  readonly scanEnv: readonly string[];
+}
+
+/**
  * The sources that ship in core, registered by id. A registry — not an
  * `if`-chain — so built-ins and config sources resolve through the same shape.
- * Built-ins always take precedence over a same-id config source. A built-in is
- * billable when it pairs its presence resolver with a `scanUsage` transcript
- * scanner; the ones without one (`grok`) contribute presence only.
+ * Built-ins always take precedence over a same-id config source. The table
+ * holds no scanner: the built-in usage scanners are in `src/usage/billable-sources.ts`,
+ * which the hook path does not load, and the ones without a scanner (`grok`)
+ * contribute presence only.
  */
-export const BUILTIN_SOURCE_PLUGINS: Record<string, SourcePlugin> = {
-  codex: { id: 'codex', resolveHookContext: resolveCodexHookContext, scanUsage: scanCodex },
-  claude: { id: 'claude', resolveHookContext: resolveClaudeHookContext, scanUsage: scanClaude },
-  gemini: { id: 'gemini', resolveHookContext: resolveGeminiHookContext, scanUsage: scanGemini },
-  opencode: { id: 'opencode', resolveHookContext: resolveOpenCodeHookContext, scanUsage: scanOpenCode },
-  pi: { id: 'pi', resolveHookContext: resolvePiHookContext, scanUsage: scanPi },
-  grok: { id: 'grok', resolveHookContext: resolveGrokHookContext },
+export const BUILTIN_SOURCE_PLUGINS: Record<string, BuiltinSource> = {
+  codex: { id: 'codex', resolveHookContext: resolveCodexHookContext, scanEnv: [] },
+  claude: { id: 'claude', resolveHookContext: resolveClaudeHookContext, scanEnv: [SCAN_ENV.claudeConfigDir] },
+  gemini: { id: 'gemini', resolveHookContext: resolveGeminiHookContext, scanEnv: [SCAN_ENV.geminiCliHome] },
+  opencode: { id: 'opencode', resolveHookContext: resolveOpenCodeHookContext, scanEnv: [SCAN_ENV.xdgDataHome] },
+  pi: { id: 'pi', resolveHookContext: resolvePiHookContext, scanEnv: [] },
+  grok: { id: 'grok', resolveHookContext: resolveGrokHookContext, scanEnv: [] },
   // dsh has no managed hook installer; presence is opt-in via dsh's own
   // `dsh-hooks-claude-code` bridge (see src/hooks/dsh.ts). Usage scanning is
   // independent and always active.
-  dsh: { id: 'dsh', resolveHookContext: resolveDshHookContext, scanUsage: scanDsh }
+  dsh: { id: 'dsh', resolveHookContext: resolveDshHookContext, scanEnv: [] }
 };
 
 export const BUILTIN_SOURCE_IDS = Object.keys(BUILTIN_SOURCE_PLUGINS);

@@ -3,16 +3,17 @@ import { readdir, readFile, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 
+import { SCAN_ENV } from '../cli/hook-context.js';
 import { forEachJsonl, parseTimestamp } from './read-jsonl.js';
 import type { ScanOptions } from './scan-claude.js';
-import type { UsageRecord } from './types.js';
+import type { ScanEnvironment, UsageRecord } from './types.js';
 
 /**
  * Gemini CLI config home. Honours `GEMINI_CLI_HOME` and defaults to `~/.gemini`.
  * Chat transcripts live under `<home>/tmp/<projectHash>/chats/`.
  */
-function defaultGeminiRoot(): string {
-  const home = process.env.GEMINI_CLI_HOME;
+function defaultGeminiRoot(env: ScanEnvironment = process.env): string {
+  const home = env[SCAN_ENV.geminiCliHome];
   const base = home && home.trim().length > 0 ? home.trim() : join(homedir(), '.gemini');
   return join(base, 'tmp');
 }
@@ -154,7 +155,7 @@ function extractRecord(
  * token-bearing copy — rather than double-counting.
  */
 export async function scanGemini(options: ScanOptions): Promise<UsageRecord[]> {
-  const root = options.root ?? defaultGeminiRoot();
+  const root = options.root ?? defaultGeminiRoot(options.env);
   const files = await listChatFiles(root, options.sinceMs);
   const deduped = new Map<string, UsageRecord>();
   const unkeyed: UsageRecord[] = [];

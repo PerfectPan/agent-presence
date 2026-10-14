@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process';
-import { loadState, saveState, withStateLock } from '../state.js';
+import { settleRenderedSync } from '../queue/owed.js';
+import { loadState, saveState, withStateLock } from '../state-store.js';
 import { writeLogEvent } from '../log.js';
 
 const MIN_DELAY_MS = 1_000;
@@ -42,14 +43,21 @@ export async function scheduleDeferredRenderedUpdate(options: {
   const delayMs = Math.max(options.delayMs, MIN_DELAY_MS);
   const runAt = options.now + delayMs;
 
+  // The deferred flush renders the state when it runs, so scheduling it, or finding one already due in time, settles
+  // the owed rendered sync (Plan 0003 3.5).
   const shouldSpawn = await withStateLock(options.statePath, async () => {
     const state = await loadState(options.statePath);
     const pending = state.pendingSlotFlushAt ?? 0;
     if (pending > options.now && pending <= runAt) {
+      if (state.queueOwed?.renderedSync !== undefined) {
+        settleRenderedSync(state);
+        await saveState(state, options.statePath);
+      }
       return false;
     }
 
     state.pendingSlotFlushAt = runAt;
+    settleRenderedSync(state);
     await saveState(state, options.statePath);
     return true;
   });

@@ -20,6 +20,15 @@ export interface CreateProviderOptions {
 
 export type ProviderFactory = (options: CreateProviderOptions) => PresenceProvider;
 
+/** How long a publish may take before it is aborted, so a hanging provider cannot hold the applier (Plan 0003 3.10). */
+export const PUBLISH_TIMEOUT_MS = 30_000;
+
+/** The caller's signal, bounded by a timeout of its own so the request ends even when the caller waits forever. */
+function publishSignal(signal: AbortSignal | undefined): AbortSignal {
+  const timeout = AbortSignal.timeout(PUBLISH_TIMEOUT_MS);
+  return signal === undefined ? timeout : AbortSignal.any([signal, timeout]);
+}
+
 /** Capabilities every slot-backed provider shares, mapped onto the backend. */
 function slotCapabilities(
   slot: SlotBackend
@@ -27,7 +36,7 @@ function slotCapabilities(
   return {
     createQrCode: () => slot.createQrCode(),
     getLoginStatus: (sceneId) => slot.getLoginStatus(sceneId),
-    publishValue: (value) => slot.updateSlot(value),
+    publishValue: (value, options) => slot.updateSlot(value, { ...options, signal: publishSignal(options?.signal) }),
     getInfo: () => slot.getInfo()
   };
 }

@@ -6,7 +6,6 @@ import { join } from 'node:path';
 import type { AppConfig } from '../src/config.js';
 import { BUILTIN_SOURCE_IDS } from '../src/cli/hook-context.js';
 import {
-  billableSources,
   buildMatchSource,
   curatedEnv,
   describeSources,
@@ -14,6 +13,7 @@ import {
   resetSourcePluginCacheForTests,
   resolveHookContextForSource
 } from '../src/sources.js';
+import { billableSources } from '../src/usage/billable-sources.js';
 
 let workDir: string;
 let configPath: string;
@@ -336,6 +336,11 @@ describe('billableSources', () => {
     // grok ships presence-only until it gains a transcript scanner.
     expect(sources.map((s) => s.id)).not.toContain('grok');
     expect(sources.every((s) => typeof s.scanUsage === 'function')).toBe(true);
+  });
+
+  it('scans a configured id that reuses a built-in with that built-in scanner', async () => {
+    const sources = await billableSources({ plugins: { sources: { work: { handler: 'builtin:claude' } } } });
+    expect(sources.map((s) => s.id)).toContain('work');
   });
 
   it('drops a disabled built-in from the billable set', async () => {

@@ -11,9 +11,11 @@ packages:
 minimumReleaseAge: 1440
 minimumReleaseAgeStrict: true
 minimumReleaseAgeIgnoreMissingTime: false
-# @rivus/agent-kit is the owner's own package, adopted the day it is released.
+# @rivus/agent-kit and @rivus/agent-kit-collab are the owner's own packages,
+# adopted the day they are released.
 minimumReleaseAgeExclude:
   - '@rivus/agent-kit'
+  - '@rivus/agent-kit-collab'
 blockExoticSubdeps: true
 strictDepBuilds: true
 engineStrict: true

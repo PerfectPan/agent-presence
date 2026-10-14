@@ -2,16 +2,17 @@ import { readdir, readFile, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 
+import { SCAN_ENV } from '../cli/hook-context.js';
 import type { ScanOptions } from './scan-claude.js';
-import type { UsageRecord } from './types.js';
+import type { ScanEnvironment, UsageRecord } from './types.js';
 
 /**
  * opencode data home. Honours `XDG_DATA_HOME` (opencode follows the XDG base-dir
  * spec) and defaults to `~/.local/share`. The transcript store lives under
  * `<dataHome>/opencode`.
  */
-function defaultOpenCodeDir(): string {
-  const xdg = process.env.XDG_DATA_HOME;
+function defaultOpenCodeDir(env: ScanEnvironment = process.env): string {
+  const xdg = env[SCAN_ENV.xdgDataHome];
   const base = xdg && xdg.trim().length > 0 ? xdg.trim() : join(homedir(), '.local', 'share');
   return join(base, 'opencode');
 }
@@ -212,7 +213,7 @@ async function scanLegacyJson(messageRoot: string, options: ScanOptions): Promis
  * 3. Nothing present -> `[]`.
  */
 export async function scanOpenCode(options: ScanOptions): Promise<UsageRecord[]> {
-  const dir = options.root ?? defaultOpenCodeDir();
+  const dir = options.root ?? defaultOpenCodeDir(options.env);
 
   const fromDb = await scanSqlite(join(dir, 'opencode.db'), options);
   if (fromDb !== null) {

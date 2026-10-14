@@ -7,7 +7,8 @@ import { transformWithOxc } from 'vite-plus';
 import { beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 import { hook } from '../src/cli/commands/hook.js';
 import { buildOpenCodePluginSource, buildPiExtensionSource } from '../src/installers.js';
-import { createEmptyState, loadState, saveState, type AgentSession } from '../src/state.js';
+import { createEmptyState, type AgentSession } from '../src/state.js';
+import { loadState, saveState } from '../src/state-store.js';
 
 // Regression oracle for today's hook-event mapping: one case per event the
 // `--source/--event` form handles (the source mapping in docs/architecture.md,

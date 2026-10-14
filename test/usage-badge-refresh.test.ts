@@ -4,7 +4,8 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vite-plus/test';
 
 import { refreshUsageBadgeCache } from '../src/cli/usage-badge.js';
-import { loadState, saveState, type PresenceState } from '../src/state.js';
+import type { PresenceState } from '../src/state.js';
+import { loadState, saveState } from '../src/state-store.js';
 import type { BillableSource, UsageRecord } from '../src/usage/index.js';
 
 const NOW = new Date('2026-07-14T13:00:00+08:00').getTime();
@@ -68,7 +69,7 @@ describe('refreshUsageBadgeCache', () => {
       { id: 'opencode', scanUsage: opencodeScan }
     ];
 
-    await refreshUsageBadgeCache({
+    const outcome = await refreshUsageBadgeCache({
       statePath,
       now: NOW,
       windows: [1],
@@ -76,6 +77,7 @@ describe('refreshUsageBadgeCache', () => {
       source: 'opencode'
     });
 
+    expect(outcome).toEqual({ completed: true });
     expect(codexScan).not.toHaveBeenCalled();
     expect(claudeScan).not.toHaveBeenCalled();
     expect(opencodeScan).toHaveBeenCalledTimes(1);
@@ -298,7 +300,7 @@ describe('refreshUsageBadgeCache', () => {
     const claudeScan = vi.fn<BillableSource['scanUsage']>(async () => {
       throw new Error('temporarily unreadable');
     });
-    await refreshUsageBadgeCache({
+    const outcome = await refreshUsageBadgeCache({
       statePath,
       now: today,
       windows: [1],
@@ -309,6 +311,8 @@ describe('refreshUsageBadgeCache', () => {
       source: 'codex'
     });
 
+    // A failed scan ends the refresh: the next boundary scans again, as without a signal.
+    expect(outcome).toEqual({ completed: true });
     expect(codexScan).toHaveBeenCalledTimes(1);
     expect(claudeScan).toHaveBeenCalledTimes(1);
     expect(await loadState(statePath)).toMatchObject({
@@ -321,6 +325,60 @@ describe('refreshUsageBadgeCache', () => {
         }
       }
     });
+  });
+
+  it('stops without saving when its signal aborts during the scans', async () => {
+    dir = await mkdtemp(join(tmpdir(), 'agent-presence-usage-badge-'));
+    const statePath = join(dir, 'state.json');
+    await saveState(
+      {
+        sessions: {},
+        usageBadges: { '1': '300 · $3.00' },
+        usageBadgesAt: NOW - 1000,
+        usageSnapshots: { '1': { codex: { totalTokens: 300, costUsd: 3, scannedAt: NOW - 1000 } } }
+      },
+      statePath
+    );
+    const before = await loadState(statePath);
+    const scanStarted = deferred();
+    const scanRelease = deferred();
+    const codexScan = vi.fn<BillableSource['scanUsage']>(async () => {
+      scanStarted.resolve();
+      await scanRelease.promise;
+      return [record('codex', 9_999, 99)];
+    });
+    const stop = new AbortController();
+
+    const refresh = refreshUsageBadgeCache({
+      statePath,
+      now: NOW,
+      windows: [1],
+      sources: [{ id: 'codex', scanUsage: codexScan }],
+      source: 'codex',
+      signal: stop.signal
+    });
+    await scanStarted.promise;
+    stop.abort();
+
+    await expect(refresh).resolves.toEqual({ completed: false });
+    scanRelease.resolve();
+    expect(await loadState(statePath)).toEqual(before);
+  });
+
+  it('does not start when its signal has already aborted', async () => {
+    dir = await mkdtemp(join(tmpdir(), 'agent-presence-usage-badge-'));
+    const codexScan = vi.fn<BillableSource['scanUsage']>(async () => []);
+
+    await expect(
+      refreshUsageBadgeCache({
+        statePath: join(dir, 'state.json'),
+        now: NOW,
+        windows: [1],
+        sources: [{ id: 'codex', scanUsage: codexScan }],
+        signal: AbortSignal.abort()
+      })
+    ).resolves.toEqual({ completed: false });
+    expect(codexScan).not.toHaveBeenCalled();
   });
 
   it('does not let an older overlapping refresh overwrite newer usage', async () => {
@@ -475,5 +533,60 @@ describe('refreshUsageBadgeCache', () => {
         }
       }
     });
+  });
+
+  it('scans every built-in with the given environment at the first boundary of a day of a source without a scanner, and runs onSave in its save', async () => {
+    dir = await mkdtemp(join(tmpdir(), 'agent-presence-usage-badge-'));
+    const statePath = join(dir, 'state.json');
+    const yesterday = new Date(2026, 6, 14, 23, 59).getTime();
+    const today = new Date(2026, 6, 15, 0, 1).getTime();
+    await saveState({ sessions: {}, usageBadgesAt: yesterday }, statePath);
+    const codexScan = vi.fn<BillableSource['scanUsage']>(async () => [record('codex', 20, 0.2)]);
+    const claudeScan = vi.fn<BillableSource['scanUsage']>(async () => []);
+    const env = { CLAUDE_CONFIG_DIR: '/fake-home/hook-claude' };
+    const onSave = vi.fn<(state: PresenceState) => void>((state) => {
+      state.lastValue = 'saved with the refresh';
+    });
+
+    const outcome = await refreshUsageBadgeCache({
+      statePath,
+      now: today,
+      windows: [1],
+      sources: [
+        { id: 'codex', scanUsage: codexScan },
+        { id: 'claude', scanUsage: claudeScan }
+      ],
+      // A source in the table without a scanner, such as grok.
+      source: 'grok',
+      env,
+      onSave
+    });
+
+    expect(outcome).toEqual({ completed: true });
+    expect(codexScan.mock.calls[0]?.[0].env).toBe(env);
+    expect(claudeScan.mock.calls[0]?.[0].env).toBe(env);
+    expect(onSave).toHaveBeenCalledTimes(1);
+    expect(await loadState(statePath)).toMatchObject({ lastValue: 'saved with the refresh', usageBadgesAt: today });
+  });
+
+  it('completes without scanning or saving for a source without a scanner later in the day', async () => {
+    dir = await mkdtemp(join(tmpdir(), 'agent-presence-usage-badge-'));
+    const statePath = join(dir, 'state.json');
+    await saveState({ sessions: {}, usageBadgesAt: NOW - 1_000 }, statePath);
+    const codexScan = vi.fn<BillableSource['scanUsage']>(async () => []);
+    const onSave = vi.fn<(state: PresenceState) => void>();
+
+    const outcome = await refreshUsageBadgeCache({
+      statePath,
+      now: NOW,
+      windows: [1],
+      sources: [{ id: 'codex', scanUsage: codexScan }],
+      source: 'grok',
+      onSave
+    });
+
+    expect(outcome).toEqual({ completed: true });
+    expect(codexScan).not.toHaveBeenCalled();
+    expect(onSave).not.toHaveBeenCalled();
   });
 });
