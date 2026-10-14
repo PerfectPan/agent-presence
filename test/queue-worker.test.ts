@@ -305,23 +305,31 @@ describe('a started worker', () => {
 });
 
 describe('a worker holding the lock', () => {
-  it('applies records arriving while a publish hangs, each at the next iteration or the one after', async () => {
+  it('applies records arriving while a publish hangs, each within a second of virtual time', async () => {
     const publish = fake.holdPublishes();
-    let iterations = 0;
-    const counted: Delay = (ms, signal) => {
-      iterations += 1;
-      return vt.delay(ms, signal);
-    };
+    // The virtual time of every apply-lane save, pushed synchronously at the save, so no observer can lag it.
+    const saves: number[] = [];
     await recordAt(home.statePath, vt.clock.now(), eventBody('SessionStart', 's0'));
-    const run = workers().start(1, { delay: counted });
+    const run = workers({
+      onBatchStep: async (step) => {
+        if (step === 'saved') {
+          saves.push(vt.monotonic.now());
+        }
+      }
+    }).start();
     await publish.started;
 
     for (let index = 1; index <= 5; index += 1) {
-      const before = iterations;
+      // The write itself takes no virtual time: its file I/O holds the ticks.
+      const writtenAt = vt.monotonic.now();
       await recordAt(home.statePath, vt.clock.now(), eventBody('SessionStart', `s${index}`));
-      await until(async () => `s${index}` in (await readState(home.statePath)).sessions, `s${index} applied`);
-      expect(iterations - before).toBeLessThanOrEqual(2);
+      // A save happens only for a batch with a pending record, and the only record that can be pending here is this
+      // one, so the first save at or after the write is the batch that applied it.
+      await until(() => saves.some((at) => at >= writtenAt), `s${index} applied`);
+      expect(saves.find((at) => at >= writtenAt)! - writtenAt).toBeLessThanOrEqual(1_000);
     }
+    // The publish stayed hung the whole time: the apply lane applied without it.
+    expect(fake.published).toHaveLength(0);
 
     await writeTombstone(home.statePath);
     expect(await run).toBe('tombstone');
@@ -357,8 +365,13 @@ describe('a worker holding the lock', () => {
     const run = pool.start();
     const refresh = await gate.started;
 
-    const request = await holdStopRequest(home.statePath, { clock: vt.clock, pid: COMMAND_PID, delay: vt.delay });
+    const requestedAt = vt.monotonic.now();
+    // The touch timer stays with the test: its 2-second wait must not pump virtual time past the bound below.
+    const touches = touchesByHand();
+    const request = await holdStopRequest(home.statePath, { clock: vt.clock, pid: COMMAND_PID, delay: touches.delay });
     expect(await run).toBe('stop-request');
+    // The holder stops at its first check after the request appeared (Plan 0003 5.2).
+    expect(vt.monotonic.now() - requestedAt).toBeLessThanOrEqual(1_000);
     await request.release();
 
     expect(refresh.signal.aborted).toBe(true);
