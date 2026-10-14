@@ -2,6 +2,7 @@ import { readFile, truncate, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 import { loadConfig, type AppConfig } from '../src/config.js';
+import { scheduleDeferredRenderedUpdate } from '../src/cli/deferred-update.js';
 import { acquireLock } from '../src/process-lock.js';
 import { applyQueueBatch } from '../src/queue/apply.js';
 import {
@@ -476,6 +477,25 @@ describe('owed rendered sync', () => {
 
     expect(fake.published).toHaveLength(1);
     expect((await readState(home.statePath)).queueOwed?.renderedSync).toBeUndefined();
+  });
+});
+
+describe('scheduleDeferredRenderedUpdate', () => {
+  it('settles the owed sync when a deferred flush is already scheduled in range, and spawns none', async () => {
+    await writeState(home.statePath, {
+      sessions: {},
+      pendingSlotFlushAt: now + 30_000,
+      queueOwed: { renderedSync: true, dshUsage: [{ id: 'r1', usage: dshUsage }] }
+    });
+
+    await scheduleDeferredRenderedUpdate({ statePath: home.statePath, delayMs: 60_000, now });
+
+    expect(spawnMock).not.toHaveBeenCalled();
+    const raw = await readRawState(home.statePath);
+    expect(raw.pendingSlotFlushAt).toBe(now + 30_000);
+    // The sync is settled, so the follow-up lane does not run it again while the flush is already in range, and the
+    // other owed work stays.
+    expect(raw.queueOwed).toEqual({ dshUsage: [{ id: 'r1', usage: dshUsage }] });
   });
 });
 
