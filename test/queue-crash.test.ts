@@ -1,10 +1,11 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { once } from 'node:events';
+import * as nodeModule from 'node:module';
 import { dirname, resolve } from 'node:path';
 import { createInterface } from 'node:readline';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import type { ProcessLock } from '@rivus/agent-kit-collab/process-lock';
-import { afterEach, beforeEach, describe, expect, it } from 'vite-plus/test';
+import { afterEach, beforeEach, describe, expect, it, type TestContext } from 'vite-plus/test';
 import { acquireLock } from '../src/process-lock.js';
 import { readWorkerVersion } from '../src/queue/files.js';
 import { listQueue } from '../src/queue/reader.js';
@@ -25,6 +26,18 @@ import {
 // Plan 0003 5.2 and Spec S4: a worker killed with SIGKILL at each point of its work leaves the next worker to apply
 // every record once, append every dsh usage line once, and refresh every owed source once. The worker runs in a child
 // process, which reports reaching the point on stdout and is killed there; the tests wait on those lines only.
+
+// The child needs `--experimental-transform-types` and this Node's `registerHooks` (both added in 22.15) to run the
+// TypeScript sources, while `engines` still allows 22.13: on such a Node the tests skip instead of failing.
+const canRunTypeSources = typeof nodeModule.registerHooks === 'function';
+
+/** Skips the crash tests where the child cannot run the TypeScript sources. */
+function skipWithoutRegisterHooks({ skip }: TestContext): void {
+  skip(
+    !canRunTypeSources,
+    'this Node cannot run the TypeScript sources in a child: module.registerHooks is missing (added in Node 22.15, while engines still allows 22.13)'
+  );
+}
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const moduleUrl = (path: string): string => pathToFileURL(resolve(repoRoot, path)).href;
@@ -189,25 +202,29 @@ async function expectEverythingOnce(refreshedByNextWorker: string[]): Promise<vo
 }
 
 describe('a worker killed with SIGKILL', () => {
-  it.each(['read', 'saved', 'deleted'])(
-    'after the batch step "%s" leaves the next worker to finish everything once',
-    async (step) => {
-      await recordWork();
-      const worker = await startChildUntil(step, `at ${step}`);
-      await kill(worker);
-      // The kernel released its lock; its version stays until the next holder overwrites it.
-      expect(await readWorkerVersion(home.statePath)).toBe(1);
+  for (const step of ['read', 'saved', 'deleted'] as const) {
+    it(
+      `after the batch step "${step}" leaves the next worker to finish everything once`,
+      async (ctx) => {
+        skipWithoutRegisterHooks(ctx);
+        await recordWork();
+        const worker = await startChildUntil(step, `at ${step}`);
+        await kill(worker);
+        // The kernel released its lock; its version stays until the next holder overwrites it.
+        expect(await readWorkerVersion(home.statePath)).toBe(1);
 
-      const { reason, fake } = await nextWorker();
+        const { reason, fake } = await nextWorker();
 
-      expect(reason).toBe('idle');
-      expect(await readWorkerVersion(home.statePath)).toBe(0);
-      await expectEverythingOnce(fake.refreshed.map(({ source }) => source));
-    },
-    30_000
-  );
+        expect(reason).toBe('idle');
+        expect(await readWorkerVersion(home.statePath)).toBe(0);
+        await expectEverythingOnce(fake.refreshed.map(({ source }) => source));
+      },
+      30_000
+    );
+  }
 
-  it('during a usage refresh leaves it owed, and the next worker refreshes the source once', async () => {
+  it('during a usage refresh leaves it owed, and the next worker refreshes the source once', async (ctx) => {
+    skipWithoutRegisterHooks(ctx);
     await recordWork();
     const worker = await startChildUntil('refresh', 'refreshing codex');
     await kill(worker);
@@ -218,7 +235,8 @@ describe('a worker killed with SIGKILL', () => {
     await expectEverythingOnce(fake.refreshed.map(({ source }) => source));
   }, 30_000);
 
-  it('during a dsh usage append that waits for the usage log leaves it owed, and the line is written once', async () => {
+  it('during a dsh usage append that waits for the usage log leaves it owed, and the line is written once', async (ctx) => {
+    skipWithoutRegisterHooks(ctx);
     await recordWork();
     // Another writer holds the usage log, so the append waits for its lock.
     usageLogWriter = await acquireLock(`${home.usageEventsPath}.lock.db`, AbortSignal.timeout(5_000));
