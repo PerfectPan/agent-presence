@@ -3,7 +3,7 @@ import { once } from 'node:events';
 import { mkdir, mkdtemp, readdir, readFile, rm, stat, utimes, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vite-plus/test';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 import { queuePaths } from '../src/queue/files.js';
 import {
   deleteStopRequests,
@@ -15,6 +15,34 @@ import {
   type Delay,
   type StopRequestHold
 } from '../src/queue/stop-request.js';
+
+const failingRequestReads = vi.hoisted(() => ({ enabled: false }));
+const failingRequestRemovals = vi.hoisted(() => ({ enabled: false }));
+
+// Reading, and removing, a request file fail with EACCES while the matching flag is enabled, as for a request another
+// user left; narrowing the known union of each function's first parameter picks the request paths out.
+vi.mock('node:fs/promises', async (importOriginal) => {
+  const original = await importOriginal<typeof import('node:fs/promises')>();
+  const requestPath = (path: unknown): boolean =>
+    typeof path === 'string' &&
+    path.includes('.worker.stop.') &&
+    (failingRequestReads.enabled || failingRequestRemovals.enabled);
+  return {
+    ...original,
+    readFile: async (...args: Parameters<typeof original.readFile>) => {
+      if (failingRequestReads.enabled && requestPath(args[0])) {
+        throw Object.assign(new Error('request read blocked by the test'), { code: 'EACCES' });
+      }
+      return original.readFile(...args);
+    },
+    rm: async (...args: Parameters<typeof original.rm>) => {
+      if (failingRequestRemovals.enabled && requestPath(args[0])) {
+        throw Object.assign(new Error('request removal blocked by the test'), { code: 'EACCES' });
+      }
+      return original.rm(...args);
+    }
+  };
+});
 
 const T = 1_760_000_000_000;
 const COMMAND_PID = 4242;
@@ -29,6 +57,8 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  failingRequestReads.enabled = false;
+  failingRequestRemovals.enabled = false;
   await hold?.release();
   hold = undefined;
   await rm(dir, { recursive: true, force: true });
@@ -197,6 +227,36 @@ describe('liveStopRequests', () => {
     expect(
       await liveStopRequests(join(dir, 'missing', 'state.json'), { clock: { now: () => T }, isPidAlive: alive })
     ).toEqual([]);
+  });
+
+  it('treats an unreadable request as stale and removes it', async () => {
+    const path = `${queuePaths(statePath).stopRequestPrefix}manual`;
+    await writeFile(path, `${COMMAND_PID}\n`);
+    await utimes(path, new Date(T), new Date(T));
+    failingRequestReads.enabled = true;
+
+    await expect(liveStopRequests(statePath, { clock: { now: () => T }, isPidAlive: alive })).resolves.toEqual([]);
+    expect(await requestFiles()).toEqual([]);
+  });
+
+  it('ignores an unreadable request it cannot remove, and logs it once', async () => {
+    const path = `${queuePaths(statePath).stopRequestPrefix}manual`;
+    await writeFile(path, `${COMMAND_PID}\n`);
+    await utimes(path, new Date(T), new Date(T));
+    const logPath = join(dir, 'requests.log');
+    process.env.AGENT_PRESENCE_LOG_FILE = logPath;
+    failingRequestReads.enabled = true;
+    failingRequestRemovals.enabled = true;
+    try {
+      await expect(liveStopRequests(statePath, { clock: { now: () => T }, isPidAlive: alive })).resolves.toEqual([]);
+    } finally {
+      failingRequestReads.enabled = false;
+      failingRequestRemovals.enabled = false;
+      delete process.env.AGENT_PRESENCE_LOG_FILE;
+    }
+
+    expect(await requestFiles()).toEqual(['state.json.worker.stop.manual']);
+    expect((await readFile(logPath, 'utf8')).match(/worker.stop-request.stale/g)).toHaveLength(1);
   });
 });
 

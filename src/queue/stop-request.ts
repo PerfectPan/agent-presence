@@ -1,7 +1,9 @@
 import { mkdir, readdir, readFile, rename, rm, stat, utimes, writeFile } from 'node:fs/promises';
 import { basename, dirname, join } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
+import { errorMessage } from '../cli/errors.js';
 import { hasNodeErrorCode } from '../json-file.js';
+import { writeLogEvent } from '../log.js';
 import { queuePaths, randomHex, systemClock, type QueueClock } from './files.js';
 
 // A command asks for the worker lock with a stop request (Plan 0003 3.7): the file `<state>.worker.stop.<token>`
@@ -96,7 +98,9 @@ async function requestFiles(statePath: string): Promise<string[]> {
 }
 
 /** The request's pid and modification time; `undefined` pid when the text is not a pid, `missing` when it is gone. */
-async function readRequest(path: string): Promise<{ pid: number | undefined; mtimeMs: number } | 'missing'> {
+async function readRequest(
+  path: string
+): Promise<{ pid: number | undefined; mtimeMs: number } | 'missing' | { readonly unreadable: unknown }> {
   try {
     const info = await stat(path);
     return { pid: parsePid(await readFile(path, 'utf8')), mtimeMs: info.mtimeMs };
@@ -104,7 +108,29 @@ async function readRequest(path: string): Promise<{ pid: number | undefined; mti
     if (hasNodeErrorCode(error, 'ENOENT')) {
       return 'missing';
     }
-    throw error;
+    return { unreadable: error };
+  }
+}
+
+async function logQuietly(event: Record<string, unknown>): Promise<void> {
+  try {
+    await writeLogEvent(event);
+  } catch {
+    // Diagnostic only.
+  }
+}
+
+/** Remove a stale request; when that fails too, keep the reader going and log the request once (3.7). */
+async function removeStaleRequest(path: string, readError: unknown): Promise<void> {
+  try {
+    await rm(path, { force: true });
+  } catch (error) {
+    await logQuietly({
+      type: 'worker.stop-request.stale',
+      file: basename(path),
+      error: errorMessage(error),
+      read: errorMessage(readError)
+    });
   }
 }
 
@@ -118,7 +144,7 @@ export interface StopRequestCheck {
 /**
  * The live stop requests for the worker lock of `statePath`: those whose pid is alive and whose modification time is
  * within `STOP_REQUEST_FRESH_MS` of `clock`, before or after it. Every other request file found, one without a valid
- * pid included, is stale and deleted.
+ * pid or an unreadable one included, is stale and deleted.
  */
 export async function liveStopRequests(statePath: string, check: StopRequestCheck = {}): Promise<StopRequest[]> {
   const clock = check.clock ?? systemClock;
@@ -127,6 +153,11 @@ export async function liveStopRequests(statePath: string, check: StopRequestChec
   for (const path of await requestFiles(statePath)) {
     const found = await readRequest(path);
     if (found === 'missing') {
+      continue;
+    }
+    if ('unreadable' in found) {
+      // A request another user left can be unreadable (EACCES): treat it as stale instead of failing every reader.
+      await removeStaleRequest(path, found.unreadable);
       continue;
     }
     const { pid, mtimeMs } = found;
