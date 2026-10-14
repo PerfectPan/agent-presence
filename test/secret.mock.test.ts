@@ -10,6 +10,7 @@ describe('credential storage', () => {
   let readCredential: typeof import('../src/secret.js').readCredential;
   let writeCredential: typeof import('../src/secret.js').writeCredential;
   let deleteCredential: typeof import('../src/secret.js').deleteCredential;
+  let createCredentialStore: typeof import('../src/secret.js').createCredentialStore;
 
   const savedEnv: Record<string, string | undefined> = {};
   const envKeys = [
@@ -35,6 +36,7 @@ describe('credential storage', () => {
     readCredential = mod.readCredential;
     writeCredential = mod.writeCredential;
     deleteCredential = mod.deleteCredential;
+    createCredentialStore = mod.createCredentialStore;
   });
 
   afterEach(() => {
@@ -294,6 +296,139 @@ describe('credential storage', () => {
       expect(calls[1]![1]).toEqual(['delete-generic-password', '-s', 'agent-signature:l-garyyang', '-a', 'slotId']);
       // legacy keychain entry
       expect(calls[2]![0]).toBe('security');
+    });
+  });
+
+  describe('macOS Keychain backend (temporary keychain path)', () => {
+    beforeEach(() => setPlatform('darwin'));
+
+    const keychainPath = '/tmp/agent-presence-test.keychain';
+
+    it('appends the keychain file as the trailing argument of every command when set', async () => {
+      execFileMock
+        .mockImplementationOnce(cbReject('not found')) // primary token read
+        .mockImplementationOnce(cbResolve('legacy\n')) // legacy token read
+        .mockImplementationOnce(cbResolve('slot\n')) // slotId read
+        .mockImplementation(cbIgnore);
+
+      const store = createCredentialStore({ keychainPath });
+      await expect(store.readCredential()).resolves.toEqual({ token: 'legacy', slotId: 'slot' });
+      await store.writeCredential({ token: 'tok', slotId: 'sid' });
+      await store.deleteCredential();
+
+      const calls = execFileMock.mock.calls;
+      expect(calls[0]![1]).toEqual([
+        'find-generic-password',
+        '-s',
+        'agent-signature:l-garyyang',
+        '-a',
+        'token',
+        '-w',
+        keychainPath
+      ]);
+      expect(calls[1]![1]).toEqual([
+        'find-generic-password',
+        '-s',
+        'agent-signature-slot-credential',
+        '-a',
+        process.env.USER ?? 'agent-presence',
+        '-w',
+        keychainPath
+      ]);
+      expect(calls[2]![1]).toEqual([
+        'find-generic-password',
+        '-s',
+        'agent-signature:l-garyyang',
+        '-a',
+        'slotId',
+        '-w',
+        keychainPath
+      ]);
+      expect(calls[3]![1]).toEqual([
+        'add-generic-password',
+        '-U',
+        '-s',
+        'agent-signature:l-garyyang',
+        '-a',
+        'token',
+        '-w',
+        'tok',
+        keychainPath
+      ]);
+      expect(calls[4]![1]).toEqual([
+        'add-generic-password',
+        '-U',
+        '-s',
+        'agent-signature:l-garyyang',
+        '-a',
+        'slotId',
+        '-w',
+        'sid',
+        keychainPath
+      ]);
+      expect(calls[5]![1]).toEqual([
+        'delete-generic-password',
+        '-s',
+        'agent-signature:l-garyyang',
+        '-a',
+        'token',
+        keychainPath
+      ]);
+      expect(calls[6]![1]).toEqual([
+        'delete-generic-password',
+        '-s',
+        'agent-signature:l-garyyang',
+        '-a',
+        'slotId',
+        keychainPath
+      ]);
+      expect(calls[7]![1]).toEqual([
+        'delete-generic-password',
+        '-s',
+        'agent-signature-slot-credential',
+        '-a',
+        process.env.USER ?? 'agent-presence',
+        keychainPath
+      ]);
+    });
+
+    it('omits the keychain argument entirely when no path is set', async () => {
+      execFileMock.mockImplementation(cbIgnore);
+
+      const store = createCredentialStore();
+      await store.writeCredential({ token: 'tok', slotId: 'sid' });
+      await store.deleteCredential();
+
+      const calls = execFileMock.mock.calls;
+      expect(calls[0]![1]).toEqual([
+        'add-generic-password',
+        '-U',
+        '-s',
+        'agent-signature:l-garyyang',
+        '-a',
+        'token',
+        '-w',
+        'tok'
+      ]);
+      expect(calls[1]![1]).toEqual([
+        'add-generic-password',
+        '-U',
+        '-s',
+        'agent-signature:l-garyyang',
+        '-a',
+        'slotId',
+        '-w',
+        'sid'
+      ]);
+      expect(calls[2]![1]).toEqual(['delete-generic-password', '-s', 'agent-signature:l-garyyang', '-a', 'token']);
+      expect(calls[3]![1]).toEqual(['delete-generic-password', '-s', 'agent-signature:l-garyyang', '-a', 'slotId']);
+      expect(calls[4]![1]).toEqual([
+        'delete-generic-password',
+        '-s',
+        'agent-signature-slot-credential',
+        '-a',
+        process.env.USER ?? 'agent-presence'
+      ]);
     });
   });
 });

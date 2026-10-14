@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vite-plus/test';
 import { execFile } from 'node:child_process';
+import { randomBytes } from 'node:crypto';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { createCredentialStore, readCredential, type CredentialStore } from '../src/secret.js';
 
@@ -7,6 +11,11 @@ const execFileAsync = promisify(execFile);
 
 const macOs = process.platform === 'darwin';
 const linux = process.platform === 'linux';
+// The libsecret case talks to the developer's real keyring, so it only runs on
+// explicit opt-in. The macOS case never touches the login keychain: it uses a
+// dedicated temporary keychain file, so it is safe to run everywhere.
+const secretIntegration = process.env.PRESENCE_SECRET_INTEGRATION === '1';
+
 const credentialEnvKeys = [
   'AGENT_PRESENCE_L_GARYYANG_TOKEN',
   'AGENT_PRESENCE_TOKEN',
@@ -23,29 +32,6 @@ async function hasSecretTool(): Promise<boolean> {
   try {
     await execFileAsync('secret-tool', ['--version']);
     return true;
-  } catch {
-    return false;
-  }
-}
-
-async function secretToolFunctional(): Promise<boolean> {
-  if (!(await hasSecretTool())) {
-    return false;
-  }
-  const probeValue = 'ap-probe-' + Date.now();
-  try {
-    await execFileAsync(
-      'secret-tool',
-      ['store', '--label', 'agent-presence', 'service', 'agent-presence-ci', 'account', 'probe'],
-      { input: probeValue } as any
-    );
-    const { stdout } = await execFileAsync(
-      'secret-tool',
-      ['lookup', 'service', 'agent-presence-ci', 'account', 'probe'],
-      { encoding: 'utf8' }
-    );
-    await execFileAsync('secret-tool', ['clear', 'service', 'agent-presence-ci', 'account', 'probe']);
-    return stdout.trim() === probeValue;
   } catch {
     return false;
   }
@@ -75,23 +61,11 @@ function restoreCredentialEnv(saved: Record<string, string | undefined>): void {
   }
 }
 
-async function deleteKeychain(service: string, account: string): Promise<void> {
-  await execFileAsync('security', ['delete-generic-password', '-s', service, '-a', account]).catch(() => undefined);
+function uniqueSuffix(): string {
+  return `${process.pid}-${randomBytes(8).toString('hex')}`;
 }
 
-async function cleanupIsolatedStores(
-  keychainService: string,
-  keychainLegacyService: string,
-  libsecretService: string
-): Promise<void> {
-  if (macOs) {
-    await Promise.all([
-      deleteKeychain(keychainService, 'token'),
-      deleteKeychain(keychainService, 'slotId'),
-      deleteKeychain(keychainLegacyService, process.env.USER ?? 'agent-presence')
-    ]);
-  }
-
+async function cleanupLibsecretService(libsecretService: string): Promise<void> {
   if (linux && (await hasSecretTool())) {
     await Promise.all([
       execFileAsync('secret-tool', ['clear', 'service', libsecretService, 'account', 'token']).catch(() => undefined),
@@ -102,55 +76,67 @@ async function cleanupIsolatedStores(
 
 async function withIsolatedCredentialStore(run: (store: CredentialStore) => Promise<void>): Promise<void> {
   const savedEnv = saveCredentialEnv();
-  const suffix = `${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-  const keychainService = `agent-presence-test:${suffix}`;
-  const keychainLegacyService = `agent-presence-test-legacy:${suffix}`;
-  const libsecretService = `agent-presence-test-${suffix}`;
+  const libsecretService = `agent-presence-test-${uniqueSuffix()}`;
 
   clearCredentialEnv();
-  const store = createCredentialStore({
-    keychainService,
-    keychainLegacyService,
-    libsecretService
-  });
+  const store = createCredentialStore({ libsecretService });
 
   try {
     await run(store);
   } finally {
-    await cleanupIsolatedStores(keychainService, keychainLegacyService, libsecretService);
+    await cleanupLibsecretService(libsecretService);
     restoreCredentialEnv(savedEnv);
   }
 }
 
 describe('credential storage integration', () => {
-  const testToken = 'integration-test-token-' + Date.now();
-  const testSlotId = 'integration-test-slot-' + Date.now();
+  // The macOS case runs against a throwaway keychain file created per run, so
+  // fixed values cannot collide with anything.
+  const testToken = 'integration-test-token';
+  const testSlotId = 'integration-test-slot';
+  const updatedToken = 'integration-test-token-updated';
+  const updatedSlotId = 'integration-test-slot-updated';
 
   describe('macOS Keychain backend', () => {
-    it.skipIf(!macOs)('writes, reads, and deletes credentials from Keychain', async () => {
-      await withIsolatedCredentialStore(async (store) => {
-        await store.writeCredential({ token: testToken, slotId: testSlotId });
+    it.skipIf(!macOs)('writes, reads, updates, and deletes credentials in a temporary keychain', async () => {
+      const savedEnv = saveCredentialEnv();
+      const dir = await mkdtemp(join(tmpdir(), 'agent-presence-keychain-'));
+      const keychainPath = join(dir, 'test.keychain');
+      const keychainPassword = randomBytes(24).toString('hex');
+      const keychainService = `agent-presence-test:${uniqueSuffix()}`;
+      const keychainLegacyService = `agent-presence-test-legacy:${uniqueSuffix()}`;
 
+      try {
+        clearCredentialEnv();
+        await execFileAsync('security', ['create-keychain', '-p', keychainPassword, keychainPath]);
+        await execFileAsync('security', ['unlock-keychain', '-p', keychainPassword, keychainPath]);
+        await execFileAsync('security', ['set-keychain-settings', keychainPath]);
+
+        const store = createCredentialStore({ keychainService, keychainLegacyService, keychainPath });
+
+        await store.writeCredential({ token: testToken, slotId: testSlotId });
         const cred = await store.readCredential();
         expect(cred).toEqual({ token: testToken, slotId: testSlotId });
 
-        await store.deleteCredential();
+        await store.writeCredential({ token: updatedToken, slotId: updatedSlotId });
+        const updated = await store.readCredential();
+        expect(updated).toEqual({ token: updatedToken, slotId: updatedSlotId });
 
+        await store.deleteCredential();
         const after = await store.readCredential();
         expect(after).toBeUndefined();
-      });
+      } finally {
+        await execFileAsync('security', ['delete-keychain', keychainPath]).catch(() => undefined);
+        await rm(dir, { recursive: true, force: true });
+        restoreCredentialEnv(savedEnv);
+      }
     });
   });
 
   describe('Linux libsecret backend', () => {
-    it('writes, reads, and deletes credentials from secret-tool', async () => {
-      if (!linux) {
-        return;
-      }
-      if (process.env.CI && !(await secretToolFunctional())) {
-        console.warn('secret-tool is not functional (no keyring daemon in CI); skipping integration test');
-        return;
-      }
+    it('writes, reads, and deletes credentials from secret-tool', async (ctx) => {
+      ctx.skip(!linux, 'linux only');
+      ctx.skip(!secretIntegration, 'set PRESENCE_SECRET_INTEGRATION=1 to run against the real keyring');
 
       await withIsolatedCredentialStore(async (store) => {
         await store.writeCredential({ token: testToken, slotId: testSlotId });

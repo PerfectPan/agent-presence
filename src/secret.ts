@@ -22,6 +22,12 @@ export interface CredentialStore {
 export interface CredentialStoreOptions {
   keychainService?: string;
   keychainLegacyService?: string;
+  /**
+   * macOS only: send every generic-password command to this keychain file
+   * instead of the default search list. Tests only — production callers leave
+   * it unset so the login keychain is used exactly as before.
+   */
+  keychainPath?: string;
   libsecretService?: string;
 }
 
@@ -57,11 +63,21 @@ function envSlotId(): string | undefined {
   );
 }
 
-async function readKeychain(service: string, account: string): Promise<string | undefined> {
+// The generic-password commands take the target keychain as a trailing
+// positional argument; without it they fall back to the default search list.
+function keychainFileArg(keychainPath: string | undefined): string[] {
+  return keychainPath ? [keychainPath] : [];
+}
+
+async function readKeychain(service: string, account: string, keychainPath?: string): Promise<string | undefined> {
   try {
-    const { stdout } = await execFileAsync('security', ['find-generic-password', '-s', service, '-a', account, '-w'], {
-      encoding: 'utf8'
-    });
+    const { stdout } = await execFileAsync(
+      'security',
+      ['find-generic-password', '-s', service, '-a', account, '-w', ...keychainFileArg(keychainPath)],
+      {
+        encoding: 'utf8'
+      }
+    );
     const value = stdout.trim();
     return value || undefined;
   } catch {
@@ -69,39 +85,56 @@ async function readKeychain(service: string, account: string): Promise<string | 
   }
 }
 
-async function writeKeychain(service: string, account: string, value: string): Promise<void> {
-  await execFileAsync('security', ['add-generic-password', '-U', '-s', service, '-a', account, '-w', value]);
+async function writeKeychain(service: string, account: string, value: string, keychainPath?: string): Promise<void> {
+  await execFileAsync('security', [
+    'add-generic-password',
+    '-U',
+    '-s',
+    service,
+    '-a',
+    account,
+    '-w',
+    value,
+    ...keychainFileArg(keychainPath)
+  ]);
 }
 
-async function deleteKeychain(service: string, account: string): Promise<void> {
-  await execFileAsync('security', ['delete-generic-password', '-s', service, '-a', account]).catch(() => undefined);
+async function deleteKeychain(service: string, account: string, keychainPath?: string): Promise<void> {
+  await execFileAsync('security', [
+    'delete-generic-password',
+    '-s',
+    service,
+    '-a',
+    account,
+    ...keychainFileArg(keychainPath)
+  ]).catch(() => undefined);
 }
 
 // --- macOS Keychain backend ---
 
-function createKeychainBackend(service: string, legacyService: string): CredentialBackend {
+function createKeychainBackend(service: string, legacyService: string, keychainPath?: string): CredentialBackend {
   return {
     async readToken() {
       return (
-        (await readKeychain(service, 'token')) ??
-        (await readKeychain(legacyService, process.env.USER ?? 'agent-presence'))
+        (await readKeychain(service, 'token', keychainPath)) ??
+        (await readKeychain(legacyService, process.env.USER ?? 'agent-presence', keychainPath))
       );
     },
 
     async readSlotId() {
-      return readKeychain(service, 'slotId');
+      return readKeychain(service, 'slotId', keychainPath);
     },
 
     async writeCredential(credential) {
-      await writeKeychain(service, 'token', credential.token);
-      await writeKeychain(service, 'slotId', credential.slotId);
+      await writeKeychain(service, 'token', credential.token, keychainPath);
+      await writeKeychain(service, 'slotId', credential.slotId, keychainPath);
     },
 
     async deleteCredential() {
       await Promise.all([
-        deleteKeychain(service, 'token'),
-        deleteKeychain(service, 'slotId'),
-        deleteKeychain(legacyService, process.env.USER ?? 'agent-presence')
+        deleteKeychain(service, 'token', keychainPath),
+        deleteKeychain(service, 'slotId', keychainPath),
+        deleteKeychain(legacyService, process.env.USER ?? 'agent-presence', keychainPath)
       ]);
     }
   };
@@ -219,7 +252,8 @@ function getCredentialBackend(options: CredentialStoreOptions): CredentialBacken
   }
   return createKeychainBackend(
     options.keychainService ?? KEYCHAIN_SERVICE,
-    options.keychainLegacyService ?? KEYCHAIN_LEGACY_SERVICE
+    options.keychainLegacyService ?? KEYCHAIN_LEGACY_SERVICE,
+    options.keychainPath
   );
 }
 
