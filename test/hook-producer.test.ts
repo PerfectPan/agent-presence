@@ -22,7 +22,6 @@ import { hook } from '../src/cli/commands/hook.js';
 import {
   captureHookWorkerStarts,
   drainQueue,
-  failHookWorkerStarts,
   hookWorkerStarts,
   restoreHookWorkerStarts
 } from './hook-producer-support.js';
@@ -319,12 +318,18 @@ describe('hook producer — skip records', () => {
       code: 'missing-session-id',
       source: 'codex',
       nativeEvent: 'Heartbeat',
+      project: '/work/repo',
       payloadKeys: ['cwd']
     });
 
     await drainQueue();
-    // The diagnostic line, built the way the direct path built it (writeHookDiagnostic), then the skip line.
-    const diagnostic = formatLogEvent(hookEventLogEvent({ source: 'codex', event: 'Heartbeat', payloadKeys: ['cwd'] }));
+    // The diagnostic line, built the way the direct path built it (writeHookDiagnostic, project included), then the
+    // skip line.
+    const diagnostic = formatLogEvent(
+      hookEventLogEvent({ source: 'codex', event: 'Heartbeat', project: '/work/repo', payloadKeys: ['cwd'] })
+    );
+    expect(diagnostic).toContain('hasSessionId=false');
+    expect(diagnostic).toContain('project=/work/repo');
     const skip = 'hook skipped: missing session id for source=codex event=Heartbeat';
     const log = await readLog();
     const diagnosticAt = log.indexOf(diagnostic);
@@ -550,13 +555,11 @@ describe('hook producer — failures and quietness', () => {
     await drainAndExpectLogLine('hook failed: Agent');
   });
 
-  it('starts at most one worker per run, and a failed write costs one hook failed record', async () => {
-    failHookWorkerStarts();
+  it('a run with a failed write records one hook failed and requests one start', async () => {
     produceCalls.failFirst = true;
     await runHook(['--source', 'claude', '--event', 'Heartbeat'], { session_id: 's1' });
 
-    // The event record was lost to the failed write, whose failure record carried the start request the failing
-    // start could not honor; the run recorded that failure once, not again for the failed start.
+    // The event record was lost to the failed write; its failure record carries the start request (3.3).
     expect(await writtenRecords()).toHaveLength(1);
     expect((await writtenRecords())[0]).toMatchObject({ kind: 'error', code: 'hook-failed' });
     expect(hookWorkerStarts.requested).toBe(1);

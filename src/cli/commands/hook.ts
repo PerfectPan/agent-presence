@@ -82,6 +82,7 @@ async function recordResolvedHook(
       code: 'missing-session-id',
       source,
       nativeEvent: event,
+      ...(context.project !== undefined ? { project: context.project } : {}),
       payloadKeys: describePayloadKeys(payload)
     });
     return;
@@ -159,14 +160,9 @@ export async function hook(args: string[]): Promise<void> {
   }
 
   if (startRequested) {
-    try {
-      startHookWorker();
-    } catch (error) {
-      // A failed start loses the records to the next producer (3.10); the run still prints its output.
-      if (!production.failureRecorded) {
-        await recordHookFailure(`hook failed: ${errorMessage(error)}`);
-      }
-    }
+    // The starter never throws (`startWorkerProcess` keeps every spawn failure to itself); a start that cannot happen
+    // loses the records to the next producer (3.10).
+    startHookWorker();
   }
 
   writeHookOutput(silent);

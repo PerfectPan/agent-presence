@@ -125,6 +125,7 @@ function recordLogLines(record: QueueRecord): string[] {
           hookEventLogEvent({
             source: record.source,
             event: record.nativeEvent,
+            project: record.project,
             payloadKeys: record.payloadKeys
           })
         ),

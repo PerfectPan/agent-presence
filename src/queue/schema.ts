@@ -75,6 +75,8 @@ const skipRecordSchema = z
     source: z.optional(nonEmptyString),
     agent: z.optional(nonEmptyString),
     nativeEvent: z.string(),
+    /** The resolved project, on a missing-session-id skip: its diagnostic line names it. */
+    project: z.optional(z.string()),
     payloadKeys: z.array(z.string())
   })
   .check(z.refine((record) => record.source !== undefined || record.agent !== undefined, 'names no source or agent'));

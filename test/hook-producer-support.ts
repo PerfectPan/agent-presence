@@ -24,18 +24,6 @@ export function restoreHookWorkerStarts(): void {
 }
 
 /**
- * Route the producer's worker starts into the counter and then fail, the way a spawn that cannot start does; tests
- * drive the failure path of a start. Pair with `restoreHookWorkerStarts`.
- */
-export function failHookWorkerStarts(): void {
-  hookWorkerStarts.requested = 0;
-  setHookStartWorkerForTests(() => {
-    hookWorkerStarts.requested += 1;
-    throw new Error('spawn failed');
-  });
-}
-
-/**
  * Apply what the hooks recorded, the way a started worker would: one in-process worker run on virtual time with the
  * real owed-work effects, so a boundary refresh scans and the rendered sync publishes through the test file's provider
  * and credential mocks. The idle interval is one round, so the run settles right after its first quiet round.
