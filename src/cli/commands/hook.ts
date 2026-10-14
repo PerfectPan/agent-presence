@@ -1,6 +1,5 @@
 import { getStatePath, loadConfig } from '../../config.js';
 import { produceRecord, type RecordBody } from '../../queue/produce.js';
-import type { RecordUsage } from '../../queue/schema.js';
 import { startWorkerProcess, type StartWorker } from '../../queue/start-worker.js';
 import { isSessionBoundaryEvent } from '../../state.js';
 import { usageEventFromPayload } from '../../usage-events.js';
@@ -116,8 +115,9 @@ async function recordResolvedHook(
   }
   const usage = usageEventFromPayload(source, payload, Date.now());
   if (usage) {
-    // The record's usage keeps the fields of the built event; a later release's loose schema adds any it writes.
-    body.usage = usage as RecordUsage;
+    // A fresh literal fits the record's usage, which keeps the fields a later release writes; the named UsageEvent
+    // interface would not carry the index signature.
+    body.usage = { ...usage };
   }
   if (isSessionBoundaryEvent(event)) {
     body.scanEnv = scanEnvFor(source);

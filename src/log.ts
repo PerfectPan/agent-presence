@@ -5,16 +5,22 @@ import { appendRetainedLogLine } from './log-retention.js';
 
 const LOG_TIME_ZONE = 'Asia/Shanghai';
 const CHINA_TIME_OFFSET = '+08:00';
-const LOG_TIME_FORMAT = new Intl.DateTimeFormat('en-CA', {
-  timeZone: LOG_TIME_ZONE,
-  year: 'numeric',
-  month: '2-digit',
-  day: '2-digit',
-  hour: '2-digit',
-  minute: '2-digit',
-  second: '2-digit',
-  hour12: false
-});
+// Built on first use: the hook path loads this module (through src/sources.ts) and never logs, and building the
+// formatter costs every process that would never write a line several milliseconds.
+let logTimeFormat: Intl.DateTimeFormat | undefined;
+
+function logTimeFormatter(): Intl.DateTimeFormat {
+  return (logTimeFormat ??= new Intl.DateTimeFormat('en-CA', {
+    timeZone: LOG_TIME_ZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false
+  }));
+}
 
 export interface LogWriter {
   event(event: Record<string, unknown>): Promise<void>;
@@ -42,7 +48,11 @@ function baseLogContext(): Record<string, unknown> {
 }
 
 export function formatLogTime(date = new Date()): string {
-  const parts = Object.fromEntries(LOG_TIME_FORMAT.formatToParts(date).map((part) => [part.type, part.value]));
+  const parts = Object.fromEntries(
+    logTimeFormatter()
+      .formatToParts(date)
+      .map((part) => [part.type, part.value])
+  );
   const milliseconds = String(date.getUTCMilliseconds()).padStart(3, '0');
   return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}:${parts.second}.${milliseconds}${CHINA_TIME_OFFSET}`;
 }

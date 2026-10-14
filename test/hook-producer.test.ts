@@ -4,6 +4,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 import { getStatePath, type AppConfig, type SourcePluginConfig } from '../src/config.js';
+import { hookEventLogEvent } from '../src/cli/hook-diagnostics.js';
+import { formatLogEvent } from '../src/log.js';
 import { RECORD_VERSION, queuePaths, writeTombstone } from '../src/queue/files.js';
 import { listQueue, readQueueFile } from '../src/queue/reader.js';
 import type { QueueRecord } from '../src/queue/schema.js';
@@ -275,7 +277,7 @@ describe('hook producer — event records', () => {
 });
 
 describe('hook producer — skip records', () => {
-  it('records missing-session-id and the worker logs the line the hook logged', async () => {
+  it('records missing-session-id, and the worker logs the two lines the hook logged, in order', async () => {
     await runHook(['--source', 'codex', '--event', 'Heartbeat'], { cwd: '/work/repo' });
 
     const records = await writtenRecords();
@@ -287,7 +289,16 @@ describe('hook producer — skip records', () => {
       nativeEvent: 'Heartbeat',
       payloadKeys: ['cwd']
     });
-    await drainAndExpectLogLine('hook skipped: missing session id for source=codex event=Heartbeat');
+
+    await drainQueue();
+    // The diagnostic line, built the way the direct path built it (writeHookDiagnostic), then the skip line.
+    const diagnostic = formatLogEvent(hookEventLogEvent({ source: 'codex', event: 'Heartbeat', payloadKeys: ['cwd'] }));
+    const skip = 'hook skipped: missing session id for source=codex event=Heartbeat';
+    const log = await readLog();
+    const diagnosticAt = log.indexOf(diagnostic);
+    const skipAt = log.indexOf(skip);
+    expect(diagnosticAt).toBeGreaterThanOrEqual(0);
+    expect(skipAt).toBeGreaterThan(diagnosticAt);
   });
 
   it('records no-presence-source for an agent with no presence source', async () => {

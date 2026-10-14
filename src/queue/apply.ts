@@ -95,24 +95,45 @@ function skipLine(record: SkipRecord): string {
   }
 }
 
-/** The line the hook wrote for this record before the queue: the event's diagnostic line, a skip, or a failure. */
-function recordLogLine(record: QueueRecord): string {
+/**
+ * The lines the hook wrote for this record before the queue: the event's diagnostic line, a skip, or a failure. A
+ * `missing-session-id` skip keeps the diagnostic line the hook wrote before it found the session id missing — the
+ * payload key names matter most there — ahead of the skip line.
+ */
+function recordLogLines(record: QueueRecord): string[] {
   switch (record.kind) {
     case 'event':
-      return infoLogLine(
-        hookEventLogEvent({
-          source: record.source,
-          event: record.event,
-          sessionId: record.sessionId,
-          project: record.project,
-          payloadKeys: record.payloadKeys
-        })
-      );
-    case 'skip':
-      return errorLogLine(skipLine(record));
+      return [
+        infoLogLine(
+          hookEventLogEvent({
+            source: record.source,
+            event: record.event,
+            sessionId: record.sessionId,
+            project: record.project,
+            payloadKeys: record.payloadKeys
+          })
+        )
+      ];
+    case 'skip': {
+      const skip = errorLogLine(skipLine(record));
+      // The diagnostic line needs the source the hook named; this release always names one here.
+      if (record.code !== 'missing-session-id' || record.source === undefined) {
+        return [skip];
+      }
+      return [
+        infoLogLine(
+          hookEventLogEvent({
+            source: record.source,
+            event: record.nativeEvent,
+            payloadKeys: record.payloadKeys
+          })
+        ),
+        skip
+      ];
+    }
     case 'error':
       // An error record's message is the line the hook would have logged, without payload values.
-      return errorLogLine(record.message);
+      return [errorLogLine(record.message)];
   }
 }
 
@@ -231,7 +252,7 @@ export async function applyQueueBatch(statePath: string, options: ApplyBatchOpti
   await logQuietly(() =>
     appendLogLines([
       ...lines,
-      ...saved.map(({ record }) => recordLogLine(record)),
+      ...saved.flatMap(({ record }) => recordLogLines(record)),
       infoLogLine({ type: 'queue.batch', applied: saved.length, listed: files.length })
     ])
   );
