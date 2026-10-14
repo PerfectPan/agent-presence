@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test';
+import * as z from 'zod/mini';
 import { produceRecord } from '../src/queue/produce.js';
 import { listQueue } from '../src/queue/reader.js';
 import { takeOver } from '../src/queue/takeover.js';
@@ -31,7 +32,8 @@ vi.mock('node:child_process', async (importOriginal) => ({
   spawn: spawnMock
 }));
 
-const RUNS = 1_000;
+// A release checks 1,000 runs by setting PRESENCE_RACE_RUNS=1000 before it (Plan 0003 5.2, 6.4).
+const RUNS = z.catch(z.coerce.number().check(z.int(), z.minimum(1)), 100).parse(process.env.PRESENCE_RACE_RUNS);
 
 let home: QueueHome;
 let vt: VirtualTime;

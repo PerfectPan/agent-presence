@@ -671,7 +671,8 @@ queue (3.12).
   the command has written its version (3.6).
 - A command that fails after taking over starts a background worker when records or owed work remain.
 - Idle-exit race: producers recording while a worker exits, and while a command that took over (`status`, `flush`) holds
-  the lock and exits, 1,000 iterations each with random delays: no record stays.
+  the lock and exits, 100 iterations each by default and 1,000 by setting `PRESENCE_RACE_RUNS=1000`, which a release
+  runs before it ships: no record stays.
 - A worker killed while a producer writes: the next hook starts a worker.
 - A takeover while a slow refresh runs: the holder stops within about a second, and the refresh stays owed.
 - Twenty workers started together: one takes the lock, and the others exit in the round after it has written its
@@ -843,7 +844,7 @@ holds the log lock or a handover aborts the wait (3.5).
 
 | Batch | Command or evidence                                                                                | Expected result                                   |
 | ----- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------- |
-| Q1a   | Crash, takeover, idle-race, version-handover and older-holder tests                                | No lost, doubled or stranded event or owed item   |
+| Q1a   | Crash, takeover, idle-race, version-handover and older-holder tests; a release runs the idle-race tests with `PRESENCE_RACE_RUNS=1000` before it ships (5.2) | No lost, doubled or stranded event or owed item   |
 | Q1b   | Upgrade burst and producers during a command (5.3)                                                 | One newer holder; every event applied once        |
 | Q1b   | Event table through producer and worker                                                            | Same state as the direct path for all 67 cases    |
 | Q1b   | Hook cold start against the 143 ms pre-split baseline (1.1), re-measured on the same machine (5.4) | At most 60 percent                                |
