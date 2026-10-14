@@ -26,10 +26,16 @@ vi.mock('node:child_process', async (importOriginal) => ({
   spawn: spawnMock
 }));
 
-const runUninstallScriptsMock = vi.hoisted(() => vi.fn(async () => []));
-const runSetupScriptsMock = vi.hoisted(() => vi.fn(async () => []));
-const removePluginsDirMock = vi.hoisted(() => vi.fn(async () => undefined));
-const deleteCredentialMock = vi.hoisted(() => vi.fn(async () => undefined));
+const runUninstallScriptsMock = vi.hoisted(() =>
+  vi.fn<typeof import('../src/setup.js').runUninstallScripts>(async () => [])
+);
+const runSetupScriptsMock = vi.hoisted(() => vi.fn<typeof import('../src/setup.js').runSetupScripts>(async () => []));
+const removePluginsDirMock = vi.hoisted(() =>
+  vi.fn<typeof import('../src/plugin-install.js').removePluginsDir>(async () => undefined)
+);
+const deleteCredentialMock = vi.hoisted(() =>
+  vi.fn<typeof import('../src/secret.js').deleteCredential>(async () => undefined)
+);
 
 vi.mock('../src/setup.js', () => ({
   LINUX_WATCHER_SKIP_MESSAGE: 'linux watcher skipped',
@@ -44,14 +50,18 @@ vi.mock('../src/plugin-install.js', async (importOriginal) => ({
 
 vi.mock('../src/secret.js', () => ({
   // No credential: `setup` takes the branch that only reports the missing login.
-  readCredential: vi.fn(async () => undefined),
+  readCredential: vi.fn<typeof import('../src/secret.js').readCredential>(async () => undefined),
   deleteCredential: deleteCredentialMock
 }));
 
 vi.mock('../src/migration.js', () => ({
-  cleanupMigratedLegacyHome: vi.fn(async () => ({ from: '', to: '', removed: [] })),
-  hasLegacyHomeToMigrate: vi.fn(async () => false),
-  migrateLegacyHome: vi.fn()
+  cleanupMigratedLegacyHome: vi.fn<typeof import('../src/migration.js').cleanupMigratedLegacyHome>(async () => ({
+    from: '',
+    to: '',
+    removed: []
+  })),
+  hasLegacyHomeToMigrate: vi.fn<typeof import('../src/migration.js').hasLegacyHomeToMigrate>(async () => false),
+  migrateLegacyHome: vi.fn<typeof import('../src/migration.js').migrateLegacyHome>()
 }));
 
 vi.mock('../src/cli/ui.js', () => ({
@@ -61,7 +71,7 @@ vi.mock('../src/cli/ui.js', () => ({
     error: vi.fn<(message?: string) => void>()
   }),
   finishOutro: vi.fn<typeof import('../src/cli/ui.js').finishOutro>(),
-  isInteractiveTerminal: vi.fn(() => false),
+  isInteractiveTerminal: vi.fn<typeof import('../src/cli/ui.js').isInteractiveTerminal>(() => false),
   promptConfirm: vi.fn<typeof import('../src/cli/ui.js').promptConfirm>(),
   promptText: vi.fn<typeof import('../src/cli/ui.js').promptText>(),
   showInfo: vi.fn<typeof import('../src/cli/ui.js').showInfo>(),

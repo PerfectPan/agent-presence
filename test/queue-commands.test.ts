@@ -32,7 +32,9 @@ vi.mock('../src/providers/registry.js', () => ({
 }));
 
 vi.mock('../src/secret.js', () => ({
-  readCredential: vi.fn().mockResolvedValue({ token: 'test-token', slotId: 'test-slot' })
+  readCredential: vi
+    .fn<typeof import('../src/secret.js').readCredential>()
+    .mockResolvedValue({ token: 'test-token', slotId: 'test-slot' })
 }));
 
 const OLDER = 1;
