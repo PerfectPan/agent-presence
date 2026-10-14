@@ -1,7 +1,7 @@
 import { mkdirSync, readdirSync, renameSync, utimesSync, writeFileSync } from 'node:fs';
 import { readdir } from 'node:fs/promises';
 import { basename, dirname, join } from 'node:path';
-import type { ProcessLock, ProcessLockPlatform } from '@rivus/agent-kit-collab/process-lock';
+import type { ProcessLock } from '@rivus/agent-kit-collab/process-lock';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 import { kitPlatform } from '../src/kit-platform.js';
 import {
@@ -26,6 +26,7 @@ import {
   createQueueHome,
   createWorkerPool,
   eventBody,
+  hookedPlatform,
   fakeEffects,
   readState,
   recordAt,
@@ -148,47 +149,6 @@ function writeRecordSync(at: number, sessionId: string, version = 1): void {
   writeFileSync(join(queueDir, name), JSON.stringify(record));
 }
 
-/**
- * The kit's platform with hooks on the worker lock's SQLite connections: `onTaken` runs right after an acquisition
- * took the lock and `onReleased` right after a held lock is released, both synchronously, before the caller goes on.
- */
-function hookedPlatform(hooks: { onTaken?: () => void; onReleased?: () => void }): ProcessLockPlatform {
-  const base = kitPlatform();
-  const { sqlite } = base;
-  if (!sqlite) {
-    throw new Error('the platform has no SQLite');
-  }
-  return {
-    ...base,
-    sqlite: {
-      open(path, options) {
-        const db = sqlite.open(path, options);
-        if (options?.readonly === true || !path.endsWith('.worker.lock.db')) {
-          return db;
-        }
-        let held = false;
-        return {
-          exec(sql) {
-            db.exec(sql);
-            if (sql === 'BEGIN EXCLUSIVE') {
-              held = true;
-              hooks.onTaken?.();
-            }
-          },
-          prepare: (sql) => db.prepare(sql),
-          close() {
-            db.close();
-            if (held) {
-              held = false;
-              hooks.onReleased?.();
-            }
-          }
-        };
-      }
-    }
-  };
-}
-
 /** The touch timer stays with the test; every other wait runs on virtual time. */
 function touchesByHand(): { delay: Delay; tick: () => void } {
   let endWait: (() => void) | undefined;
@@ -298,6 +258,29 @@ describe('a started worker', () => {
 });
 
 describe('a worker holding the lock', () => {
+  it('applies records arriving while a publish hangs, each at the next iteration or the one after', async () => {
+    const publish = fake.holdPublishes();
+    let iterations = 0;
+    const counted: Delay = (ms, signal) => {
+      iterations += 1;
+      return vt.delay(ms, signal);
+    };
+    await recordAt(home.statePath, vt.clock.now(), eventBody('SessionStart', 's0'));
+    const run = workers().start(1, { delay: counted });
+    await publish.started;
+
+    for (let index = 1; index <= 5; index += 1) {
+      const before = iterations;
+      await recordAt(home.statePath, vt.clock.now(), eventBody('SessionStart', `s${index}`));
+      await until(async () => `s${index}` in (await readState(home.statePath)).sessions, `s${index} applied`);
+      expect(iterations - before).toBeLessThanOrEqual(2);
+    }
+
+    await writeTombstone(home.statePath);
+    expect(await run).toBe('tombstone');
+    await publish.aborted;
+  });
+
   it('leaves at the tombstone, deletes its version, and starts no worker with records pending', async () => {
     const pool = workers();
     const run = pool.start();

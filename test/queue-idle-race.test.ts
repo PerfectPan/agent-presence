@@ -1,5 +1,4 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test';
-import { readWorkerVersion } from '../src/queue/files.js';
 import { produceRecord } from '../src/queue/produce.js';
 import { listQueue } from '../src/queue/reader.js';
 import {
@@ -7,9 +6,9 @@ import {
   createWorkerPool,
   eventBody,
   fakeEffects,
+  hookedPlatform,
   randomTurns,
   readState,
-  until,
   virtualTime,
   type QueueHome,
   type VirtualTime,
@@ -37,6 +36,15 @@ const RUNS = 1_000;
 let home: QueueHome;
 let vt: VirtualTime;
 let pool: WorkerPool;
+/** Resolves when a worker next takes the lock. */
+let lockTaken: Promise<void>;
+let onLockTaken: () => void;
+
+function expectLockTaken(): void {
+  lockTaken = new Promise((resolve) => {
+    onLockTaken = resolve;
+  });
+}
 
 beforeEach(async () => {
   home = await createQueueHome();
@@ -50,7 +58,8 @@ beforeEach(async () => {
     delay: vt.delay,
     isPidAlive: () => true,
     effects: fakeEffects().effects,
-    idleMs: 0
+    idleMs: 0,
+    platform: hookedPlatform({ onTaken: () => onLockTaken() })
   });
 });
 
@@ -62,9 +71,11 @@ afterEach(async () => {
 describe('the idle exit under producers', () => {
   it(`leaves no record behind while producers record as idle workers leave, over ${RUNS} runs`, async () => {
     for (let run = 0; run < RUNS; run += 1) {
-      // A worker on an empty queue takes the lock and leaves at its first quiet iteration.
+      // A worker on an empty queue takes the lock and leaves at its first quiet iteration; the producer records at a
+      // random point from the moment it took the lock.
+      expectLockTaken();
       void pool.start();
-      await until(async () => (await readWorkerVersion(home.statePath)) === 1, 'the worker holding');
+      await lockTaken;
       await randomTurns();
       const produced = await produceRecord(home.statePath, eventBody('SessionStart', `s${run}`), {
         clock: vt.clock

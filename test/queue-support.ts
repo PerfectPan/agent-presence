@@ -3,7 +3,9 @@
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import type { ProcessLockPlatform } from '@rivus/agent-kit-collab/process-lock';
 import type { AppConfig } from '../src/config.js';
+import { kitPlatform } from '../src/kit-platform.js';
 import type { UsageRefreshOutcome } from '../src/cli/usage-badge.js';
 import { writeTombstone, type QueueClock } from '../src/queue/files.js';
 import type { OwedWorkEffects, UsageRefreshRequest } from '../src/queue/follow-up.js';
@@ -359,6 +361,47 @@ export function createWorkerPool(defaults: Omit<WorkerOptions, 'version'>): Work
     async stop() {
       await writeTombstone(defaults.statePath);
       await settled().catch(() => undefined);
+    }
+  };
+}
+
+/**
+ * The kit's platform with hooks on the worker lock's SQLite connections: `onTaken` runs right after an acquisition
+ * took the lock and `onReleased` right after a held lock is released, both synchronously, before the caller goes on.
+ */
+export function hookedPlatform(hooks: { onTaken?: () => void; onReleased?: () => void }): ProcessLockPlatform {
+  const base = kitPlatform();
+  const { sqlite } = base;
+  if (!sqlite) {
+    throw new Error('the platform has no SQLite');
+  }
+  return {
+    ...base,
+    sqlite: {
+      open(path, options) {
+        const db = sqlite.open(path, options);
+        if (options?.readonly === true || !path.endsWith('.worker.lock.db')) {
+          return db;
+        }
+        let held = false;
+        return {
+          exec(sql) {
+            db.exec(sql);
+            if (sql === 'BEGIN EXCLUSIVE') {
+              held = true;
+              hooks.onTaken?.();
+            }
+          },
+          prepare: (sql) => db.prepare(sql),
+          close() {
+            db.close();
+            if (held) {
+              held = false;
+              hooks.onReleased?.();
+            }
+          }
+        };
+      }
     }
   };
 }
