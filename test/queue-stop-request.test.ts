@@ -249,6 +249,8 @@ describe('liveStopRequests', () => {
     failingRequestRemovals.enabled = true;
     try {
       await expect(liveStopRequests(statePath, { clock: { now: () => T }, isPidAlive: alive })).resolves.toEqual([]);
+      // A holder checks every 250 ms: the second look at the same file logs it once, not again.
+      await expect(liveStopRequests(statePath, { clock: { now: () => T }, isPidAlive: alive })).resolves.toEqual([]);
     } finally {
       failingRequestReads.enabled = false;
       failingRequestRemovals.enabled = false;

@@ -120,11 +120,20 @@ async function logQuietly(event: Record<string, unknown>): Promise<void> {
   }
 }
 
-/** Remove a stale request; when that fails too, keep the reader going and log the request once (3.7). */
+// The unremovable request paths this process has logged: a holder checks every 250 ms (3.3), so the same file would
+// log on every check. The path leaves the set once its file is gone, so a later file there logs again.
+const staleRequestsLogged = new Set<string>();
+
+/** Remove a stale request; when that fails too, keep the reader going and log the request once per file (3.7). */
 async function removeStaleRequest(path: string, readError: unknown): Promise<void> {
   try {
     await rm(path, { force: true });
+    staleRequestsLogged.delete(path);
   } catch (error) {
+    if (staleRequestsLogged.has(path)) {
+      return;
+    }
+    staleRequestsLogged.add(path);
     await logQuietly({
       type: 'worker.stop-request.stale',
       file: basename(path),
