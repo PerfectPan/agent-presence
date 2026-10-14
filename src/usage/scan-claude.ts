@@ -3,14 +3,14 @@ import { join } from 'node:path';
 
 import { SCAN_ENV } from '../cli/hook-context.js';
 import { forEachJsonl, listJsonlFiles, parseTimestamp } from './read-jsonl.js';
-import type { ScanWindow, UsageRecord } from './types.js';
+import type { ScanEnvironment, ScanWindow, UsageRecord } from './types.js';
 
 /** Alias of the shared window shape; each scanner accepts `{ sinceMs, untilMs, root? }`. */
 export type ScanOptions = ScanWindow;
 
 /** Default Claude transcript root, honouring `CLAUDE_CONFIG_DIR` like ccusage. */
-export function defaultClaudeRoot(): string {
-  const configDir = process.env[SCAN_ENV.claudeConfigDir];
+export function defaultClaudeRoot(env: ScanEnvironment = process.env): string {
+  const configDir = env[SCAN_ENV.claudeConfigDir];
   if (configDir && configDir.trim().length > 0) {
     return join(configDir.trim(), 'projects');
   }
@@ -107,7 +107,7 @@ function extractRecord(
  * under-count output for streamed turns. Synthetic turns are excluded.
  */
 export async function scanClaude(options: ScanOptions): Promise<UsageRecord[]> {
-  const root = options.root ?? defaultClaudeRoot();
+  const root = options.root ?? defaultClaudeRoot(options.env);
   const files = await listJsonlFiles(root, options.sinceMs);
   const deduped = new Map<string, UsageRecord>();
   const unkeyed: UsageRecord[] = [];

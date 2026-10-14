@@ -1,7 +1,15 @@
 import { DAY_MS, startOfLocalDayMs } from '../time.js';
 import { writeLog } from '../log.js';
 import { resolveRecordCost, type PricingOverrides } from './pricing.js';
-import type { BillableSource, SourceUsage, UsageRecord, UsageSource, UsageTotals, WindowUsage } from './types.js';
+import type {
+  BillableSource,
+  ScanEnvironment,
+  SourceUsage,
+  UsageRecord,
+  UsageSource,
+  UsageTotals,
+  WindowUsage
+} from './types.js';
 
 export type { ModelPricing, PricingOverrides } from './pricing.js';
 export type {
@@ -33,6 +41,8 @@ export interface CollectOptions {
   sources: BillableSource[];
   /** Per-source root overrides keyed by source id, mainly for tests. */
   roots?: Record<string, string>;
+  /** The environment scanners read their transcript roots from; `process.env` when absent. */
+  env?: ScanEnvironment;
   /** Reject the collection when any source fails instead of treating it as empty. */
   failOnSourceError?: boolean;
 }
@@ -118,7 +128,7 @@ export async function collectWindowUsage(options: CollectOptions): Promise<Windo
   const bySource = await Promise.all(
     options.sources.map(async (source) => {
       const records = await source
-        .scanUsage({ sinceMs, untilMs, root: options.roots?.[source.id] })
+        .scanUsage({ sinceMs, untilMs, root: options.roots?.[source.id], env: options.env })
         .catch(async (error) => {
           // Fail-soft: one source's unreadable data must not break the whole run,
           // mirroring how presence resolution fails open. Log it (redaction-safe,

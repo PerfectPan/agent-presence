@@ -11,7 +11,8 @@ import { calendarDaysBetween } from '../time.js';
 import { renderUsageBadge } from '../usage/format.js';
 import { collectWindowUsage } from '../usage/index.js';
 import type { BillableSource, PricingOverrides } from '../usage/index.js';
-import type { UsageSnapshot } from '../state.js';
+import type { ScanEnvironment } from '../usage/types.js';
+import type { PresenceState, UsageSnapshot } from '../state.js';
 import { loadState, saveState, withStateLock } from '../state-store.js';
 
 export interface UsageRenderPlan {
@@ -50,6 +51,13 @@ export interface UsageBadgeCacheRefresh {
    * transcripts. Once the scans have finished, an abort no longer stops it: it waits for the state lock and saves.
    */
   signal?: AbortSignal;
+  /** The environment the scanners read their transcript roots from; `process.env` when absent. */
+  env?: ScanEnvironment;
+  /**
+   * Runs inside the refresh's locked save, after the snapshots are updated, so a change to the state lands in the same
+   * save as the refresh. It does not run when the refresh does not save.
+   */
+  onSave?: (state: PresenceState) => void;
 }
 
 /**
@@ -135,7 +143,8 @@ export async function refreshUsageBadgeCache(options: UsageBadgeCacheRefresh): P
             now: options.now,
             pricing: options.pricing,
             sources: selectedSources,
-            failOnSourceError: true
+            failOnSourceError: true,
+            env: options.env
           });
           return [
             String(days),
@@ -207,6 +216,7 @@ export async function refreshUsageBadgeCache(options: UsageBadgeCacheRefresh): P
     if (results.length > 0 && rebuiltWindows === results.length) {
       state.usageBadgesAt = Math.max(state.usageBadgesAt ?? options.now, options.now);
     }
+    options.onSave?.(state);
     await saveState(state, options.statePath);
   });
   return { completed: true };
@@ -217,14 +227,15 @@ export async function refreshUsageBadgeCache(options: UsageBadgeCacheRefresh): P
  * its source id and normally scans only that source; the first boundary after
  * midnight and an explicit update rebuild every built-in contribution. Scans
  * run outside the state lock and any failure leaves the previous cache intact.
- * `signal` stops the refresh before or while its scans run (see `UsageBadgeCacheRefresh`).
+ * `signal` stops the refresh before or while its scans run, `env` locates the transcripts, and `onSave` runs inside its
+ * save (see `UsageBadgeCacheRefresh`).
  */
 export async function refreshSignatureUsageBadges(
   config: AppConfig,
   statePath: string,
   now: number,
   source?: string,
-  options: { signal?: AbortSignal } = {}
+  options: Pick<UsageBadgeCacheRefresh, 'signal' | 'env' | 'onSave'> = {}
 ): Promise<UsageRefreshOutcome> {
   const plan = usageRenderPlan(config);
   if (!plan.enabled) {
@@ -243,6 +254,8 @@ export async function refreshSignatureUsageBadges(
     pricing,
     sources,
     source,
-    signal: options.signal
+    signal: options.signal,
+    env: options.env,
+    onSave: options.onSave
   });
 }

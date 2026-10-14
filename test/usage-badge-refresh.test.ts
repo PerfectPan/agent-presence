@@ -534,4 +534,59 @@ describe('refreshUsageBadgeCache', () => {
       }
     });
   });
+
+  it('scans every built-in with the given environment at the first boundary of a day of a source without a scanner, and runs onSave in its save', async () => {
+    dir = await mkdtemp(join(tmpdir(), 'agent-presence-usage-badge-'));
+    const statePath = join(dir, 'state.json');
+    const yesterday = new Date(2026, 6, 14, 23, 59).getTime();
+    const today = new Date(2026, 6, 15, 0, 1).getTime();
+    await saveState({ sessions: {}, usageBadgesAt: yesterday }, statePath);
+    const codexScan = vi.fn<BillableSource['scanUsage']>(async () => [record('codex', 20, 0.2)]);
+    const claudeScan = vi.fn<BillableSource['scanUsage']>(async () => []);
+    const env = { CLAUDE_CONFIG_DIR: '/fake-home/hook-claude' };
+    const onSave = vi.fn<(state: PresenceState) => void>((state) => {
+      state.lastValue = 'saved with the refresh';
+    });
+
+    const outcome = await refreshUsageBadgeCache({
+      statePath,
+      now: today,
+      windows: [1],
+      sources: [
+        { id: 'codex', scanUsage: codexScan },
+        { id: 'claude', scanUsage: claudeScan }
+      ],
+      // A source in the table without a scanner, such as grok.
+      source: 'grok',
+      env,
+      onSave
+    });
+
+    expect(outcome).toEqual({ completed: true });
+    expect(codexScan.mock.calls[0]?.[0].env).toBe(env);
+    expect(claudeScan.mock.calls[0]?.[0].env).toBe(env);
+    expect(onSave).toHaveBeenCalledTimes(1);
+    expect(await loadState(statePath)).toMatchObject({ lastValue: 'saved with the refresh', usageBadgesAt: today });
+  });
+
+  it('completes without scanning or saving for a source without a scanner later in the day', async () => {
+    dir = await mkdtemp(join(tmpdir(), 'agent-presence-usage-badge-'));
+    const statePath = join(dir, 'state.json');
+    await saveState({ sessions: {}, usageBadgesAt: NOW - 1_000 }, statePath);
+    const codexScan = vi.fn<BillableSource['scanUsage']>(async () => []);
+    const onSave = vi.fn<(state: PresenceState) => void>();
+
+    const outcome = await refreshUsageBadgeCache({
+      statePath,
+      now: NOW,
+      windows: [1],
+      sources: [{ id: 'codex', scanUsage: codexScan }],
+      source: 'grok',
+      onSave
+    });
+
+    expect(outcome).toEqual({ completed: true });
+    expect(codexScan).not.toHaveBeenCalled();
+    expect(onSave).not.toHaveBeenCalled();
+  });
 });
