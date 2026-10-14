@@ -61,11 +61,17 @@ const eventRecordSchema = z.object({
   payloadKeys: z.array(z.string())
 });
 
+/**
+ * The skip codes this release writes. A record's `code` is an open string, like an error code: a later release may
+ * skip for a reason of its own, and an older applier then only logs the code.
+ */
+export type KnownSkipCode = 'missing-session-id' | 'no-presence-source' | 'ignored-event';
+
 const skipRecordSchema = z
   .object({
     ...recordHeader,
     kind: z.literal('skip'),
-    code: z.enum(['missing-session-id', 'no-presence-source', 'ignored-event']),
+    code: nonEmptyString,
     source: z.optional(nonEmptyString),
     agent: z.optional(nonEmptyString),
     nativeEvent: z.string(),

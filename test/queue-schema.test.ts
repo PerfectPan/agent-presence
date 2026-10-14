@@ -72,6 +72,7 @@ describe('parseQueueRecord', () => {
     ['event', eventRecord],
     ['dsh usage event', dshEventRecord],
     ['skip', skipRecord],
+    ['skip with a code of a later release, which an older applier only logs', { ...skipRecord, code: 'later-code' }],
     ['error', errorRecord]
   ])('parses a valid %s record', (_name, raw) => {
     expect(parseQueueRecord(raw)).toEqual({ ok: true, record: raw });
@@ -104,7 +105,7 @@ describe('parseQueueRecord', () => {
       { ...dshEventRecord, usage: { ...dshEventRecord.usage, outputTokens: -1 } }
     ],
     ['an event with a mistyped scanEnv variable', { ...eventRecord, scanEnv: { CLAUDE_CONFIG_DIR: 1 } }],
-    ['a skip with an unknown code', { ...skipRecord, code: 'later-code' }],
+    ['a skip with an empty code', { ...skipRecord, code: '' }],
     ['a skip naming no source or agent', without(skipRecord, 'agent')],
     ['a skip without its native event', without(skipRecord, 'nativeEvent')],
     ['an error without a message', without(errorRecord, 'message')],
