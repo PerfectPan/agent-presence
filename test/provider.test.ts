@@ -191,15 +191,16 @@ describe('publish timeout', () => {
     vi.restoreAllMocks();
     delete process.env.AGENT_PRESENCE_LOG_FILE;
     if (tempDir) {
+      const dir = tempDir;
       // The failed publish's log write is fire-and-forget; removing the directory waits for it to land.
       for (let attempt = 0; ; attempt += 1) {
         try {
-          await rm(tempDir, { recursive: true, force: true });
+          await rm(dir, { recursive: true, force: true });
           tempDir = undefined;
           return;
         } catch {
           if (attempt === 20) {
-            throw new Error(`the log write never released ${tempDir}`);
+            throw new Error(`the log write never released ${dir}`);
           }
           await new Promise((resolve) => setTimeout(resolve, 50));
         }
