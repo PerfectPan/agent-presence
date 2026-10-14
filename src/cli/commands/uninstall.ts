@@ -1,6 +1,6 @@
 import { rm } from 'node:fs/promises';
 import { getConfigPath, getStatePath, loadConfig, saveConfig } from '../../config.js';
-import { deleteWorkerVersion, queuePaths, writeTombstone } from '../../queue/files.js';
+import { queuePaths, writeTombstone } from '../../queue/files.js';
 import { deleteStopRequests } from '../../queue/stop-request.js';
 import { takeOver, type TakeoverOptions } from '../../queue/takeover.js';
 import { removePluginsDir } from '../../plugin-install.js';
@@ -43,7 +43,7 @@ export async function uninstall(args: string[] = [], takeover: TakeoverOptions =
       async () => {
         await rm(queuePaths(statePath).queueDir, { recursive: true, force: true });
         await deleteStopRequests(statePath);
-        await deleteWorkerVersion(statePath);
+        // `<state>.worker.v` goes with the leaving order's release (3.6), so it is not deleted here.
         await rm(statePath, { force: true });
       },
       takeover

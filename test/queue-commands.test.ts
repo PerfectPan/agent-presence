@@ -6,6 +6,7 @@ import { printStatus } from '../src/cli/commands/status.js';
 import { reset } from '../src/cli/commands/reset.js';
 import { update } from '../src/cli/commands/update.js';
 import { readWorkerVersion, writeTombstone } from '../src/queue/files.js';
+import type { OwedWorkEffects } from '../src/queue/follow-up.js';
 import { checkWorkerLock, produceRecord } from '../src/queue/produce.js';
 import { listQueue } from '../src/queue/reader.js';
 import { dshUsage, eventBody, readState, recordAt, until, writeState, T0 } from './queue-support.js';
@@ -139,6 +140,42 @@ describe('status', () => {
     } finally {
       await lock.release();
     }
+  });
+
+  it('bounds all of its dsh appends with one deadline: the second append starts aborted', async () => {
+    nowAt(T0 + 2_000);
+    await recordAt(
+      h.home.statePath,
+      T0,
+      eventBody('Heartbeat', 'd1', { source: 'dsh', usage: dshUsage, payloadKeys: ['usage'] })
+    );
+    await recordAt(
+      h.home.statePath,
+      T0 + 1_000,
+      eventBody('Heartbeat', 'd2', { source: 'dsh', usage: dshUsage, payloadKeys: ['usage'] })
+    );
+    // A held log lock stand-in: every append ends when its deadline aborts, and the test keeps the signal it got.
+    const appendedWith: AbortSignal[] = [];
+    const effects: OwedWorkEffects = {
+      ...h.fake.effects,
+      appendUsage: async (_usage, _id, signal) => {
+        appendedWith.push(signal);
+        if (!signal.aborted) {
+          await new Promise<void>((resolve) => signal.addEventListener('abort', () => resolve(), { once: true }));
+        }
+        return false;
+      }
+    };
+    const starts = h.countingStarts();
+
+    await printStatus([], h.takeoverOptions({ effects, logLockWaitMs: 0, startWorker: starts.startWorker }));
+
+    // Both entries were attempted against the same deadline, and it had already fired for the second one.
+    expect(appendedWith).toHaveLength(2);
+    expect(appendedWith[1]).toBe(appendedWith[0]);
+    expect(appendedWith[1]!.aborted).toBe(true);
+    expect((await readState(h.home.statePath)).queueOwed?.dshUsage).toHaveLength(2);
+    expect(starts.count()).toBe(1);
   });
 });
 
@@ -301,6 +338,42 @@ describe('reset during a slow usage refresh (Spec S6)', () => {
       finishedAt: T0 + 4_000
     });
     expect((await readState(h.home.statePath)).lastSlotUpdateAt).toBe(T0 + 4_000);
+  });
+
+  it('status reads its now after the apply: the applied record counts as active, a session the ttl expires does not', async () => {
+    // A short ttl makes the stale `now` visible: with the start's `now`, the old session has not expired yet.
+    await h.home.writeConfig({ provider: 'feishu-signature', render: TEMPLATES, ttlMs: 2_000 });
+    const now = movableNow(T0);
+    restoreNow = () => now.restore();
+    await writeState(h.home.statePath, {
+      sessions: {
+        old: {
+          id: 'old',
+          source: 'codex',
+          kind: 'coding',
+          status: 'running',
+          startedAt: T0 - 60_000,
+          lastHeartbeatAt: T0 + 1_000
+        }
+      }
+    });
+    const running = h.pool.start(1, { idleMs: 300_000 });
+    await until(async () => (await readWorkerVersion(h.home.statePath)) === 1, 'the holder running');
+    const out = capture();
+
+    const command = printStatus([], h.takeoverOptions());
+    await until(async () => (await h.requestFiles()).length === 1, 'status waiting for the lock');
+    await recordAt(h.home.statePath, T0 + 3_000, eventBody('SessionStart', 's1'));
+    now.set(T0 + 4_000);
+
+    await command;
+    await h.pool.settled();
+
+    expect(await running).toBe('stop-request');
+    const payload = JSON.parse(out.lines[0]!) as { activeCount: number; value: string; active: Array<{ id: string }> };
+    expect(payload.activeCount).toBe(1);
+    expect(payload.active.map((session) => session.id)).toEqual(['s1']);
+    expect(payload.value).toBe('ONE codex 1');
   });
 });
 

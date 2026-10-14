@@ -100,6 +100,12 @@ function createTakeover(context: TakeoverContext, disabled: boolean): Takeover {
         return;
       }
       const attempts = createOwedAttempts();
+      // Off the hook path the log lock keeps the appends' bounded wait (Plan 0002 3.1, Plan 0003 6.3): unlike the
+      // worker's follow-up lane (3.5), no handover needs to stop a command's dsh append. One deadline from the call's
+      // start bounds all of its dsh appends together, so a command with several owed entries waits `logLockWaitMs`
+      // once; an append the deadline ends stays owed for the worker this command starts when it leaves (3.6). A
+      // caller's signal replaces the deadline.
+      const logLock = signal ?? AbortSignal.timeout(context.logLockWaitMs);
       for (;;) {
         const [state, config] = await Promise.all([loadState(statePath), loadConfig()]);
         const item = attempts.next(state, knownSources(config), kinds);
@@ -111,13 +117,7 @@ function createTakeover(context: TakeoverContext, disabled: boolean): Takeover {
           config,
           clock: context.clock,
           effects: context.effects,
-          // Off the hook path the log lock keeps the appends' bounded wait (Plan 0002 3.1, Plan 0003 6.3): unlike the
-          // worker's follow-up lane (3.5), no handover needs to stop a command's dsh append, so it waits at most
-          // `logLockWaitMs` and stays owed for the worker this command starts when it leaves (3.6). A caller's signal
-          // replaces the bound.
-          signal:
-            signal ??
-            (item.kind === 'dshUsage' ? AbortSignal.timeout(context.logLockWaitMs) : new AbortController().signal)
+          signal: item.kind === 'dshUsage' ? logLock : new AbortController().signal
         });
         attempts.setAside(item);
         if (outcome === 'done' && item.kind === 'usageRefresh') {
