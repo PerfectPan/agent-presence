@@ -144,6 +144,7 @@ describe('acquireLock', () => {
       await holder.release();
       // Resolving takes only the in-memory turn: no timer fires between the release and the waiter's lock.
       const lock = await waiting;
+      await expect(isProcessLockHeld(kitPlatform(), lockPath)).resolves.toBe(true);
       await lock.release();
     } finally {
       vi.useRealTimers();

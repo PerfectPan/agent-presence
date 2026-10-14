@@ -1,11 +1,11 @@
-import { afterEach, describe, expect, it, vi } from 'vite-plus/test';
+import { afterEach, describe, expect, it, vi, type Mock } from 'vite-plus/test';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import type { AppConfig } from '../src/config.js';
 import { base62Encode, LGaryYangSlotBackend } from '../src/providers/l-garyyang.js';
 import { createProvider } from '../src/providers/registry.js';
-import type { PresenceProvider } from '../src/providers/types.js';
+import { assertSupportsPublish, type PublishCapableProvider } from '../src/providers/types.js';
 
 describe('l.garyyang signature URL', () => {
   it('encodes the slot helper in t2 instead of exposing slotId as an ignored query param', () => {
@@ -206,9 +206,9 @@ describe('publish timeout', () => {
   }
 
   /** A fetch that never answers unless its signal aborts; it then rejects with that signal's reason. */
-  function hangingFetch(): ReturnType<typeof vi.fn> {
-    return vi.fn(
-      (_url: unknown, init: { signal?: AbortSignal }) =>
+  function hangingFetch(): Mock<(url: unknown, init: { signal?: AbortSignal }) => Promise<never>> {
+    return vi.fn<(url: unknown, init: { signal?: AbortSignal }) => Promise<never>>(
+      (_url, init) =>
         new Promise<never>((_, reject) => {
           init.signal?.addEventListener('abort', () => reject(init.signal?.reason), { once: true });
         })
@@ -228,8 +228,10 @@ describe('publish timeout', () => {
     });
   }
 
-  function publishingProvider(): PresenceProvider {
-    return createProvider('feishu-signature', { config, credential });
+  function publishingProvider(): PublishCapableProvider {
+    const provider = createProvider('feishu-signature', { config, credential });
+    assertSupportsPublish(provider);
+    return provider;
   }
 
   /**
@@ -251,8 +253,8 @@ describe('publish timeout', () => {
 
     const ended = outcome(publishingProvider().publishValue('2 agents'));
     await vi.advanceTimersByTimeAsync(29_999);
-    const sent = fetchMock.mock.calls[0]?.[1] as { signal: AbortSignal };
-    expect(sent.signal.aborted).toBe(false);
+    const sent = fetchMock.mock.calls[0]?.[1];
+    expect(sent?.signal?.aborted).toBe(false);
 
     await vi.advanceTimersByTimeAsync(1);
 

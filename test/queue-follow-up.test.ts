@@ -45,6 +45,10 @@ let home: QueueHome;
 let now = T0;
 const clock = { now: () => now };
 
+/** Real milliseconds, for waits that must let file I/O and child processes finish while fake timers are installed. */
+const realSetTimeout = globalThis.setTimeout.bind(globalThis);
+const realSleep = (ms: number): Promise<void> => new Promise((resolve) => realSetTimeout(resolve, ms));
+
 beforeEach(async () => {
   home = await createQueueHome();
   now = T0 + 10 * 60_000;
@@ -330,8 +334,8 @@ describe('owed rendered sync', () => {
       setTimeout(() => controller.abort(new Error(`publish timed out after ${ms}ms`)), ms);
       return controller.signal;
     });
-    const fetchMock = vi.fn(
-      (_url: unknown, init: { signal?: AbortSignal }) =>
+    const fetchMock = vi.fn<(url: unknown, init: { signal?: AbortSignal }) => Promise<never>>(
+      (_url, init) =>
         new Promise<never>((_, reject) => {
           init.signal?.addEventListener('abort', () => reject(init.signal?.reason), { once: true });
         })
@@ -339,7 +343,8 @@ describe('owed rendered sync', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     try {
-      // The real publish chain: credential, provider, fetch.
+      // The real publish chain: credential, provider, fetch. It reaches the fetch through real file I/O and the kit's
+      // identity read, which a busy machine can delay, so the wait is in real time and bounded, never on the clock.
       const syncing = workOffOwedItem(await nextItem('renderedSync'), {
         statePath: home.statePath,
         config: await loadConfig(),
@@ -350,8 +355,8 @@ describe('owed rendered sync', () => {
         (ended) => ended,
         (error: unknown) => error
       );
-      for (let turn = 0; turn < 1_000 && fetchMock.mock.calls.length === 0; turn += 1) {
-        await new Promise((resolveTurn) => setImmediate(resolveTurn));
+      for (let waited = 0; waited < 30_000 && fetchMock.mock.calls.length === 0; waited += 100) {
+        await realSleep(100);
       }
       expect(fetchMock.mock.calls).toHaveLength(1);
 
