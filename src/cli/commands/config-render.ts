@@ -1,4 +1,5 @@
-import { getConfigPath, loadConfig, renderTemplates, saveConfig } from '../../config.js';
+import { getConfigPath, renderTemplates, saveConfig } from '../../config.js';
+import { loadValidatedConfig } from '../../config-schema.js';
 import { hasAnyOption, hasFlag, optionValue } from '../args.js';
 import { isInteractiveTerminal, promptText } from '../ui.js';
 
@@ -26,10 +27,12 @@ function setOptionalTemplate(target: Record<string, string>, key: string, value:
 }
 
 export async function configureRender(args: string[]): Promise<void> {
-  const config = await loadConfig();
+  // The change applies to the file's content as read, so entries this command does not touch — unknown keys and
+  // values the schema drops — stay in the file (issue #106).
+  const { config, raw } = await loadValidatedConfig();
   const reset = hasFlag(args, '--reset');
-  const nextConfig = { ...config };
-  const nextRender = reset ? {} : { ...config.render };
+  const nextConfig = { ...raw };
+  const nextRender = reset ? {} : { ...raw.render };
 
   if (!reset && isInteractiveTerminal() && !hasAnyOption(args, RENDER_OPTIONS)) {
     const current = renderTemplates(config);

@@ -1,6 +1,6 @@
 import { setTimeout as sleep } from 'node:timers/promises';
 import type { ProcessLockPlatform } from '@rivus/agent-kit-collab/process-lock';
-import { loadConfig } from '../config.js';
+import { loadValidatedConfig } from '../config-schema.js';
 import { errorMessage } from '../cli/errors.js';
 import { kitPlatform } from '../kit-platform.js';
 import { LOG_LOCK_WAIT_MS } from '../log-retention.js';
@@ -93,7 +93,13 @@ function createTakeover(context: TakeoverContext, disabled: boolean): Takeover {
       if (disabled) {
         return { listed: 0, applied: 0, appliedEvents: false, newer: false };
       }
-      return applyQueueBatch(statePath, { version: context.version, config: await loadConfig(), clock: context.clock });
+      // The command process reports the config issues once (the run's first load printed them); this load only needs
+      // the same validated view.
+      return applyQueueBatch(statePath, {
+        version: context.version,
+        config: (await loadValidatedConfig()).config,
+        clock: context.clock
+      });
     },
     async workOffOwed(kinds = ALL_OWED_KINDS, signal?: AbortSignal) {
       if (disabled) {
@@ -107,7 +113,7 @@ function createTakeover(context: TakeoverContext, disabled: boolean): Takeover {
       // caller's signal replaces the deadline.
       const logLock = signal ?? AbortSignal.timeout(context.logLockWaitMs);
       for (;;) {
-        const [state, config] = await Promise.all([loadState(statePath), loadConfig()]);
+        const [state, { config }] = await Promise.all([loadState(statePath), loadValidatedConfig()]);
         const item = attempts.next(state, knownSources(config), kinds);
         if (!item) {
           return;

@@ -1,12 +1,5 @@
-import {
-  configSlotId,
-  debounceMs,
-  getStatePath,
-  loadConfig,
-  providerId,
-  renderTemplates,
-  ttlMs
-} from '../../config.js';
+import { configSlotId, debounceMs, getStatePath, providerId, renderTemplates, ttlMs } from '../../config.js';
+import { loadValidatedConfig } from '../../config-schema.js';
 import { settleRenderedSync } from '../../queue/owed.js';
 import { takeOver, type TakeoverOptions } from '../../queue/takeover.js';
 import { createProvider } from '../../providers/registry.js';
@@ -19,7 +12,7 @@ import { disabledSlotResult, syncExplicitSlotValueWithStateLock } from '../slot-
 import { refreshSignatureUsageBadges, usageRenderPlan } from '../usage-badge.js';
 
 export async function update(args: string[], takeover: TakeoverOptions = {}): Promise<void> {
-  const config = await loadConfig();
+  const { config } = await loadValidatedConfig();
   const activeProvider = providerId(config, optionValue(args, '--provider'));
   const credential = await readCredential(configSlotId(config));
   const provider = createProvider(activeProvider, { config, credential });

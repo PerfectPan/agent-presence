@@ -1,5 +1,6 @@
 import { rm } from 'node:fs/promises';
-import { getConfigPath, getStatePath, loadConfig, saveConfig } from '../../config.js';
+import { getConfigPath, getStatePath, saveConfig } from '../../config.js';
+import { loadValidatedConfig } from '../../config-schema.js';
 import { queuePaths, writeTombstone } from '../../queue/files.js';
 import { deleteStopRequests } from '../../queue/stop-request.js';
 import { takeOver, type TakeoverOptions } from '../../queue/takeover.js';
@@ -26,10 +27,11 @@ export async function uninstall(args: string[] = [], takeover: TakeoverOptions =
 
   if (clearCredentials) {
     await deleteCredential();
-    const config = await loadConfig();
-    delete config.slot_id;
-    delete config.slotId;
-    await saveConfig(config, getConfigPath());
+    // The deletion applies to the file's content as read, so entries this command does not touch stay in the file.
+    const { raw } = await loadValidatedConfig();
+    delete raw.slot_id;
+    delete raw.slotId;
+    await saveConfig(raw, getConfigPath());
     showInfo('credentials cleared');
   }
 

@@ -1,4 +1,5 @@
-import { configSlotId, getStatePath, loadConfig, providerId, renderTemplates, ttlMs } from '../../config.js';
+import { configSlotId, getStatePath, providerId, renderTemplates, ttlMs } from '../../config.js';
+import { loadValidatedConfig } from '../../config-schema.js';
 import { takeOver, type TakeoverOptions } from '../../queue/takeover.js';
 import { createProvider } from '../../providers/registry.js';
 import { renderPresence, resolveUsageForRender } from '../../render.js';
@@ -16,7 +17,7 @@ function requirePayload(payload: Record<string, unknown> | undefined): Record<st
 }
 
 export async function printStatus(args: string[], takeover: TakeoverOptions = {}): Promise<void> {
-  const config = await loadConfig();
+  const { config } = await loadValidatedConfig();
   const activeProvider = providerId(config, optionValue(args, '--provider'));
   const statePath = getStatePath();
   const credential = await readCredential(configSlotId(config));

@@ -479,12 +479,17 @@ describe('the follow-up lane', () => {
 describe('a worker whose iterations fail', () => {
   it('leaves with failing after one idle interval of iterations that throw past the batch, releasing the lock', async () => {
     await recordAt(home.statePath, T0, eventBody('SessionStart', 's1'));
-    // A source entry of null makes every iteration throw after the batch, when the source table is resolved.
-    writeFileSync(join(home.dir, 'config.json'), '{"plugins":{"sources":{"x":null}}}');
     const pool = workers({ idleMs: 1_000 });
+    const run = pool.start();
+    await until(async () => sessionIds(await readState(home.statePath)).includes('s1'), 'the record applied');
+    // A state file that cannot be parsed makes every iteration throw in the batch's state load — a broken config
+    // entry no longer can, because the worker's loader drops it (issue #106).
+    const applied = readFileSync(home.statePath, 'utf8');
+    writeFileSync(home.statePath, '{"sessions": ');
 
-    expect(await pool.start()).toBe('failing');
+    expect(await run).toBe('failing');
 
+    writeFileSync(home.statePath, applied);
     expect(vt.monotonic.now()).toBeGreaterThanOrEqual(1_000);
     expect(await lockHeld()).toBe(false);
     expect(await readWorkerVersion(home.statePath)).toBe(0);
@@ -493,7 +498,7 @@ describe('a worker whose iterations fail', () => {
   }, 15_000);
 
   it('does not leave with failing when the failures stop within the interval', async () => {
-    writeFileSync(join(home.dir, 'config.json'), '{"plugins":{"sources":{"x":null}}}');
+    writeFileSync(home.statePath, '{"sessions": ');
     const pool = workers({ idleMs: 1_000 });
     const run = pool.start();
     await until(() => {
@@ -504,7 +509,7 @@ describe('a worker whose iterations fail', () => {
       }
     }, 'a failed iteration logged');
 
-    writeFileSync(join(home.dir, 'config.json'), JSON.stringify({ provider: 'feishu-signature' }));
+    await writeState(home.statePath, {});
 
     expect(await run).toBe('idle');
   }, 15_000);

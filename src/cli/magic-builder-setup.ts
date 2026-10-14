@@ -1,7 +1,6 @@
 import {
   configSlotId,
   getConfigPath,
-  loadConfig,
   magicBuilderBaseUrl,
   magicBuilderConfig,
   magicBuilderFaasId,
@@ -11,6 +10,7 @@ import {
   saveConfig,
   setMagicBuilderConfig
 } from '../config.js';
+import { loadValidatedConfig } from '../config-schema.js';
 import { readMagicToken, writeMagicToken, type MagicTokenSource } from '../magic-token.js';
 import {
   DEFAULT_MAGIC_BUILDER_FAAS_NAME,
@@ -58,7 +58,9 @@ export interface PublishMagicBuilderFaasResult extends MagicBuilderPublishResult
 export async function publishMagicBuilderFaas(
   options: PublishMagicBuilderFaasOptions = {}
 ): Promise<PublishMagicBuilderFaasResult> {
-  const config = await loadConfig();
+  // The persisted record id is written over the file's content as read, so entries this function does not change
+  // stay in the file (issue #106).
+  const { config, raw } = await loadValidatedConfig();
   let tokenInfo = await readMagicToken();
   if ((!tokenInfo.token || !tokenInfo.source) && options.acquireToken) {
     const entered = (await options.acquireToken())?.trim();
@@ -98,8 +100,8 @@ export async function publishMagicBuilderFaas(
 
   const persist = options.persist ?? true;
   if (persist) {
-    const existingProviderConfig = magicBuilderConfig(config);
-    const updated = setMagicBuilderConfig(config, {
+    const existingProviderConfig = magicBuilderConfig(raw);
+    const updated = setMagicBuilderConfig(raw, {
       faasId: result.id,
       faasName: name,
       baseUrl: existingProviderConfig.baseUrl ?? (baseUrl === 'https://magic.solutionsuite.cn' ? undefined : baseUrl)

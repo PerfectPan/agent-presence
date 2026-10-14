@@ -1,5 +1,6 @@
 import { isAbsolute } from 'node:path';
-import { loadConfig, removePluginSource, saveConfig, setPluginSource } from '../../config.js';
+import { removePluginSource, saveConfig, setPluginSource } from '../../config.js';
+import { loadValidatedConfig } from '../../config-schema.js';
 import { installPluginPackage, packageNameFromSpec, uninstallPluginPackage } from '../../plugin-install.js';
 import { describeSources, loadSourcePluginForValidation } from '../../sources.js';
 import { hasFlag, optionValue } from '../args.js';
@@ -69,15 +70,16 @@ async function addSource(args: string[]): Promise<void> {
     return;
   }
 
-  const config = await loadConfig();
-  await saveConfig(setPluginSource(config, id, { handler: installed.packageName }));
+  // The write starts from the file's content as read, so entries this command does not change stay in the file.
+  const { raw } = await loadValidatedConfig();
+  await saveConfig(setPluginSource(raw, id, { handler: installed.packageName }));
 
   showSuccess(`added source "${id}" -> ${installed.packageName}@${installed.version}`);
   showInfo('It will be counted on the next hook. Run `agent-presence source list` to confirm.');
 }
 
 async function listSources(): Promise<void> {
-  const config = await loadConfig();
+  const { config } = await loadValidatedConfig();
   console.log(JSON.stringify(describeSources(config), null, 2));
 }
 
@@ -90,7 +92,9 @@ async function removeSource(args: string[]): Promise<void> {
   }
   const keepPackage = hasFlag(args, '--keep-package');
 
-  const config = await loadConfig();
+  // Existence is judged on the validated view — a broken entry is not a configured source — while the removal
+  // applies to the file's content as read, so other entries and unknown keys stay (issue #106).
+  const { config, raw } = await loadValidatedConfig();
   const entry = config.plugins?.sources?.[id];
   if (!entry) {
     showWarning(
@@ -100,7 +104,7 @@ async function removeSource(args: string[]): Promise<void> {
     return;
   }
 
-  await saveConfig(removePluginSource(config, id));
+  await saveConfig(removePluginSource(raw, id));
 
   // If the entry pointed at an installed package (a bare specifier, not an
   // absolute path or builtin:), uninstall it too unless asked to keep it.
