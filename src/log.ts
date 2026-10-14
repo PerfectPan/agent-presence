@@ -20,10 +20,18 @@ export interface LogWriter {
   event(event: Record<string, unknown>): Promise<void>;
 }
 
-async function appendLogLine(line: string): Promise<void> {
+/** Append lines to the diagnostic log under one log lock, so a batch of lines costs one lock. */
+export async function appendLogLines(lines: readonly string[]): Promise<void> {
+  if (lines.length === 0) {
+    return;
+  }
   const path = getLogPath();
   await mkdir(dirname(path), { recursive: true, mode: 0o700 });
-  await appendRetainedLogLine(path, `${line}\n`);
+  await appendRetainedLogLine(path, lines.map((line) => `${line}\n`).join(''));
+}
+
+function appendLogLine(line: string): Promise<void> {
+  return appendLogLines([line]);
 }
 
 function baseLogContext(): Record<string, unknown> {
@@ -69,10 +77,18 @@ export function formatLogEvent(event: Record<string, unknown>): string {
     .join(' ');
 }
 
+/** The line `writeLog` appends. */
+export function errorLogLine(message: string): string {
+  return formatLogEvent({ time: formatLogTime(), level: 'error', app: 'agent-presence', pid: process.pid, message });
+}
+
+/** The line `writeLogEvent` appends. */
+export function infoLogLine(event: Record<string, unknown>): string {
+  return formatLogEvent({ time: formatLogTime(), level: 'info', ...baseLogContext(), ...event });
+}
+
 export async function writeLog(message: string): Promise<void> {
-  await appendLogLine(
-    formatLogEvent({ time: formatLogTime(), level: 'error', app: 'agent-presence', pid: process.pid, message })
-  );
+  await appendLogLine(errorLogLine(message));
 }
 
 async function appendLogEvent(event: Record<string, unknown>): Promise<void> {

@@ -24,6 +24,25 @@ export function describePayloadKeys(payload: unknown): string[] {
   return [...keys].sort();
 }
 
+/** The diagnostic log event for one hook event: its payload's key names and a redacted session id, never values. */
+export function hookEventLogEvent(options: {
+  source: string;
+  event: string;
+  payloadKeys: string[];
+  sessionId?: string;
+  project?: string;
+}): Record<string, unknown> {
+  return {
+    type: 'hook.event',
+    source: options.source,
+    event: options.event,
+    hasSessionId: Boolean(options.sessionId),
+    sessionId: redactSessionId(options.sessionId),
+    project: options.project,
+    payloadKeys: options.payloadKeys
+  };
+}
+
 export async function writeHookDiagnostic(options: {
   source: string;
   event: string;
@@ -31,13 +50,6 @@ export async function writeHookDiagnostic(options: {
   sessionId?: string;
   project?: string;
 }): Promise<void> {
-  await writeLogEvent({
-    type: 'hook.event',
-    source: options.source,
-    event: options.event,
-    hasSessionId: Boolean(options.sessionId),
-    sessionId: redactSessionId(options.sessionId),
-    project: options.project,
-    payloadKeys: describePayloadKeys(options.payload)
-  });
+  const { payload, ...line } = options;
+  await writeLogEvent(hookEventLogEvent({ ...line, payloadKeys: describePayloadKeys(payload) }));
 }
