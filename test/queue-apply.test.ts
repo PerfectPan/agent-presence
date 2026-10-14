@@ -129,6 +129,36 @@ describe('applyQueueBatch', () => {
     expect((await readState(home.statePath)).queueApplied).toEqual([second]);
   });
 
+  it('keeps the id of an applied record whose file survived a batch that stops at a newer one, so no applier applies it again', async () => {
+    // The applier died after saving X's id and before deleting X's file.
+    const applied = await recordAt(home.statePath, T0 + 1_000, eventBody('SessionStart', 'sx'));
+    const killed = batch({
+      onStep: async (step) => {
+        if (step === 'saved') {
+          throw new Error('killed after the save');
+        }
+      }
+    });
+    await expect(killed).rejects.toThrow('killed after the save');
+    expect(await recordNames()).toEqual([`${applied}.json`]);
+
+    // Recorded later but listing earlier, as after the system clock stepped backwards; the newer release's record
+    // stops the batch before it reaches the applied one, so its file is not pre-deleted.
+    const pending = await recordAt(home.statePath, T0 + 500, eventBody('SessionStart', 'sp'));
+    const newer = await recordAt(home.statePath, T0 + 750, eventBody('SessionStart', 'sn'), { version: 2 });
+
+    expect(await batch()).toEqual({ listed: 3, applied: 1, appliedEvents: true, newer: true });
+    expect((await readState(home.statePath)).queueApplied).toEqual([applied, pending]);
+
+    expect(await batch({ version: 2 })).toEqual({ listed: 2, applied: 1, appliedEvents: true, newer: false });
+
+    const state = await readState(home.statePath);
+    expect(Object.keys(state.sessions).sort()).toEqual(['sn', 'sp', 'sx']);
+    expect(state.sessions.sx).toMatchObject({ status: 'running', startedAt: T0 + 1_000 });
+    expect(state.queueApplied).toEqual([newer]);
+    expect(await recordNames()).toEqual([]);
+  });
+
   it('stops at a record with a higher version: it applies the records before it and leaves it and the rest in place', async () => {
     const older = await recordAt(home.statePath, T0 + 1_000, eventBody('SessionStart', 'old'));
     const newer = await recordAt(home.statePath, T0 + 2_000, eventBody('SessionStart', 'new'), { version: 2 });
