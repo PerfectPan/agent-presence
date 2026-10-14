@@ -85,6 +85,21 @@ function parseJson(text: string): unknown {
   }
 }
 
+/** How a failed `fetch` ended: a timeout's abort, the caller's abort, or the network. */
+function fetchEndResult(
+  error: unknown,
+  signal: AbortSignal | null | undefined
+): 'timeout' | 'aborted' | 'network-error' {
+  const name = error instanceof Error ? error.name : '';
+  if (name === 'TimeoutError') {
+    return 'timeout';
+  }
+  if (name === 'AbortError' || signal?.aborted) {
+    return 'aborted';
+  }
+  return 'network-error';
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
@@ -281,7 +296,7 @@ export class LGaryYangSlotBackend implements SlotBackend {
     try {
       response = await fetch(url, init);
     } catch (error) {
-      logRequest({ result: 'network-error' });
+      logRequest({ result: fetchEndResult(error, init.signal) });
       throw error;
     }
 

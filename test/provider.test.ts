@@ -160,6 +160,48 @@ describe('l.garyyang request logging', () => {
     expect(line).toContain('result=rate-limited');
   });
 
+  it('logs an aborted request as aborted, not as a network error', async () => {
+    const logPath = await useTempLogFile();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw new DOMException('This operation was aborted', 'AbortError');
+      })
+    );
+    const provider = new LGaryYangSlotBackend('https://l.garyyang.work', {
+      token: 'secret_token',
+      slotId: 'slot_aborted'
+    });
+
+    await expect(provider.updateSlot('value')).rejects.toThrow('This operation was aborted');
+
+    const line = await waitForLogLine(logPath);
+    expect(line).toContain('type=provider.request');
+    expect(line).toContain('result=aborted');
+    expect(line).not.toContain('network-error');
+  });
+
+  it('logs a request aborted by its timeout as timeout', async () => {
+    const logPath = await useTempLogFile();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw new DOMException('The operation was aborted due to timeout', 'TimeoutError');
+      })
+    );
+    const provider = new LGaryYangSlotBackend('https://l.garyyang.work', {
+      token: 'secret_token',
+      slotId: 'slot_timed_out'
+    });
+
+    await expect(provider.updateSlot('value')).rejects.toThrow('The operation was aborted due to timeout');
+
+    const line = await waitForLogLine(logPath);
+    expect(line).toContain('type=provider.request');
+    expect(line).toContain('result=timeout');
+    expect(line).not.toContain('network-error');
+  });
+
   it('does not log successful login polling by default', async () => {
     const logPath = await useTempLogFile();
     vi.stubGlobal(
