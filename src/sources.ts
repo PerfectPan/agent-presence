@@ -17,6 +17,31 @@ import { writeLog } from './log.js';
 
 export type { SourcePlugin, SourceContext } from './cli/hook-context.js';
 
+/** A diagnostic a resolver emits: the log line, with the code and source the producer's error record carries. */
+export interface SourceDiagnostic {
+  /** The error-record code, kebab-case. */
+  code: string;
+  /** The source the diagnostic names; every line this module emits names one. */
+  source: string;
+  /** The line, without payload values, that the callers outside the hook write. */
+  message: string;
+}
+
+/**
+ * The diagnostics source resolution would write. The producer passes a list and records each as an `error` record
+ * instead (Plan 0003 3.11); every other caller leaves it `undefined` and resolution writes the lines as before.
+ */
+export type SourceDiagnostics = SourceDiagnostic[];
+
+/** Emit a resolution diagnostic: collected for the producer, or written to the log, as always, for the rest. */
+async function diagnose(diagnostic: SourceDiagnostic, diagnostics: SourceDiagnostics | undefined): Promise<void> {
+  if (diagnostics) {
+    diagnostics.push(diagnostic);
+    return;
+  }
+  await writeLog(diagnostic.message);
+}
+
 /** A `handler` of the form `builtin:<id>` reuses a shipped in-code resolver. */
 const BUILTIN_HANDLER_PREFIX = 'builtin:';
 
@@ -176,7 +201,11 @@ function errorName(error: unknown): string {
  * bare specifiers are resolved against the plugins dir's `node_modules` (where
  * `source add` installs packages).
  */
-async function resolveHandlerSpecifier(source: string, handler: string): Promise<string | undefined> {
+async function resolveHandlerSpecifier(
+  source: string,
+  handler: string,
+  diagnostics: SourceDiagnostics | undefined
+): Promise<string | undefined> {
   if (!isAbsolute(handler)) {
     // Bare npm specifier: resolve strictly from the plugins dir's node_modules
     // (where `source add` installs), not the user's cwd and not ancestor
@@ -185,7 +214,14 @@ async function resolveHandlerSpecifier(source: string, handler: string): Promise
       const require = createRequire(join(getPluginsDir(), 'noop.js'));
       return pathToFileURL(require.resolve(handler, { paths: [join(getPluginsDir(), 'node_modules')] })).href;
     } catch (error) {
-      await writeLog(`source refused source=${source} reason=specifier-unresolved error=${errorName(error)}`);
+      await diagnose(
+        {
+          code: 'source-refused',
+          source,
+          message: `source refused source=${source} reason=specifier-unresolved error=${errorName(error)}`
+        },
+        diagnostics
+      );
       return undefined;
     }
   }
@@ -193,15 +229,24 @@ async function resolveHandlerSpecifier(source: string, handler: string): Promise
   try {
     const info = lstatSync(handler);
     if (info.isSymbolicLink()) {
-      await writeLog(`source refused source=${source} reason=symlink-handler`);
+      await diagnose(
+        { code: 'source-refused', source, message: `source refused source=${source} reason=symlink-handler` },
+        diagnostics
+      );
       return undefined;
     }
     if (typeof process.getuid === 'function' && info.uid !== process.getuid()) {
-      await writeLog(`source refused source=${source} reason=handler-not-owned`);
+      await diagnose(
+        { code: 'source-refused', source, message: `source refused source=${source} reason=handler-not-owned` },
+        diagnostics
+      );
       return undefined;
     }
     if ((info.mode & 0o022) !== 0) {
-      await writeLog(`source refused source=${source} reason=handler-world-writable`);
+      await diagnose(
+        { code: 'source-refused', source, message: `source refused source=${source} reason=handler-world-writable` },
+        diagnostics
+      );
       return undefined;
     }
     // A writable parent dir lets another user swap the (otherwise fine) file, so
@@ -210,31 +255,55 @@ async function resolveHandlerSpecifier(source: string, handler: string): Promise
     // TOCTOU gap (see docs/architecture.md), but removes the easy directory-swap vector.
     const parent = lstatSync(dirname(handler));
     if (typeof process.getuid === 'function' && parent.uid !== process.getuid()) {
-      await writeLog(`source refused source=${source} reason=handler-dir-not-owned`);
+      await diagnose(
+        { code: 'source-refused', source, message: `source refused source=${source} reason=handler-dir-not-owned` },
+        diagnostics
+      );
       return undefined;
     }
     if ((parent.mode & 0o022) !== 0) {
-      await writeLog(`source refused source=${source} reason=handler-dir-world-writable`);
+      await diagnose(
+        {
+          code: 'source-refused',
+          source,
+          message: `source refused source=${source} reason=handler-dir-world-writable`
+        },
+        diagnostics
+      );
       return undefined;
     }
   } catch (error) {
-    await writeLog(`source refused source=${source} reason=handler-stat-failed error=${errorName(error)}`);
+    await diagnose(
+      {
+        code: 'source-refused',
+        source,
+        message: `source refused source=${source} reason=handler-stat-failed error=${errorName(error)}`
+      },
+      diagnostics
+    );
     return undefined;
   }
 
   return pathToFileURL(handler).href;
 }
 
-async function loadHandlerSource(source: string, handler: string): Promise<SourcePlugin | undefined> {
+async function loadHandlerSource(
+  source: string,
+  handler: string,
+  diagnostics: SourceDiagnostics | undefined
+): Promise<SourcePlugin | undefined> {
   // A handler runs in-process with full CLI trust, which includes reading the
   // slot credential. Guard the two things an attacker who cannot touch the
   // Keychain might still control: the config file and the handler file.
   if (!isConfigFileTrusted()) {
-    await writeLog(`source refused source=${source} reason=untrusted-config`);
+    await diagnose(
+      { code: 'source-refused', source, message: `source refused source=${source} reason=untrusted-config` },
+      diagnostics
+    );
     return undefined;
   }
 
-  const specifier = await resolveHandlerSpecifier(source, handler);
+  const specifier = await resolveHandlerSpecifier(source, handler, diagnostics);
   if (!specifier) {
     return undefined;
   }
@@ -243,41 +312,61 @@ async function loadHandlerSource(source: string, handler: string): Promise<Sourc
     const module = (await import(specifier)) as { default?: unknown };
     const plugin = module.default;
     if (!isSourcePlugin(plugin)) {
-      await writeLog(`source invalid source=${source} reason=bad-default-export`);
+      await diagnose(
+        { code: 'source-invalid', source, message: `source invalid source=${source} reason=bad-default-export` },
+        diagnostics
+      );
       return undefined;
     }
     if (plugin.id !== source) {
-      await writeLog(`source id mismatch source=${source} handlerId=${plugin.id}`);
+      await diagnose(
+        { code: 'source-id-mismatch', source, message: `source id mismatch source=${source} handlerId=${plugin.id}` },
+        diagnostics
+      );
       return undefined;
     }
-    await writeLog(`source loaded source=${source} handler=${handler}`);
+    await diagnose(
+      { code: 'source-loaded', source, message: `source loaded source=${source} handler=${handler}` },
+      diagnostics
+    );
     return plugin;
   } catch (error) {
-    await writeLog(`source load failed source=${source} error=${errorName(error)}`);
+    await diagnose(
+      { code: 'source-load-failed', source, message: `source load failed source=${source} error=${errorName(error)}` },
+      diagnostics
+    );
     return undefined;
   }
 }
 
 async function loadConfiguredSourceUncached(
   source: string,
-  entry: SourcePluginConfig
+  entry: SourcePluginConfig,
+  diagnostics: SourceDiagnostics | undefined
 ): Promise<SourcePlugin | undefined> {
   if (entry.handler) {
-    return loadHandlerSource(source, entry.handler);
+    return loadHandlerSource(source, entry.handler, diagnostics);
   }
   if (entry.match) {
     return buildMatchSource(source, entry.match);
   }
 
-  await writeLog(`source skipped source=${source} reason=no-handler-or-match`);
+  await diagnose(
+    { code: 'source-skipped', source, message: `source skipped source=${source} reason=no-handler-or-match` },
+    diagnostics
+  );
   return undefined;
 }
 
-async function loadConfiguredSource(source: string, entry: SourcePluginConfig): Promise<SourcePlugin | undefined> {
+async function loadConfiguredSource(
+  source: string,
+  entry: SourcePluginConfig,
+  diagnostics: SourceDiagnostics | undefined
+): Promise<SourcePlugin | undefined> {
   if (pluginCache.has(source)) {
     return pluginCache.get(source);
   }
-  const plugin = await loadConfiguredSourceUncached(source, entry);
+  const plugin = await loadConfiguredSourceUncached(source, entry, diagnostics);
   pluginCache.set(source, plugin);
   return plugin;
 }
@@ -297,15 +386,23 @@ async function loadConfiguredSource(source: string, entry: SourcePluginConfig): 
 export async function resolveSourcePlugin(
   source: string,
   entry: SourcePluginConfig,
-  options: { includeHandlers?: boolean } = {}
+  options: { includeHandlers?: boolean; diagnostics?: SourceDiagnostics } = {}
 ): Promise<ResolvedSource | undefined> {
   const includeHandlers = options.includeHandlers ?? true;
+  const diagnostics = options.diagnostics;
 
   const builtinId = builtinHandlerId(entry.handler);
   if (builtinId) {
     const plugin = BUILTIN_SOURCE_PLUGINS[builtinId];
     if (!plugin) {
-      await writeLog(`source invalid source=${source} reason=unknown-builtin builtin=${builtinId}`);
+      await diagnose(
+        {
+          code: 'source-invalid',
+          source,
+          message: `source invalid source=${source} reason=unknown-builtin builtin=${builtinId}`
+        },
+        diagnostics
+      );
       return undefined;
     }
     return { plugin, trusted: true };
@@ -315,7 +412,7 @@ export async function resolveSourcePlugin(
     return undefined; // Don't load third-party code on the hook/badge path.
   }
 
-  const plugin = await loadConfiguredSource(source, entry);
+  const plugin = await loadConfiguredSource(source, entry, diagnostics);
   return plugin ? { plugin, trusted: false } : undefined;
 }
 
@@ -332,14 +429,15 @@ export async function resolveSourcePlugin(
 export async function resolveHookContextForSource(
   source: string,
   payload: unknown,
-  config: AppConfig
+  config: AppConfig,
+  options: { diagnostics?: SourceDiagnostics } = {}
 ): Promise<SourceContext> {
   const entry = mergedSources(config)[source];
   if (!entry) {
     return {};
   }
 
-  const resolved = await resolveSourcePlugin(source, entry);
+  const resolved = await resolveSourcePlugin(source, entry, options);
   if (!resolved) {
     return {};
   }
@@ -350,7 +448,14 @@ export async function resolveHookContextForSource(
   try {
     return resolved.plugin.resolveHookContext(payload, env) ?? {};
   } catch (error) {
-    await writeLog(`source resolve failed source=${source} error=${errorName(error)}`);
+    await diagnose(
+      {
+        code: 'source-resolve-failed',
+        source,
+        message: `source resolve failed source=${source} error=${errorName(error)}`
+      },
+      options.diagnostics
+    );
     return {};
   }
 }
@@ -362,7 +467,7 @@ export async function resolveHookContextForSource(
  * package silently at hook time.
  */
 export async function loadSourcePluginForValidation(packageName: string): Promise<SourceValidation> {
-  const specifier = await resolveHandlerSpecifier(packageName, packageName);
+  const specifier = await resolveHandlerSpecifier(packageName, packageName, undefined);
   if (!specifier) {
     return { ok: false, reason: 'package could not be resolved from the plugins dir' };
   }

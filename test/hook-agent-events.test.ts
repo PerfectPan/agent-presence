@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 import { hook } from '../src/cli/commands/hook.js';
 import { createEmptyState, type AgentSession, type PresenceState } from '../src/state.js';
 import { loadState, saveState } from '../src/state-store.js';
+import { captureHookWorkerStarts, drainQueue, restoreHookWorkerStarts } from './hook-producer-support.js';
 
 // `hook --agent <kitAgentId>` interpreted with readHookEvent. One case per
 // event of the signal rule in docs/architecture.md ("Hook Normalization"),
@@ -42,7 +43,24 @@ vi.mock('../src/cli/io.js', async () => {
 
 vi.mock('../src/cli/deferred-update.js', () => ({
   scheduleDeferredRenderedUpdate: async () => undefined,
-  scheduleDeferredRenderedUpdateForResult: async () => undefined
+  // The real scheduling settles the owed rendered sync in its locked save (Plan 0003 3.5); the mock makes the same
+  // state change without spawning the detached flush, so the worker's follow-up lane settles with it.
+  scheduleDeferredRenderedUpdateForResult: async (
+    result: { status: string; reason?: string },
+    options: { statePath: string; delayMs: number; now: number }
+  ) => {
+    if (result.status !== 'skipped' || (result.reason !== 'debounced' && result.reason !== 'rate-limited')) {
+      return;
+    }
+    const { settleRenderedSync } = await import('../src/queue/owed.js');
+    const { loadState, saveState, withStateLock } = await import('../src/state-store.js');
+    await withStateLock(options.statePath, async () => {
+      const state = await loadState(options.statePath);
+      state.pendingSlotFlushAt = options.now + options.delayMs;
+      settleRenderedSync(state);
+      await saveState(state, options.statePath);
+    });
+  }
 }));
 
 const NOW = new Date(2026, 9, 9, 15, 0).getTime();
@@ -139,6 +157,8 @@ async function runAgent(run: AgentRun): Promise<void> {
     args.push('--silent');
   }
   await hook(args);
+  // The worker applies what the hook recorded before the case reads the state or the log.
+  await drainQueue();
 }
 
 function runningSession(source: string, id: string, project = '/work/repo'): AgentSession {
@@ -294,6 +314,7 @@ beforeEach(async () => {
     JSON.stringify({ usage: { showInSignature: true, signatureWindowDays: 1 } })
   );
   vi.spyOn(Date, 'now').mockReturnValue(NOW);
+  captureHookWorkerStarts();
   stdoutWrites = [];
   vi.spyOn(process.stdout, 'write').mockImplementation((chunk: Uint8Array | string) => {
     stdoutWrites.push(String(chunk));
@@ -309,6 +330,7 @@ beforeEach(async () => {
         process.env[key] = value;
       }
     }
+    restoreHookWorkerStarts();
     vi.restoreAllMocks();
     await rm(homeDir, { recursive: true, force: true });
   };
@@ -500,7 +522,8 @@ describe('hook --agent codex', () => {
     await seedSessions(runningSession('codex', 'codex-thread-1'));
     await run('SessionStart', {}, true);
     expect(stdoutWrites).toEqual(['{}\n']);
-    expect(await readLog()).toContain('hook failed:');
+    // A failed publish is the worker's follow-up item failing, not a hook failure.
+    expect(await readLog()).toContain('type=worker.owed kind=renderedSync result=failed');
     expect((await readState()).usageBadgesAt).toBe(NOW);
 
     await seedSessions({ ...runningSession('codex', 'codex-thread-1'), ...finishedOverrides() });
@@ -517,7 +540,7 @@ describe('hook --agent codex', () => {
     await seedSessions(runningSession('codex', 'codex-thread-1'));
     await run('UserPromptSubmit');
     expect(stdoutWrites).toEqual([]);
-    expect(await readLog()).toContain('hook failed:');
+    expect(await readLog()).toContain('type=worker.owed kind=renderedSync result=failed');
   });
 });
 

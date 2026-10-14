@@ -1,44 +1,116 @@
-import { loadConfig } from '../../config.js';
-import { resolveHookContextForSource } from '../../sources.js';
+import { getStatePath, loadConfig } from '../../config.js';
+import { produceRecord, type RecordBody } from '../../queue/produce.js';
+import { isSessionBoundaryEvent } from '../../state.js';
+import { usageEventFromPayload } from '../../usage-events.js';
 import { hasFlag, optionValue } from '../args.js';
 import { errorMessage } from '../errors.js';
-import { writeHookOutput } from '../hook-output.js';
-import { writeHookDiagnostic } from '../hook-diagnostics.js';
-import { readStdinJson, writeLog } from '../io.js';
+import { describePayloadKeys } from '../hook-diagnostics.js';
 import { interpretAgentHook } from '../hook-interpret.js';
+import { recordHookFailure, startHookWorker, writeHookOutput } from '../hook-output.js';
+import { BUILTIN_SOURCE_PLUGINS } from '../hook-context.js';
+import { readStdinJson } from '../io.js';
+import { resolveHookContextForSource, type SourceDiagnostics } from '../../sources.js';
 
-async function applyHook(options: {
-  source: string;
-  event: string | undefined;
-  payload: unknown;
-  silent: boolean;
-}): Promise<boolean> {
-  const { source, payload, silent } = options;
+// The hook is the queue's producer (Plan 0003 3.3): it interprets the payload in process, writes one record, and
+// starts a worker when no process of this release or a newer one holds the worker lock. It takes no lock, writes no
+// log line (3.11) and no stop request, and prints its output and exits 0 in every case: a failed read, write or start
+// loses the event (3.10). The direct application path stays in `src/cli/hook-apply.ts` until Q2 deletes it; the
+// event-table test uses it as the oracle.
+
+/** The queue writes of one hook run: whether a worker is wanted, and whether the run already recorded its failure. */
+interface HookProduction {
+  /** Set inside the run's try: reading it can fail (no HOME, no passwd entry), and the run still prints its output. */
+  statePath: string;
+  startRequested: boolean;
+  failureRecorded: boolean;
+}
+
+/** The recorded `scanEnv` of a boundary event: the transcript-root variables this source's scanner reads, set ones only. */
+function scanEnvFor(source: string): Record<string, string> {
+  const scanEnv: Record<string, string> = {};
+  for (const name of BUILTIN_SOURCE_PLUGINS[source]?.scanEnv ?? []) {
+    const value = process.env[name];
+    if (value !== undefined) {
+      scanEnv[name] = value;
+    }
+  }
+  return scanEnv;
+}
+
+/** Write one record; a failed write records the failure once, best-effort, and loses the event (3.10). */
+async function record(production: HookProduction, body: RecordBody): Promise<void> {
+  try {
+    const outcome = await produceRecord(production.statePath, body);
+    if (outcome.status === 'recorded' && outcome.startWorker) {
+      production.startRequested = true;
+    }
+  } catch (error) {
+    if (!production.failureRecorded) {
+      production.failureRecorded = true;
+      if (await recordHookFailure(`hook failed: ${errorMessage(error)}`)) {
+        production.startRequested = true;
+      }
+    }
+  }
+}
+
+async function recordResolvedHook(
+  production: HookProduction,
+  options: { source: string; event: string | undefined; payload: unknown }
+): Promise<void> {
+  const { source, payload } = options;
   const config = await loadConfig();
-  const context = await resolveHookContextForSource(source, payload, config);
+  const diagnostics: SourceDiagnostics = [];
+  const context = await resolveHookContextForSource(source, payload, config, { diagnostics });
   const event = options.event ?? context.event ?? 'Heartbeat';
-  await writeHookDiagnostic({
-    source,
-    event,
-    payload,
-    sessionId: context.sessionId,
-    project: context.project
-  });
+
+  // The resolution lines become error records like the run's main record below (3.11); with the same recorded time,
+  // the applier's file-name order decides when they are applied.
+  for (const diagnostic of diagnostics) {
+    await record(production, {
+      kind: 'error',
+      code: diagnostic.code,
+      source: diagnostic.source,
+      message: diagnostic.message
+    });
+  }
 
   const sessionId = context.sessionId;
   if (!sessionId) {
-    await writeLog(`hook skipped: missing session id for source=${source} event=${event}`);
-    writeHookOutput(silent);
-    return true;
+    await record(production, {
+      kind: 'skip',
+      code: 'missing-session-id',
+      source,
+      nativeEvent: event,
+      ...(context.project !== undefined ? { project: context.project } : {}),
+      payloadKeys: describePayloadKeys(payload)
+    });
+    return;
   }
 
-  // Loaded at run time so the hook's static graph reaches no state store, schema, usage log or scanner.
-  const { applyHookEvent } = await import('../hook-apply.js');
-  await applyHookEvent({ config, source, event, sessionId, project: context.project, payload });
-  return false;
+  const body: Extract<RecordBody, { kind: 'event' }> = {
+    kind: 'event',
+    source,
+    event,
+    sessionId,
+    payloadKeys: describePayloadKeys(payload)
+  };
+  if (context.project !== undefined) {
+    body.project = context.project;
+  }
+  const usage = usageEventFromPayload(source, payload, Date.now());
+  if (usage) {
+    // A fresh literal fits the record's usage, which keeps the fields a later release writes; the named UsageEvent
+    // interface would not carry the index signature.
+    body.usage = { ...usage };
+  }
+  if (isSessionBoundaryEvent(event)) {
+    body.scanEnv = scanEnvFor(source);
+  }
+  await record(production, body);
 }
 
-async function runAgentHook(args: string[], silent: boolean): Promise<boolean> {
+async function runAgentHook(args: string[], production: HookProduction): Promise<void> {
   const agentId = optionValue(args, '--agent');
   if (agentId === undefined || agentId.startsWith('--')) {
     throw new Error('hook --agent requires a kit agent id');
@@ -46,29 +118,51 @@ async function runAgentHook(args: string[], silent: boolean): Promise<boolean> {
   const payload = await readStdinJson();
   const interpreted = interpretAgentHook(agentId, payload, process.env);
   if (interpreted.kind === 'skip') {
-    await writeLog(`hook skipped: ${interpreted.reason}`);
-    writeHookOutput(silent);
-    return true;
+    // A skipped interpretation resolves no source, as the run that logged the reason resolved none.
+    await record(production, {
+      kind: 'skip',
+      code: interpreted.code,
+      ...(interpreted.code === 'ignored-event' ? { source: interpreted.source } : {}),
+      ...(interpreted.code === 'no-presence-source' ? { agent: interpreted.agent } : {}),
+      nativeEvent: interpreted.nativeEvent,
+      payloadKeys: describePayloadKeys(payload)
+    });
+    return;
   }
-  return applyHook({ source: interpreted.source, event: interpreted.event, payload, silent });
+  await recordResolvedHook(production, { source: interpreted.source, event: interpreted.event, payload });
 }
 
-async function runSourceHook(args: string[], silent: boolean): Promise<boolean> {
+async function runSourceHook(args: string[], production: HookProduction): Promise<void> {
   const source = optionValue(args, '--source') ?? 'codex';
   const payload = await readStdinJson();
-  return applyHook({ source, event: optionValue(args, '--event'), payload, silent });
+  await recordResolvedHook(production, { source, event: optionValue(args, '--event'), payload });
 }
 
 export async function hook(args: string[]): Promise<void> {
   const silent = hasFlag(args, '--silent');
+  const production: HookProduction = { statePath: '', startRequested: false, failureRecorded: false };
+  let startRequested = false;
   try {
-    // True when this run already wrote hook output, which is the skip path.
-    const skipped = args.includes('--agent') ? await runAgentHook(args, silent) : await runSourceHook(args, silent);
-    if (skipped) {
-      return;
+    production.statePath = getStatePath();
+    if (args.includes('--agent')) {
+      await runAgentHook(args, production);
+    } else {
+      await runSourceHook(args, production);
     }
+    startRequested = production.startRequested;
   } catch (error) {
-    await writeLog(`hook failed: ${errorMessage(error)}`);
+    // The records so far asked for a worker too, and one `hook failed` record per run at most: a failed write has
+    // already recorded it.
+    startRequested = production.startRequested;
+    if (!production.failureRecorded && (await recordHookFailure(`hook failed: ${errorMessage(error)}`))) {
+      startRequested = true;
+    }
+  }
+
+  if (startRequested) {
+    // The starter never throws (`startWorkerProcess` keeps every spawn failure to itself); a start that cannot happen
+    // loses the records to the next producer (3.10).
+    startHookWorker();
   }
 
   writeHookOutput(silent);

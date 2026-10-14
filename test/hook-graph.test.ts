@@ -15,7 +15,9 @@ const producerEntry = resolve(repoRoot, 'src/queue/produce.ts');
 // other bare specifier is an npm package loaded on every hook run, so the walk
 // fails on it; this keeps `effect`, `zod`, and `@clack/prompts` out. The
 // forbidden modules are the setup/installer cluster, the Clack wrapper, the
-// helpers only setup, uninstall, and login use, and the modules that hold
+// helpers only setup, uninstall, and login use, the direct application path
+// the producer replaced (`src/cli/hook-apply.ts`; Q2 deletes it), and the
+// modules that hold
 // schemas or scan transcripts: the state store, the queue's schemas and
 // reader, the usage events log, the billable source table, every usage
 // scanner, and the queue's appliers: the worker, the takeover, and the modules
@@ -44,6 +46,7 @@ const forbiddenHookGraphModules = [
   'src/queue/reader.ts',
   'src/usage-events-log.ts',
   'src/usage/billable-sources.ts',
+  'src/cli/hook-apply.ts',
   'src/queue/apply.ts',
   'src/queue/follow-up.ts',
   'src/queue/owed.ts',
@@ -59,7 +62,8 @@ const scriptsDir = resolve(repoRoot, 'scripts');
 // that brings a package into the hook path adds it here; `effect` and `zod`
 // never go on this list (docs/architecture.md, "CLI"). The kit's process lock
 // and Node platform are here because the log lock reaches them through
-// `src/sources.ts`, `src/cli/hook-output.ts`, and `src/cli/io.ts`.
+// `src/sources.ts` and `src/cli/io.ts`, and the producer through
+// `src/cli/hook-output.ts`.
 const hookGraphPackages = [
   '@rivus/agent-kit-collab/process-lock',
   '@rivus/agent-kit/harness/events',
@@ -174,7 +178,8 @@ describe('hook static import graph', () => {
     expect(usageScanners).toContain(resolve(usageDir, 'scan-dsh.ts'));
     const graph = walkStaticGraph([cliEntry, hookCommandEntry]);
 
-    expect(graph.files).toEqual(expect.arrayContaining([cliEntry, hookCommandEntry, deepHookModule]));
+    // The producer is in the walk: the hook records through it (Plan 0003 3.3).
+    expect(graph.files).toEqual(expect.arrayContaining([cliEntry, hookCommandEntry, deepHookModule, producerEntry]));
     const reachedForbidden = graph.files.filter(
       (file) => forbiddenHookGraphModules.includes(file) || file.startsWith(`${scriptsDir}/`)
     );

@@ -25,7 +25,13 @@ export interface SyncSlotOptions {
 
 export type SyncSlotResult =
   | { status: 'updated'; value: string }
-  | { status: 'skipped'; reason: 'unchanged' | 'debounced' | 'rate-limited'; value: string; retryAfterMs?: number };
+  | {
+      status: 'skipped';
+      /** `disabled`: the tombstone exists, so the command changed nothing (Plan 0003 3.8). */
+      reason: 'unchanged' | 'debounced' | 'rate-limited' | 'disabled';
+      value: string;
+      retryAfterMs?: number;
+    };
 
 export interface SlotSyncDecisionOptions {
   force: boolean;

@@ -8,6 +8,7 @@ import type { ProcessLock } from '@rivus/agent-kit-collab/process-lock';
 import { afterEach, beforeEach, describe, expect, it, type TestContext } from 'vite-plus/test';
 import { acquireLock } from '../src/process-lock.js';
 import { readWorkerVersion } from '../src/queue/files.js';
+import { produceRecord } from '../src/queue/produce.js';
 import { listQueue } from '../src/queue/reader.js';
 import { runWorker } from '../src/queue/worker.js';
 import { readUsageEvents } from '../src/usage-events-log.js';
@@ -67,6 +68,9 @@ const stopHere = (line) => {
   say(line);
   return new Promise(() => {});
 };
+// A forever-pending await does not keep a Node process alive: without a live handle the frozen worker would exit
+// itself and the kernel would drop its worker lock, instead of staying at the point until the test kills it.
+setInterval(() => undefined, 10_000);
 await runWorker({
   statePath,
   idleMs: 3_600_000,
@@ -246,5 +250,32 @@ describe('a worker killed with SIGKILL', () => {
     expect(reason).toBe('idle');
     expect(fake.appended).toHaveLength(1);
     await expectEverythingOnce(fake.refreshed.map(({ source }) => source));
+  }, 30_000);
+
+  it('while a producer writes leaves the record to the next producer, which starts a worker that applies everything once', async (ctx) => {
+    skipWithoutRegisterHooks(ctx);
+    await recordWork();
+    const worker = await startChildUntil('read', 'at read');
+    // The producer records while the holder still holds the lock and has written its version: it starts no worker.
+    const during = await produceRecord(home.statePath, eventBody('SessionStart', 'late'), {
+      clock: { now: () => T0 + 6_000 }
+    });
+    expect(during).toMatchObject({ status: 'recorded', startWorker: false });
+    await kill(worker);
+
+    // The next producer finds the lock free and starts a worker, which applies every record once.
+    const next = await produceRecord(home.statePath, eventBody('SessionStart', 'later'), {
+      clock: { now: () => T0 + 7_000 }
+    });
+    expect(next).toMatchObject({ status: 'recorded', startWorker: true });
+
+    const { reason, fake } = await nextWorker();
+
+    expect(reason).toBe('idle');
+    expect(await readWorkerVersion(home.statePath)).toBe(0);
+    await expectEverythingOnce(fake.refreshed.map(({ source }) => source));
+    const state = await readState(home.statePath);
+    expect(state.sessions.late).toMatchObject({ status: 'running', startedAt: T0 + 6_000 });
+    expect(state.sessions.later).toMatchObject({ status: 'running', startedAt: T0 + 7_000 });
   }, 30_000);
 });

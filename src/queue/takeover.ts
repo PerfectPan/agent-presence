@@ -3,6 +3,7 @@ import type { ProcessLockPlatform } from '@rivus/agent-kit-collab/process-lock';
 import { loadConfig } from '../config.js';
 import { errorMessage } from '../cli/errors.js';
 import { kitPlatform } from '../kit-platform.js';
+import { LOG_LOCK_WAIT_MS } from '../log-retention.js';
 import { writeLogEvent } from '../log.js';
 import { loadState } from '../state-store.js';
 import { applyQueueBatch, type BatchOutcome } from './apply.js';
@@ -41,6 +42,8 @@ export interface TakeoverOptions {
   readonly effects?: OwedWorkEffects;
   readonly platform?: ProcessLockPlatform;
   readonly waitMs?: number;
+  /** How long a command's dsh append waits for the log lock; the appends' default bound by default (Plan 0002 3.1). */
+  readonly logLockWaitMs?: number;
 }
 
 /** What a command that took over does with the queue before it runs its own code (3.7). */
@@ -68,6 +71,7 @@ interface TakeoverContext {
   readonly startWorker: StartWorker;
   readonly effects: OwedWorkEffects;
   readonly platform: ProcessLockPlatform;
+  readonly logLockWaitMs: number;
 }
 
 const monotonicClock: QueueClock = { now: () => performance.now() };
@@ -91,11 +95,17 @@ function createTakeover(context: TakeoverContext, disabled: boolean): Takeover {
       }
       return applyQueueBatch(statePath, { version: context.version, config: await loadConfig(), clock: context.clock });
     },
-    async workOffOwed(kinds = ALL_OWED_KINDS, signal = new AbortController().signal) {
+    async workOffOwed(kinds = ALL_OWED_KINDS, signal?: AbortSignal) {
       if (disabled) {
         return;
       }
       const attempts = createOwedAttempts();
+      // Off the hook path the log lock keeps the appends' bounded wait (Plan 0002 3.1, Plan 0003 6.3): unlike the
+      // worker's follow-up lane (3.5), no handover needs to stop a command's dsh append. One deadline from the call's
+      // start bounds all of its dsh appends together, so a command with several owed entries waits `logLockWaitMs`
+      // once; an append the deadline ends stays owed for the worker this command starts when it leaves (3.6). A
+      // caller's signal replaces the deadline.
+      const logLock = signal ?? AbortSignal.timeout(context.logLockWaitMs);
       for (;;) {
         const [state, config] = await Promise.all([loadState(statePath), loadConfig()]);
         const item = attempts.next(state, knownSources(config), kinds);
@@ -107,7 +117,7 @@ function createTakeover(context: TakeoverContext, disabled: boolean): Takeover {
           config,
           clock: context.clock,
           effects: context.effects,
-          signal
+          signal: item.kind === 'dshUsage' ? logLock : new AbortController().signal
         });
         attempts.setAside(item);
         if (outcome === 'done' && item.kind === 'usageRefresh') {
@@ -156,7 +166,8 @@ export async function takeOver<T>(
     delay: options.delay,
     startWorker: options.startWorker ?? startWorkerProcess,
     effects: options.effects ?? defaultOwedWorkEffects,
-    platform: options.platform ?? kitPlatform()
+    platform: options.platform ?? kitPlatform(),
+    logLockWaitMs: options.logLockWaitMs ?? LOG_LOCK_WAIT_MS
   };
 
   const request = await holdStopRequest(statePath, { clock: context.clock, delay: options.delay, pid: options.pid });

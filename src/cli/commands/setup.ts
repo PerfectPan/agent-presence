@@ -2,7 +2,10 @@ import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 
-import { configSlotId, defaultCommandProviderId, loadConfig } from '../../config.js';
+import { configSlotId, defaultCommandProviderId, getStatePath, loadConfig } from '../../config.js';
+import { increaseEpoch, isDisabled, removeTombstone } from '../../queue/files.js';
+import { deleteQueueFile, listQueue } from '../../queue/reader.js';
+import { takeOver, type TakeoverOptions } from '../../queue/takeover.js';
 import { installDshPlugin, resolveDshPluginPaths } from '../../installers.js';
 import { cleanupMigratedLegacyHome, hasLegacyHomeToMigrate, migrateLegacyHome } from '../../migration.js';
 import { isMacOS } from '../../platform.js';
@@ -48,7 +51,7 @@ async function maybeInstallDshPlugin(): Promise<void> {
   }
 }
 
-export async function setup(args: string[]): Promise<void> {
+export async function setup(args: string[], takeover: TakeoverOptions = {}): Promise<void> {
   const skipLogin = hasFlag(args, '--skip-login') || hasFlag(args, '--hooks-only');
   const forceLogin = hasFlag(args, '--login') && !skipLogin;
   const skipHooks = hasFlag(args, '--no-hooks');
@@ -73,6 +76,25 @@ export async function setup(args: string[]): Promise<void> {
     } else if (migration.status === 'skipped') {
       showInfo('migration skipped; legacy config can still be read for this setup run');
     }
+  }
+
+  // An uninstall or `worker --stop` left the tombstone (Plan 0003 3.8): drop the records it kept from applying, raise
+  // the epoch so a record a producer still writes with the old epoch is deleted unapplied, and let hooks record again.
+  const statePath = getStatePath();
+  if (await isDisabled(statePath)) {
+    await takeOver(
+      statePath,
+      async () => {
+        // `.tmp-` files and `failed/` stay: the worker removes expired `.tmp-` files, and a late rename lands with the
+        // old epoch and is deleted unapplied.
+        for (const file of (await listQueue(statePath)).records) {
+          await deleteQueueFile(file);
+        }
+        await increaseEpoch(statePath);
+        await removeTombstone(statePath);
+      },
+      takeover
+    );
   }
 
   const config = await loadConfig();

@@ -1,4 +1,5 @@
 import { configSlotId, getStatePath, loadConfig, providerId, renderTemplates, ttlMs } from '../../config.js';
+import { takeOver, type TakeoverOptions } from '../../queue/takeover.js';
 import { createProvider } from '../../providers/registry.js';
 import { renderPresence, resolveUsageForRender } from '../../render.js';
 import { usageRenderPlan } from '../usage-badge.js';
@@ -14,36 +15,51 @@ function requirePayload(payload: Record<string, unknown> | undefined): Record<st
   return payload;
 }
 
-export async function printStatus(args: string[]): Promise<void> {
+export async function printStatus(args: string[], takeover: TakeoverOptions = {}): Promise<void> {
   const config = await loadConfig();
   const activeProvider = providerId(config, optionValue(args, '--provider'));
-  const now = Date.now();
   const statePath = getStatePath();
   const credential = await readCredential(configSlotId(config));
   let payload: Record<string, unknown> | undefined;
 
-  await withStateLock(statePath, async () => {
-    const state = await loadState(statePath);
-    const active = getActiveSessions(state, now, ttlMs(config));
-    await saveState(state, statePath);
-    const plan = usageRenderPlan(config);
-    const { usageVars, autoAppend } = resolveUsageForRender(
-      state,
-      plan.enabled ? { enabled: true, defaultWindow: plan.defaultWindow } : undefined,
-      now
-    );
-    payload = {
-      activeCount: active.length,
-      value: renderPresence(active, renderTemplates(config), usageVars, autoAppend),
-      active,
-      provider: activeProvider,
-      lastValue: state.lastValue ?? '',
-      lastSlotUpdateAt: state.lastSlotUpdateAt ?? 0,
-      statePath,
-      hasToken: Boolean(credential?.token),
-      slotId: credential?.slotId ?? configSlotId(config) ?? ''
-    };
-  });
+  await takeOver(
+    statePath,
+    async (queue) => {
+      // The pending records were recorded before this run; they apply first (Plan 0003 3.7).
+      await queue.applyPending();
+      await queue.workOffOwed(['dshUsage']);
+      // Read after the apply: an applied record can be newer than the command's start, and `now` must not be earlier
+      // than an applied record's time (Plan 0003 3.7).
+      const now = Date.now();
+      await withStateLock(statePath, async () => {
+        const state = await loadState(statePath);
+        const active = getActiveSessions(state, now, ttlMs(config));
+        // Under the tombstone the command changes nothing (Plan 0003 3.8): it prints from the loaded state without
+        // saving.
+        if (!queue.disabled) {
+          await saveState(state, statePath);
+        }
+        const plan = usageRenderPlan(config);
+        const { usageVars, autoAppend } = resolveUsageForRender(
+          state,
+          plan.enabled ? { enabled: true, defaultWindow: plan.defaultWindow } : undefined,
+          now
+        );
+        payload = {
+          activeCount: active.length,
+          value: renderPresence(active, renderTemplates(config), usageVars, autoAppend),
+          active,
+          provider: activeProvider,
+          lastValue: state.lastValue ?? '',
+          lastSlotUpdateAt: state.lastSlotUpdateAt ?? 0,
+          statePath,
+          hasToken: Boolean(credential?.token),
+          slotId: credential?.slotId ?? configSlotId(config) ?? ''
+        };
+      });
+    },
+    takeover
+  );
 
   if (hasFlag(args, '--remote')) {
     const remote: Record<string, unknown> = {};

@@ -9,6 +9,7 @@ import { hook } from '../src/cli/commands/hook.js';
 import { buildOpenCodePluginSource, buildPiExtensionSource } from '../src/installers.js';
 import { createEmptyState, type AgentSession } from '../src/state.js';
 import { loadState, saveState } from '../src/state-store.js';
+import { captureHookWorkerStarts, drainQueue, restoreHookWorkerStarts } from './hook-producer-support.js';
 
 // Regression oracle for today's hook-event mapping: one case per event the
 // `--source/--event` form handles (the source mapping in docs/architecture.md,
@@ -17,11 +18,14 @@ import { loadState, saveState } from '../src/state-store.js';
 // `hook --source <id> --event <Name>` directly; opencode and Pi cases go
 // through the generated old bridge/extension themselves, so the row asserts
 // the mapping those generators actually perform, not a pre-mapped presence
-// name. Every case seeds a state where start, heartbeat and finish diverge
-// (a running session whose startedAt is in the past, so a start would reset
-// it) and asserts the boundary effect (usage badge refresh or not) alongside
-// the state change. The cases must keep passing unchanged when hook
-// interpretation moves to the kit.
+// name. Since the queue (Plan 0003), each case records through the producer
+// and then applies through one in-process worker run (`drainQueue`), and the
+// row asserts the state the direct path (`applyHookEvent`, the oracle) produces
+// from the same seed. Every case seeds a state where start, heartbeat and
+// finish diverge (a running session whose startedAt is in the past, so a start
+// would reset it) and asserts the boundary effect (usage badge refresh owed
+// and done, or not) alongside the state change. The cases must keep passing
+// unchanged when hook interpretation moves to the kit.
 
 const publishValueMock = vi.hoisted(() => vi.fn<(value: string) => Promise<void>>());
 const stdinPayload = vi.hoisted(() => ({ current: {} as unknown }));
@@ -50,7 +54,24 @@ vi.mock('../src/cli/io.js', async () => {
 
 vi.mock('../src/cli/deferred-update.js', () => ({
   scheduleDeferredRenderedUpdate: async () => undefined,
-  scheduleDeferredRenderedUpdateForResult: async () => undefined
+  // The real scheduling settles the owed rendered sync in its locked save (Plan 0003 3.5); the mock makes the same
+  // state change without spawning the detached flush, so the worker's follow-up lane settles with it.
+  scheduleDeferredRenderedUpdateForResult: async (
+    result: { status: string; reason?: string },
+    options: { statePath: string; delayMs: number; now: number }
+  ) => {
+    if (result.status !== 'skipped' || (result.reason !== 'debounced' && result.reason !== 'rate-limited')) {
+      return;
+    }
+    const { settleRenderedSync } = await import('../src/queue/owed.js');
+    const { loadState, saveState, withStateLock } = await import('../src/state-store.js');
+    await withStateLock(options.statePath, async () => {
+      const state = await loadState(options.statePath);
+      state.pendingSlotFlushAt = options.now + options.delayMs;
+      settleRenderedSync(state);
+      await saveState(state, options.statePath);
+    });
+  }
 }));
 
 const NOW = new Date(2026, 9, 9, 15, 0).getTime();
@@ -147,6 +168,8 @@ async function runHook(run: HookRun): Promise<void> {
     args.push('--silent');
   }
   await hook(args);
+  // The worker applies what the hook recorded before the case reads the state.
+  await drainQueue();
 }
 
 // --- Generated bridge/extension harness -------------------------------------
@@ -393,6 +416,7 @@ beforeEach(async () => {
   );
   clock.now = NOW;
   vi.spyOn(Date, 'now').mockImplementation(() => clock.now);
+  captureHookWorkerStarts();
   stdoutWrites = [];
   vi.spyOn(process.stdout, 'write').mockImplementation((chunk: Uint8Array | string) => {
     stdoutWrites.push(String(chunk));
@@ -406,6 +430,7 @@ beforeEach(async () => {
         process.env[key] = value;
       }
     }
+    restoreHookWorkerStarts();
     vi.restoreAllMocks();
     await rm(homeDir, { recursive: true, force: true });
   };

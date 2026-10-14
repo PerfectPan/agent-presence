@@ -92,9 +92,15 @@ const EVENT_TABLES: Readonly<Record<string, EventTable>> = {
   pi: PI_EVENTS
 };
 
-export type InterpretedHook =
-  | { readonly kind: 'apply'; readonly source: string; readonly event: string }
-  | { readonly kind: 'skip'; readonly reason: string };
+/**
+ * A skip with the code and fields the queue's skip record needs (Plan 0003 3.2); the applier builds the line the hook
+ * used to log from them. `source` names the presence source when one is known, `agent` the kit agent when none is.
+ */
+export type SkippedHook =
+  | { readonly kind: 'skip'; readonly code: 'no-presence-source'; readonly agent: string; readonly nativeEvent: string }
+  | { readonly kind: 'skip'; readonly code: 'ignored-event'; readonly source: string; readonly nativeEvent: string };
+
+export type InterpretedHook = { readonly kind: 'apply'; readonly source: string; readonly event: string } | SkippedHook;
 
 function declaredAgent(id: string): KitAgentId | undefined {
   for (const dialect of Object.values(builtinHookDialects)) {
@@ -174,11 +180,11 @@ export function interpretAgentHook(agentId: string, payload: unknown, env: NodeJ
   const source = presenceSource(event.agent);
   const nativeEvent = event.nativeEvent === '' ? 'unknown' : event.nativeEvent;
   if (source === undefined) {
-    return { kind: 'skip', reason: `no presence source for agent=${event.agent} event=${nativeEvent}` };
+    return { kind: 'skip', code: 'no-presence-source', agent: event.agent, nativeEvent };
   }
   const internal = internalEvent(event.agent, event);
   if (internal === null) {
-    return { kind: 'skip', reason: `ignored event source=${source} event=${nativeEvent}` };
+    return { kind: 'skip', code: 'ignored-event', source, nativeEvent };
   }
   return { kind: 'apply', source, event: internal };
 }
