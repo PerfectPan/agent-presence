@@ -1,5 +1,6 @@
 import { mkdir, readdir, readFile, rename, rm, stat, utimes } from 'node:fs/promises';
 import { basename, join } from 'node:path';
+import { errorMessage } from '../cli/errors.js';
 import { hasNodeErrorCode } from '../json-file.js';
 import { DAY_MS } from '../time.js';
 import {
@@ -83,7 +84,8 @@ export async function listQueue(statePath: string): Promise<QueueListing> {
  * What reading one record file found:
  * - `record`: parsed, with the id and recorded time its name carries;
  * - `newer`: its `v` is higher than the reader's version; the rest was not parsed, and the file stays in place;
- * - `bad`: not JSON, no valid `v`, invalid for its `kind`, or its id is not its file name; `reason` holds no value;
+ * - `bad`: not JSON, no valid `v`, invalid for its `kind`, its id is not its file name, or the file cannot be read;
+ *   `reason` holds no record content;
  * - `missing`: the file was gone when read.
  */
 export type QueueRead =
@@ -101,7 +103,9 @@ export async function readQueueFile(file: QueueFile, version = RECORD_VERSION): 
     if (hasNodeErrorCode(error, 'ENOENT')) {
       return { status: 'missing' };
     }
-    throw error;
+    // A record this process cannot read (EACCES: a root-owned record of an agent run with sudo) must not fail every
+    // batch; the applier hands it to `moveToFailed`, a rename that needs only directory permission.
+    return { status: 'bad', reason: `unreadable: ${errorMessage(error)}` };
   }
 
   let raw: unknown;
@@ -135,7 +139,7 @@ export async function deleteQueueFile(file: QueueFile): Promise<void> {
 
 /**
  * Move a bad record into `failed/` under its own name, dated now so it stays `FAILED_MAX_AGE_MS` from the move. A file
- * already gone is fine.
+ * already gone is fine; a record owned by another user keeps its own dates, which still place it in its own time.
  */
 export async function moveToFailed(statePath: string, file: QueueFile, clock: QueueClock = systemClock): Promise<void> {
   const { failedDir } = queuePaths(statePath);
@@ -150,7 +154,7 @@ export async function moveToFailed(statePath: string, file: QueueFile, clock: Qu
     throw error;
   }
   const now = new Date(clock.now());
-  await utimes(target, now, now);
+  await utimes(target, now, now).catch(() => undefined);
 }
 
 async function removeOlderThan(paths: string[], cutoff: number): Promise<number> {

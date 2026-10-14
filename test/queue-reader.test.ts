@@ -1,8 +1,25 @@
 import { mkdir, mkdtemp, readdir, rm, stat, utimes, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vite-plus/test';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 import { queuePaths, type QueueClock } from '../src/queue/files.js';
+
+const failingRecordReads = vi.hoisted(() => ({ enabled: false }));
+
+// Reading a record file fails with EACCES while the flag is enabled, as for a root-owned record of an agent run that
+// kept HOME through a sudo; narrowing the known union of readFile's first parameter picks the record paths out.
+vi.mock('node:fs/promises', async (importOriginal) => {
+  const original = await importOriginal<typeof import('node:fs/promises')>();
+  return {
+    ...original,
+    readFile: async (...args: Parameters<typeof original.readFile>) => {
+      if (failingRecordReads.enabled && typeof args[0] === 'string' && args[0].endsWith('.json')) {
+        throw Object.assign(new Error('record read blocked by the test'), { code: 'EACCES' });
+      }
+      return original.readFile(...args);
+    }
+  };
+});
 import {
   deleteQueueFile,
   FAILED_MAX_AGE_MS,
@@ -150,6 +167,20 @@ describe('readQueueFile', () => {
 
     expect(await readQueueFile(file)).toEqual({ status: 'missing' });
     await deleteQueueFile(file);
+  });
+
+  it('reports a record it cannot read as bad, so the applier moves it on instead of failing the batch', async () => {
+    await put('1760000000001-9-aaaa.json', errorRecord('1760000000001-9-aaaa', 1_760_000_000_001));
+    const file = await onlyRecord();
+    failingRecordReads.enabled = true;
+    let read: Awaited<ReturnType<typeof readQueueFile>>;
+    try {
+      read = await readQueueFile(file);
+    } finally {
+      failingRecordReads.enabled = false;
+    }
+
+    expect(read.status).toBe('bad');
   });
 });
 

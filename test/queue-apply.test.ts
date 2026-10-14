@@ -1,6 +1,6 @@
 import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vite-plus/test';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 import { loadConfig } from '../src/config.js';
 import { applyQueueBatch, type BatchStep } from '../src/queue/apply.js';
 import { increaseEpoch, queuePaths, recordFileName } from '../src/queue/files.js';
@@ -16,6 +16,28 @@ import {
   writeState,
   type QueueHome
 } from './queue-support.js';
+
+const unreadableRecord = vi.hoisted(() => ({ name: '' }));
+
+// Reading the record file named `name` fails with EACCES while it is set, as for a root-owned record of an agent run
+// that kept HOME through a sudo; narrowing the known union of readFile's first parameter picks the record paths out.
+vi.mock('node:fs/promises', async (importOriginal) => {
+  const original = await importOriginal<typeof import('node:fs/promises')>();
+  return {
+    ...original,
+    readFile: async (...args: Parameters<typeof original.readFile>) => {
+      if (
+        unreadableRecord.name !== '' &&
+        typeof args[0] === 'string' &&
+        args[0].includes('.queue') &&
+        args[0].endsWith(unreadableRecord.name)
+      ) {
+        throw Object.assign(new Error('record read blocked by the test'), { code: 'EACCES' });
+      }
+      return original.readFile(...args);
+    }
+  };
+});
 
 let home: QueueHome;
 const clock = { now: () => T0 + 60_000 };
@@ -157,6 +179,26 @@ describe('applyQueueBatch', () => {
 
     expect(Object.keys((await readState(home.statePath)).sessions)).toEqual(['after-setup']);
     expect(await recordNames()).toEqual([]);
+  });
+
+  it('moves a record it cannot read to failed/ and applies the others', async () => {
+    const { failedDir } = queuePaths(home.statePath);
+    const unreadable = await recordAt(home.statePath, T0 + 1_000, eventBody('SessionStart', 'locked'));
+    await recordAt(home.statePath, T0 + 2_000, eventBody('SessionStart', 's1'));
+    unreadableRecord.name = `${unreadable}.json`;
+
+    let outcome: Awaited<ReturnType<typeof batch>>;
+    try {
+      outcome = await batch();
+    } finally {
+      unreadableRecord.name = '';
+    }
+
+    expect(outcome).toMatchObject({ listed: 2, applied: 1 });
+    expect((await readdir(failedDir)).sort()).toEqual([`${unreadable}.json`]);
+    expect(await recordNames()).toEqual([]);
+    expect(Object.keys((await readState(home.statePath)).sessions)).toEqual(['s1']);
+    expect(await readFile(home.logPath, 'utf8')).toContain('type=queue.record.failed');
   });
 
   it('records skip and error records once, changing nothing but writing their log lines', async () => {
