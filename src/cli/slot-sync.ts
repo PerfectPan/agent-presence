@@ -9,6 +9,7 @@ import {
 } from '../render.js';
 import { writeLogEvent } from '../log.js';
 import { valueLength } from '../log-sanitize.js';
+import { settleRenderedSync } from '../queue/owed.js';
 import type { PresenceState } from '../state.js';
 import { loadState, saveState, withStateLock } from '../state-store.js';
 
@@ -69,10 +70,17 @@ async function writeSlotUpdateLog(
   }
 }
 
+/** The value `state` renders with `options`, worked out on a copy so `state` stays as it is. */
+function renderedValue(state: PresenceState, options: RenderedSlotOptions): string {
+  const decision = prepareSlotSync(structuredClone(state), { ...options, force: true });
+  return decision.action === 'update' ? decision.value : decision.result.value;
+}
+
 async function applySlotSyncDecision(
   statePath: string,
   decision: SlotSyncDecision,
-  updateSlot: (value: string) => Promise<void>
+  updateSlot: (value: string) => Promise<void>,
+  onSuccess?: (state: PresenceState) => void
 ): Promise<SyncSlotResult> {
   if (decision.action === 'skip') {
     return decision.result;
@@ -104,6 +112,7 @@ async function applySlotSyncDecision(
     const state = await loadState(statePath);
     markSlotSyncSuccess(state, decision);
     state.pendingSlotFlushAt = undefined;
+    onSuccess?.(state);
     await saveState(state, statePath);
   });
 
@@ -129,11 +138,19 @@ export async function syncRenderedSlotWithStateLock(
     decision = prepareSlotSync(state, options);
     if (decision.action === 'skip' && decision.result.status === 'skipped' && decision.result.reason === 'unchanged') {
       state.pendingSlotFlushAt = undefined;
+      settleRenderedSync(state);
     }
     await saveState(state, statePath);
   });
 
-  return applySlotSyncDecision(statePath, requireDecision(decision), updateSlot);
+  const claimed = requireDecision(decision);
+  // The owed rendered sync (Plan 0003 3.5) stays owed while the publish runs, so a holder that dies during it leaves it
+  // for the next one. Records applied during the publish leave it owed too, unless they render the same value.
+  return applySlotSyncDecision(statePath, claimed, updateSlot, (state) => {
+    if (claimed.action === 'update' && renderedValue(state, options) === claimed.value) {
+      settleRenderedSync(state);
+    }
+  });
 }
 
 export async function syncExplicitSlotValueWithStateLock(

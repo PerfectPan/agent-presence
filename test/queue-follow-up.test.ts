@@ -1,0 +1,414 @@
+import { readFile, truncate, writeFile } from 'node:fs/promises';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test';
+import { loadConfig, type AppConfig } from '../src/config.js';
+import { acquireLock } from '../src/process-lock.js';
+import { applyQueueBatch } from '../src/queue/apply.js';
+import {
+  createOwedAttempts,
+  knownSources,
+  scanEnvironmentFor,
+  workOffOwedItem,
+  type OwedWorkEffects
+} from '../src/queue/follow-up.js';
+import { doableOwedItems, type OwedItem } from '../src/queue/owed.js';
+import type { UsageRefreshEntry } from '../src/queue/schema.js';
+import { readUsageEvents } from '../src/usage-events-log.js';
+import {
+  createQueueHome,
+  dshUsage,
+  eventBody,
+  fakeEffects,
+  readRawState,
+  readState,
+  recordAt,
+  T0,
+  until,
+  writeState,
+  type QueueHome
+} from './queue-support.js';
+
+// The rendered sync schedules a deferred flush as a detached process; record it instead.
+const spawnMock = vi.hoisted(() =>
+  vi.fn<(...args: unknown[]) => { unref: () => void; on: () => void }>(() => ({
+    unref: () => undefined,
+    on: () => undefined
+  }))
+);
+vi.mock('node:child_process', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('node:child_process')>()),
+  spawn: spawnMock
+}));
+
+let home: QueueHome;
+let now = T0;
+const clock = { now: () => now };
+
+beforeEach(async () => {
+  home = await createQueueHome();
+  now = T0 + 10 * 60_000;
+  spawnMock.mockClear();
+});
+
+afterEach(async () => {
+  await home.dispose();
+});
+
+async function nextItem(kind: OwedItem['kind']): Promise<OwedItem> {
+  const state = await readState(home.statePath);
+  const item = doableOwedItems(state.queueOwed, knownSources(await loadConfig())).find(
+    (candidate) => candidate.kind === kind
+  );
+  if (!item) {
+    throw new Error(`no owed ${kind}`);
+  }
+  return item;
+}
+
+async function workOff(item: OwedItem, effects: OwedWorkEffects, signal = new AbortController().signal) {
+  return workOffOwedItem(item, { statePath: home.statePath, config: await loadConfig(), clock, effects, signal });
+}
+
+async function applyRecords(): Promise<void> {
+  await applyQueueBatch(home.statePath, { version: 1, config: await loadConfig(), clock });
+}
+
+async function usageLines(): Promise<Array<Record<string, unknown>>> {
+  const text = await readFile(home.usageEventsPath, 'utf8').catch(() => '');
+  return text
+    .split('\n')
+    .filter((line) => line.length > 0)
+    .map((line) => JSON.parse(line) as Record<string, unknown>);
+}
+
+describe('owed dsh usage', () => {
+  it('appends the usage as parsed, with the record id, and then removes the entry', async () => {
+    const usage = { ...dshUsage, costUsd: 0.25 };
+    const id = await recordAt(home.statePath, T0, eventBody('Heartbeat', 'd1', { source: 'dsh', usage }));
+    await applyRecords();
+    const fake = fakeEffects();
+
+    expect(await workOff(await nextItem('dshUsage'), fake.effects)).toBe('done');
+
+    expect(await usageLines()).toEqual([{ ...usage, id }]);
+    expect((await readState(home.statePath)).queueOwed?.dshUsage).toEqual([]);
+  });
+
+  it('waits while another writer holds the usage log, through its compaction, and then writes the line once', async () => {
+    const id = await recordAt(home.statePath, T0, eventBody('Heartbeat', 'd1', { source: 'dsh', usage: dshUsage }));
+    await applyRecords();
+    const fake = fakeEffects();
+    const writer = await acquireLock(`${home.usageEventsPath}.lock.db`, AbortSignal.timeout(5_000));
+
+    let settled = false;
+    const appending = workOff(await nextItem('dshUsage'), fake.effects).finally(() => {
+      settled = true;
+    });
+    // The other writer appends past the size bound and compacts the file, all while holding the lock.
+    await writeFile(home.usageEventsPath, `${JSON.stringify({ ...dshUsage, id: 'other' })}\n`.repeat(10));
+    await truncate(home.usageEventsPath, 0);
+    await until(() => spawnMock.mock.calls.length === 0, 'a few turns');
+    expect(settled).toBe(false);
+    expect(await usageLines()).toEqual([]);
+    await writer.release();
+
+    expect(await appending).toBe('done');
+    expect(await usageLines()).toEqual([{ ...dshUsage, id }]);
+    expect(await readUsageEvents('dsh', 0, T0 + 1)).toHaveLength(1);
+  });
+
+  it('stays owed when its wait for the usage log is aborted', async () => {
+    await recordAt(home.statePath, T0, eventBody('Heartbeat', 'd1', { source: 'dsh', usage: dshUsage }));
+    await applyRecords();
+    const writer = await acquireLock(`${home.usageEventsPath}.lock.db`, AbortSignal.timeout(5_000));
+    const controller = new AbortController();
+
+    const appending = workOff(await nextItem('dshUsage'), fakeEffects().effects, controller.signal);
+    controller.abort();
+
+    expect(await appending).toBe('aborted');
+    await writer.release();
+    expect((await readState(home.statePath)).queueOwed?.dshUsage).toHaveLength(1);
+    expect(await usageLines()).toEqual([]);
+  });
+
+  it('counts a line repeated by an applier that died before removing the entry once', async () => {
+    const id = await recordAt(home.statePath, T0, eventBody('Heartbeat', 'd1', { source: 'dsh', usage: dshUsage }));
+    await applyRecords();
+    const item = await nextItem('dshUsage');
+    // The first applier wrote the line and died before its save.
+    const fake = fakeEffects();
+    await fake.effects.appendUsage(dshUsage, id, new AbortController().signal);
+
+    expect(await workOff(item, fake.effects)).toBe('done');
+
+    expect(await usageLines()).toHaveLength(2);
+    expect(await readUsageEvents('dsh', 0, T0 + 1)).toHaveLength(1);
+  });
+});
+
+describe('owed usage refresh', () => {
+  async function owedClaudeRefresh(): Promise<void> {
+    await recordAt(
+      home.statePath,
+      T0,
+      eventBody('SessionStart', 'c1', { source: 'claude', scanEnv: { CLAUDE_CONFIG_DIR: '/fake-home/a' } })
+    );
+    await applyRecords();
+  }
+
+  it('refreshes the source at its boundary time and removes the entry in the refresh save, owing a sync', async () => {
+    await owedClaudeRefresh();
+    await writeState(home.statePath, {
+      ...(await readRawState(home.statePath)),
+      queueOwed: {
+        usageRefresh: (await readState(home.statePath)).queueOwed?.usageRefresh
+      }
+    });
+    const fake = fakeEffects();
+
+    expect(await workOff(await nextItem('usageRefresh'), fake.effects)).toBe('done');
+
+    expect(fake.refreshed).toHaveLength(1);
+    expect(fake.refreshed[0]).toMatchObject({ source: 'claude', boundaryAt: T0 });
+    expect(fake.refreshed[0]?.env.CLAUDE_CONFIG_DIR).toBe('/fake-home/a');
+    expect((await readRawState(home.statePath)).queueOwed).toEqual({ usageRefresh: [], renderedSync: true });
+  });
+
+  it('keeps the refresh owed when a boundary of its source arrives while it scans', async () => {
+    await owedClaudeRefresh();
+    const fake = fakeEffects();
+    const gate = fake.holdRefreshes();
+
+    const refreshing = workOff(await nextItem('usageRefresh'), fake.effects);
+    await gate.started;
+    await recordAt(
+      home.statePath,
+      T0 + 1_000,
+      eventBody('Stop', 'c1', { source: 'claude', scanEnv: { CLAUDE_CONFIG_DIR: '/fake-home/a' } })
+    );
+    await applyRecords();
+    gate.release();
+
+    expect(await refreshing).toBe('done');
+    expect((await readState(home.statePath)).queueOwed?.usageRefresh).toEqual([
+      { source: 'claude', scanEnv: { CLAUDE_CONFIG_DIR: '/fake-home/a' }, boundaryAt: T0 + 1_000, generation: 2 }
+    ]);
+  });
+
+  it('removes an entry whose refresh completed without saving, owing no sync', async () => {
+    await owedClaudeRefresh();
+    await writeState(home.statePath, {
+      ...(await readRawState(home.statePath)),
+      queueOwed: { usageRefresh: (await readState(home.statePath)).queueOwed?.usageRefresh }
+    });
+    const effects: OwedWorkEffects = { ...fakeEffects().effects, refreshUsage: async () => ({ completed: true }) };
+
+    expect(await workOff(await nextItem('usageRefresh'), effects)).toBe('done');
+
+    expect((await readRawState(home.statePath)).queueOwed).toEqual({ usageRefresh: [] });
+  });
+
+  it('stays owed when the refresh is aborted', async () => {
+    await owedClaudeRefresh();
+    const fake = fakeEffects();
+    const gate = fake.holdRefreshes();
+    const controller = new AbortController();
+
+    const refreshing = workOff(await nextItem('usageRefresh'), fake.effects, controller.signal);
+    await gate.started;
+    controller.abort();
+
+    expect(await refreshing).toBe('aborted');
+    expect((await readState(home.statePath)).queueOwed?.usageRefresh).toHaveLength(1);
+  });
+
+  it('lists only refreshes of sources in the merged source table as work it can do', async () => {
+    const config: AppConfig = { plugins: { sources: { mine: { match: {} }, codex: { enabled: false } } } };
+    const entry = (source: string): UsageRefreshEntry => ({ source, scanEnv: {}, boundaryAt: T0, generation: 1 });
+
+    const items = doableOwedItems(
+      { usageRefresh: [entry('grok'), entry('later-agent'), entry('mine'), entry('codex')], laterKind: [1] },
+      knownSources(config)
+    );
+
+    expect(items.map((item) => (item.kind === 'usageRefresh' ? item.entry.source : item.kind))).toEqual([
+      'grok',
+      'mine'
+    ]);
+  });
+});
+
+describe('scanEnvironmentFor', () => {
+  const saved = { ...process.env };
+  afterEach(() => {
+    process.env = { ...saved };
+  });
+
+  it('takes the transcript roots of the entry source from the entry and keeps the rest of the worker environment', () => {
+    process.env.CLAUDE_CONFIG_DIR = '/fake-home/worker-claude';
+    process.env.GEMINI_CLI_HOME = '/fake-home/worker-gemini';
+    const entry = (scanEnv: UsageRefreshEntry['scanEnv']): UsageRefreshEntry => ({
+      source: 'claude',
+      scanEnv,
+      boundaryAt: T0,
+      generation: 1
+    });
+
+    expect(scanEnvironmentFor(entry({ CLAUDE_CONFIG_DIR: '/fake-home/hook-claude' }))).toMatchObject({
+      CLAUDE_CONFIG_DIR: '/fake-home/hook-claude',
+      GEMINI_CLI_HOME: '/fake-home/worker-gemini'
+    });
+    // The hook ran without the variable, so its agent uses the default root, whatever the worker has.
+    expect(scanEnvironmentFor(entry({})).CLAUDE_CONFIG_DIR).toBeUndefined();
+    // A variable another source reads, recorded with the entry, is taken from the entry too.
+    expect(scanEnvironmentFor(entry({ GEMINI_CLI_HOME: '/fake-home/hook-gemini' })).GEMINI_CLI_HOME).toBe(
+      '/fake-home/hook-gemini'
+    );
+  });
+});
+
+describe('owed rendered sync', () => {
+  async function owedSync(): Promise<void> {
+    await home.writeConfig({ provider: 'feishu-signature', render: { zero: 'idle', one: '{count} running' } });
+    await recordAt(home.statePath, now - 1_000, eventBody('SessionStart', 's1'));
+    await applyRecords();
+  }
+
+  it('publishes the rendered value and settles the sync in the save that records the publish', async () => {
+    await owedSync();
+    const fake = fakeEffects();
+
+    expect(await workOff(await nextItem('renderedSync'), fake.effects)).toBe('done');
+
+    expect(fake.published).toHaveLength(1);
+    const state = await readState(home.statePath);
+    expect(state.lastValue).toBe(fake.published[0]);
+    expect(state.queueOwed?.renderedSync).toBeUndefined();
+  });
+
+  it('keeps the sync owed and the interval unclaimed when the publish fails', async () => {
+    await owedSync();
+    const fake = fakeEffects();
+    fake.failPublishes();
+
+    expect(await workOff(await nextItem('renderedSync'), fake.effects)).toBe('failed');
+
+    const state = await readState(home.statePath);
+    expect(state.queueOwed?.renderedSync).toBe(true);
+    expect(state.lastSlotUpdateAt).toBe(0);
+  });
+
+  it('keeps the sync owed when the publish is aborted', async () => {
+    await owedSync();
+    const fake = fakeEffects();
+    const gate = fake.holdPublishes();
+    const controller = new AbortController();
+
+    const syncing = workOff(await nextItem('renderedSync'), fake.effects, controller.signal);
+    await gate.started;
+    controller.abort();
+
+    expect(await syncing).toBe('aborted');
+    expect((await readState(home.statePath)).queueOwed?.renderedSync).toBe(true);
+  });
+
+  it('keeps the sync owed when records applied during the publish render another value', async () => {
+    await owedSync();
+    const effects: OwedWorkEffects = {
+      ...fakeEffects().effects,
+      publish: async () => {
+        await recordAt(home.statePath, now - 500, eventBody('SessionStart', 's2'));
+        await applyRecords();
+      }
+    };
+
+    expect(await workOff(await nextItem('renderedSync'), effects)).toBe('done');
+
+    expect((await readState(home.statePath)).queueOwed?.renderedSync).toBe(true);
+  });
+
+  it('settles the sync when records applied during the publish render the same value', async () => {
+    await owedSync();
+    const effects: OwedWorkEffects = {
+      ...fakeEffects().effects,
+      publish: async () => {
+        await recordAt(home.statePath, now - 500, eventBody('Heartbeat', 's1'));
+        await applyRecords();
+      }
+    };
+
+    expect(await workOff(await nextItem('renderedSync'), effects)).toBe('done');
+
+    expect((await readState(home.statePath)).queueOwed?.renderedSync).toBeUndefined();
+  });
+
+  it('settles the sync when it schedules the deferred flush inside the debounce interval', async () => {
+    await owedSync();
+    await writeState(home.statePath, { ...(await readRawState(home.statePath)), lastSlotUpdateAt: now - 1_000 });
+    const fake = fakeEffects();
+
+    expect(await workOff(await nextItem('renderedSync'), fake.effects)).toBe('done');
+
+    expect(fake.published).toEqual([]);
+    expect(spawnMock).toHaveBeenCalledTimes(1);
+    const state = await readState(home.statePath);
+    expect(state.pendingSlotFlushAt).toBe(now + 60_000);
+    expect(state.queueOwed?.renderedSync).toBeUndefined();
+  });
+
+  it('settles the sync when the state renders the value already published', async () => {
+    await owedSync();
+    const fake = fakeEffects();
+    await workOff(await nextItem('renderedSync'), fake.effects);
+    await writeState(home.statePath, {
+      ...(await readRawState(home.statePath)),
+      queueOwed: { renderedSync: true }
+    });
+
+    expect(await workOff(await nextItem('renderedSync'), fake.effects)).toBe('done');
+
+    expect(fake.published).toHaveLength(1);
+    expect((await readState(home.statePath)).queueOwed?.renderedSync).toBeUndefined();
+  });
+});
+
+describe('createOwedAttempts', () => {
+  const sources = new Set(['claude']);
+  const refresh = (generation: number): UsageRefreshEntry => ({
+    source: 'claude',
+    scanEnv: { CLAUDE_CONFIG_DIR: '/fake-home/a' },
+    boundaryAt: T0,
+    generation
+  });
+
+  it('does not offer an item it set aside again until new work for it is owed', () => {
+    const attempts = createOwedAttempts();
+    const state = (generation: number) => ({
+      sessions: {},
+      queueOwed: { dshUsage: [{ id: 'r1', usage: dshUsage }], usageRefresh: [refresh(generation)], renderedSync: true }
+    });
+
+    const dsh = attempts.next(state(1), sources);
+    expect(dsh?.kind).toBe('dshUsage');
+    if (dsh) {
+      attempts.setAside(dsh);
+    }
+    const first = attempts.next(state(1), sources);
+    expect(first?.kind).toBe('usageRefresh');
+    if (first) {
+      attempts.setAside(first);
+    }
+    const sync = attempts.next(state(1), sources);
+    expect(sync?.kind).toBe('renderedSync');
+    if (sync) {
+      attempts.setAside(sync);
+    }
+    expect(attempts.next(state(1), sources)).toBeUndefined();
+
+    // A later boundary updated the refresh; an applied event owes a new sync.
+    expect(attempts.next(state(2), sources)?.kind).toBe('usageRefresh');
+    attempts.renderedSyncOwedAgain();
+    expect(attempts.next(state(1), sources)?.kind).toBe('renderedSync');
+    expect(attempts.next(state(1), sources, ['dshUsage'])).toBeUndefined();
+  });
+});
