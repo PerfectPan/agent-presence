@@ -526,15 +526,15 @@ a worker of its own release, which waits for the lock (3.3).
 
 ### 3.10 Failures
 
-| Failure                  | Behavior                                                                                                             |
-| ------------------------ | -------------------------------------------------------------------------------------------------------------------- |
-| Record cannot be written | The hook prints its output and exits 0; the event is lost (Spec S8)                                                  |
-| Worker cannot be started | Records wait; the next producer tries again                                                                          |
-| Worker killed            | The kernel releases the SQLite lock; `queueApplied` and `queueOwed` finish the work (Spec S4)                        |
-| Worker stuck             | It keeps the lock, so producers start no other worker; takeovers time out and commands fail; records wait; section 7 |
-| Bad record               | Moved to `<state>.queue/failed/` (kept 7 days), logged, skipped                                                      |
-| Applying keeps failing   | Retried every iteration; after a whole idle interval of failures the worker leaves, starting no worker; records wait |
-| Large backlog            | Nothing is dropped; above 10,000 records the worker logs a warning                                                   |
+| Failure                  | Behavior                                                                                                                                                                                                                                                                                           |
+| ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Record cannot be written | The hook prints its output and exits 0; the event is lost (Spec S8)                                                                                                                                                                                                                                |
+| Worker cannot be started | Records wait; the next producer tries again                                                                                                                                                                                                                                                        |
+| Worker killed            | The kernel releases the SQLite lock; `queueApplied` and `queueOwed` finish the work (Spec S4)                                                                                                                                                                                                      |
+| Worker stuck             | It keeps the lock, so producers start no other worker; takeovers time out and commands fail; records wait; section 7                                                                                                                                                                               |
+| Bad record               | Moved to `<state>.queue/failed/` (kept 7 days), logged, skipped                                                                                                                                                                                                                                    |
+| Applying keeps failing   | Retried every iteration; after a whole idle interval of failures the worker leaves, starting no worker; records wait                                                                                                                                                                               |
+| Large backlog            | Nothing is dropped; above 10,000 records the worker logs a warning                                                                                                                                                                                                                                 |
 | External call hangs      | Scans take an abort signal, and each provider publish takes the caller's abort signal combined with a 30-second timeout (`AbortSignal.any` with `AbortSignal.timeout`), so a hanging provider cannot hold the applier and a timed-out publish counts as a failed attempt; the apply lane continues |
 
 ### 3.11 Logs
@@ -842,14 +842,14 @@ holds the log lock or a handover aborts the wait (3.5).
 
 ### 6.4 Validation ledger
 
-| Batch | Command or evidence                                                                                | Expected result                                   |
-| ----- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------- |
+| Batch | Command or evidence                                                                                                                                          | Expected result                                   |
+| ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------- |
 | Q1a   | Crash, takeover, idle-race, version-handover and older-holder tests; a release runs the idle-race tests with `PRESENCE_RACE_RUNS=1000` before it ships (5.2) | No lost, doubled or stranded event or owed item   |
-| Q1b   | Upgrade burst and producers during a command (5.3)                                                 | One newer holder; every event applied once        |
-| Q1b   | Event table through producer and worker                                                            | Same state as the direct path for all 67 cases    |
-| Q1b   | Hook cold start against the 143 ms pre-split baseline (1.1), re-measured on the same machine (5.4) | At most 60 percent                                |
-| Q1b   | `reset` during a slow refresh; uninstall                                                           | No running session within the bound; nothing left |
-| all   | Repository gates                                                                                   | Pass                                              |
+| Q1b   | Upgrade burst and producers during a command (5.3)                                                                                                           | One newer holder; every event applied once        |
+| Q1b   | Event table through producer and worker                                                                                                                      | Same state as the direct path for all 67 cases    |
+| Q1b   | Hook cold start against the 143 ms pre-split baseline (1.1), re-measured on the same machine (5.4)                                                           | At most 60 percent                                |
+| Q1b   | `reset` during a slow refresh; uninstall                                                                                                                     | No running session within the bound; nothing left |
+| all   | Repository gates                                                                                                                                             | Pass                                              |
 
 ### 6.5 Work split and schedule
 

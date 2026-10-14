@@ -203,24 +203,20 @@ async function expectEverythingOnce(refreshedByNextWorker: string[]): Promise<vo
 
 describe('a worker killed with SIGKILL', () => {
   for (const step of ['read', 'saved', 'deleted'] as const) {
-    it(
-      `after the batch step "${step}" leaves the next worker to finish everything once`,
-      async (ctx) => {
-        skipWithoutRegisterHooks(ctx);
-        await recordWork();
-        const worker = await startChildUntil(step, `at ${step}`);
-        await kill(worker);
-        // The kernel released its lock; its version stays until the next holder overwrites it.
-        expect(await readWorkerVersion(home.statePath)).toBe(1);
+    it(`after the batch step "${step}" leaves the next worker to finish everything once`, async (ctx) => {
+      skipWithoutRegisterHooks(ctx);
+      await recordWork();
+      const worker = await startChildUntil(step, `at ${step}`);
+      await kill(worker);
+      // The kernel released its lock; its version stays until the next holder overwrites it.
+      expect(await readWorkerVersion(home.statePath)).toBe(1);
 
-        const { reason, fake } = await nextWorker();
+      const { reason, fake } = await nextWorker();
 
-        expect(reason).toBe('idle');
-        expect(await readWorkerVersion(home.statePath)).toBe(0);
-        await expectEverythingOnce(fake.refreshed.map(({ source }) => source));
-      },
-      30_000
-    );
+      expect(reason).toBe('idle');
+      expect(await readWorkerVersion(home.statePath)).toBe(0);
+      await expectEverythingOnce(fake.refreshed.map(({ source }) => source));
+    }, 30_000);
   }
 
   it('during a usage refresh leaves it owed, and the next worker refreshes the source once', async (ctx) => {
