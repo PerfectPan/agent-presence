@@ -18,7 +18,13 @@ export const startWorkerProcess: StartWorker = () => {
     return;
   }
   try {
-    const child = spawn(process.execPath, [cliPath, 'worker'], { detached: true, env: process.env, stdio: 'ignore' });
+    const child = spawn(process.execPath, [cliPath, 'worker'], {
+      // Not the starter's working directory: a detached child would keep that directory pinned.
+      cwd: '/',
+      detached: true,
+      env: process.env,
+      stdio: 'ignore'
+    });
     child.on('error', () => undefined);
     child.unref();
   } catch {
