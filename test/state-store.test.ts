@@ -4,7 +4,10 @@ import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { afterEach, beforeEach, describe, expect, it } from 'vite-plus/test';
+import { isProcessLockHeld } from '@rivus/agent-kit-collab/process-lock';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test';
+import { kitPlatform } from '../src/kit-platform.js';
+import { acquireLock } from '../src/process-lock.js';
 import type { PresenceState } from '../src/state.js';
 import { loadState, saveState, withStateLock } from '../src/state-store.js';
 
@@ -108,6 +111,60 @@ describe('withStateLock', () => {
 
     await expect(withStateLock(statePath, async () => 'locked')).resolves.toBe('locked');
     expect((await stat(oldLockDir)).isDirectory()).toBe(true);
+  });
+
+  it('releases the lock when the run throws, and the next caller takes it', async () => {
+    await expect(
+      withStateLock(statePath, async () => {
+        throw new Error('the run failed');
+      })
+    ).rejects.toThrow('the run failed');
+
+    await expect(withStateLock(statePath, async () => 'again')).resolves.toBe('again');
+  });
+});
+
+describe('acquireLock', () => {
+  const never = new AbortController().signal;
+
+  /** Let pending registrations run; `setImmediate` stays real, so this works over frozen fake timers. */
+  async function turns(count: number): Promise<void> {
+    for (let turn = 0; turn < count; turn += 1) {
+      await new Promise((resolveTurn) => setImmediate(resolveTurn));
+    }
+  }
+
+  it('hands the lock to a waiter of this process when the holder releases it, without waiting on a timer', async () => {
+    const lockPath = `${statePath}.lock.db`;
+    vi.useFakeTimers({ toFake: ['setTimeout'] });
+    try {
+      const holder = await acquireLock(lockPath, never);
+      const waiting = acquireLock(lockPath, never);
+      await turns(5);
+      await holder.release();
+      // Resolving takes only the in-memory turn: no timer fires between the release and the waiter's lock.
+      const lock = await waiting;
+      await lock.release();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('rejects an aborted waiter with the signal reason, which then does not block the next waiter', async () => {
+    const lockPath = `${statePath}.lock.db`;
+    const holder = await acquireLock(lockPath, never);
+    const reason = new Error('stop waiting');
+    const controller = new AbortController();
+    const waiting = acquireLock(lockPath, controller.signal, { retryMs: 5 });
+    await turns(5);
+
+    controller.abort(reason);
+
+    await expect(waiting).rejects.toBe(reason);
+    await holder.release();
+    const next = await acquireLock(lockPath, never);
+    await next.release();
+    await expect(isProcessLockHeld(kitPlatform(), lockPath)).resolves.toBe(false);
   });
 });
 

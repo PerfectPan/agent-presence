@@ -733,8 +733,12 @@ queue (3.12).
 ### 6.1 Preconditions
 
 - Plan 0002 batches 3 and 4 merged (#97, #98: lazy command loading, the interpretation the producer reuses).
-- Kit 0.14.0 (published 2026-10-13) or later, the first release with `isProcessLockHeld` (agent-kit#106, section 7); Q1a
-  moves both kit packages to it from the 0.13.0 that Plan 0002 batch 4 pins, so Q1 waits on no kit release.
+- Kit 0.15.0 (published 2026-10-14) or later, which Q1a pins and moves both kit packages to from the 0.13.0 that Plan
+  0002 batch 4 pins, so Q1 waits on no kit release. 0.14.0 (published 2026-10-13), the first release with
+  `isProcessLockHeld` (agent-kit#106, section 7), blocked the event loop on same-process lock contention, so Q1a's
+  first cut kept a per-path turn queue in `src/process-lock.ts`; 0.15.0 takes turns of one lock inside a process in
+  memory and makes `ProcessLock.holder` optional (a process that cannot read its own identity still takes a SQLite
+  lock), so that queue is gone and the lock wrapper only converts the kit's held result to a thrown error.
   `acquireProcessLock` is already there, and since PerfectPan/agent-kit#78 (0.11.0) the `/node` and `/process-lock`
   entries bundle `zod/mini` and load no module from the `zod` package (kit adoption guide, "Choose the runtime
   boundary"), so the producer may load them.
@@ -783,8 +787,8 @@ queue (3.12).
   `src/cli/commands/hook.ts` (the direct application path moves behind a dynamic `import()`, so before Q1b replaces that
   path the hook's static graph reaches no state store, schema, dsh log or scanner module; it still reaches the kit lock
   through the log lock, Tests); `src/cli/usage-badge.ts` (an abort signal and a completion result), `package.json`
-  (+`@rivus/agent-kit-collab` at the version of `@rivus/agent-kit`, both at 0.14.0 or later (6.1), `@rivus/agent-kit`
-  moving up from 0.13.0, because collab's peer range spans one kit minor, as `^0.14.0` for collab 0.14.0; +`zod` at the
+  (+`@rivus/agent-kit-collab` at the version of `@rivus/agent-kit`, both at 0.15.0 or later (6.1), `@rivus/agent-kit`
+  moving up from 0.13.0, because collab's peer range spans one kit minor, as `^0.15.0` for collab 0.15.0; +`zod` at the
   kit's range, `^4.6.5`, shared with the kit so the lockfile resolves one copy), `pnpm-workspace.yaml` and
   `CONTRIBUTING.md` (`@rivus/agent-kit-collab` added to `minimumReleaseAgeExclude`, as the owner decided for Plan 0002's
   collab release-age exclusion), `docs/architecture.md` (the state and log locks on the kit's process lock, the source
@@ -850,7 +854,7 @@ holds the log lock or a handover aborts the wait (3.5).
 
 | Batch | Owner       | Depends on                                | When        |
 | ----- | ----------- | ----------------------------------------- | ----------- |
-| Q1a   | unconfirmed | Kit 0.14.0 (released, 6.1)                | unconfirmed |
+| Q1a   | unconfirmed | Kit 0.15.0 (released, 6.1)                | unconfirmed |
 | Q1b   | unconfirmed | Q1a                                       | unconfirmed |
 | Q2    | unconfirmed | Q1b released with Plan 0002 batch 5 (4.1) | unconfirmed |
 
