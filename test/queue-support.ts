@@ -5,10 +5,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { AppConfig } from '../src/config.js';
 import type { UsageRefreshOutcome } from '../src/cli/usage-badge.js';
-import type { QueueClock } from '../src/queue/files.js';
+import { writeTombstone, type QueueClock } from '../src/queue/files.js';
 import type { OwedWorkEffects, UsageRefreshRequest } from '../src/queue/follow-up.js';
 import { writeRecord, type RecordBody } from '../src/queue/produce.js';
+import type { StartWorker } from '../src/queue/start-worker.js';
 import type { Delay } from '../src/queue/stop-request.js';
+import { runWorker, type WorkerExitReason, type WorkerOptions } from '../src/queue/worker.js';
 import type { PresenceState } from '../src/state.js';
 import { loadState, saveState, withStateLock } from '../src/state-store.js';
 
@@ -302,6 +304,61 @@ export function fakeEffects(appendUsage?: OwedWorkEffects['appendUsage']): FakeE
     },
     failPublishes() {
       publishFails = true;
+    }
+  };
+}
+
+export interface WorkerPool {
+  /** Start a worker of `version` (1 by default) in process; the workers it starts when it leaves start the same way. */
+  start(version?: number, extra?: Partial<WorkerOptions>): Promise<WorkerExitReason>;
+  /** Every worker started so far, those started by leaving workers and commands included. */
+  readonly runs: Array<Promise<WorkerExitReason>>;
+  /** How many workers leaving workers and commands started through `starter`. */
+  startedByLeavers(): number;
+  /** A `startWorker` that starts a worker of `version` in process. */
+  starter(version?: number): StartWorker;
+  /** Resolves with every worker's exit reason once all have exited, the ones started meanwhile included. */
+  settled(): Promise<WorkerExitReason[]>;
+  /** Write the tombstone so that every worker exits, and wait for them. */
+  stop(): Promise<void>;
+}
+
+/** In-process workers sharing `defaults`, which name the state file, the time and the effects. */
+export function createWorkerPool(defaults: Omit<WorkerOptions, 'version'>): WorkerPool {
+  const runs: Array<Promise<WorkerExitReason>> = [];
+  let started = 0;
+  function start(version = 1, extra: Partial<WorkerOptions> = {}): Promise<WorkerExitReason> {
+    const startWorker: StartWorker = () => {
+      started += 1;
+      void start(version);
+    };
+    const run = runWorker({ startWorker, ...defaults, ...extra, version });
+    runs.push(run);
+    return run;
+  }
+  function starter(version = 1): StartWorker {
+    return () => {
+      started += 1;
+      void start(version);
+    };
+  }
+  async function settled(): Promise<WorkerExitReason[]> {
+    let count = -1;
+    while (count !== runs.length) {
+      count = runs.length;
+      await Promise.allSettled(runs);
+    }
+    return Promise.all(runs);
+  }
+  return {
+    start,
+    runs,
+    startedByLeavers: () => started,
+    starter,
+    settled,
+    async stop() {
+      await writeTombstone(defaults.statePath);
+      await settled().catch(() => undefined);
     }
   };
 }

@@ -76,6 +76,11 @@ export async function runCli(argv: string[]): Promise<void> {
       await reset(parsed.args);
       return;
     }
+    case 'worker': {
+      const { worker } = await import('./commands/worker.js');
+      await worker(parsed.args);
+      return;
+    }
     case 'hook': {
       let hook: (args: string[]) => Promise<void>;
       try {

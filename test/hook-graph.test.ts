@@ -17,10 +17,11 @@ const producerEntry = resolve(repoRoot, 'src/queue/produce.ts');
 // forbidden modules are the setup/installer cluster, the Clack wrapper, the
 // helpers only setup, uninstall, and login use, and the modules that hold
 // schemas or scan transcripts: the state store, the queue's schemas and
-// reader, the usage events log, the billable source table, and every usage
-// scanner. The bin entry and the dispatcher are walked as well as the hook
-// command, because a static setup import in `src/cli/app.ts` pulls the whole
-// graph into every hook run just as one in the hook command does.
+// reader, the usage events log, the billable source table, every usage
+// scanner, and the queue's appliers: the worker, the takeover, and the modules
+// only they use. The bin entry and the dispatcher are walked as well as the
+// hook command, because a static setup import in `src/cli/app.ts` pulls the
+// whole graph into every hook run just as one in the hook command does.
 const usageDir = resolve(repoRoot, 'src/usage');
 const usageScanners = readdirSync(usageDir)
   .filter((name) => name.startsWith('scan-') && name.endsWith('.ts'))
@@ -42,7 +43,14 @@ const forbiddenHookGraphModules = [
   'src/queue/schema.ts',
   'src/queue/reader.ts',
   'src/usage-events-log.ts',
-  'src/usage/billable-sources.ts'
+  'src/usage/billable-sources.ts',
+  'src/queue/apply.ts',
+  'src/queue/follow-up.ts',
+  'src/queue/owed.ts',
+  'src/queue/takeover.ts',
+  'src/queue/worker.ts',
+  'src/queue/worker-lock.ts',
+  'src/cli/commands/worker.ts'
 ]
   .map((relative) => resolve(repoRoot, relative))
   .concat(usageScanners);
