@@ -192,8 +192,10 @@ export async function workOffOwedItem(item: OwedItem, context: OwedWorkContext):
  * sync, a refresh once a boundary updates its entry, and every item by the next applier.
  */
 export interface OwedAttempts {
-  /** The next item of `kinds` this applier can do and has not tried in vain, in work-off order. */
+  /** The next item of `kinds` this applier can do and has not tried in vain, in work-off order. Offering one starts its attempt. */
   next(state: PresenceState, sources: ReadonlySet<string>, kinds?: readonly OwedKind[]): OwedItem | undefined;
+  /** Whether `next` would offer an item of `kinds`, asked without starting an attempt. */
+  remains(state: PresenceState, sources: ReadonlySet<string>, kinds?: readonly OwedKind[]): boolean;
   /** Note an item that ended `aborted` or `failed`. */
   setAside(item: OwedItem): void;
   /** A new sync is owed: an applied event or a completed refresh. */
@@ -204,6 +206,10 @@ export function createOwedAttempts(): OwedAttempts {
   const dshIds = new Set<string>();
   const refreshes: UsageRefreshEntry[] = [];
   let renderedSync = false;
+  // Counts the syncs that became owed, so a set-aside covers only the attempt that started at its generation: a sync
+  // owed again while an earlier one ran, by an event the applier applied mid-flight, is a different attempt.
+  let syncGeneration = 0;
+  let startedSyncGeneration = -1;
   const setAside = (item: OwedItem): boolean => {
     switch (item.kind) {
       case 'dshUsage':
@@ -217,11 +223,24 @@ export function createOwedAttempts(): OwedAttempts {
         return renderedSync;
     }
   };
+  const offered = (
+    state: PresenceState,
+    sources: ReadonlySet<string>,
+    kinds?: readonly OwedKind[]
+  ): OwedItem | undefined =>
+    doableOwedItems(state.queueOwed, sources).find(
+      (item) => (kinds === undefined || kinds.includes(item.kind)) && !setAside(item)
+    );
   return {
     next(state, sources, kinds) {
-      return doableOwedItems(state.queueOwed, sources).find(
-        (item) => (kinds === undefined || kinds.includes(item.kind)) && !setAside(item)
-      );
+      const item = offered(state, sources, kinds);
+      if (item?.kind === 'renderedSync') {
+        startedSyncGeneration = syncGeneration;
+      }
+      return item;
+    },
+    remains(state, sources, kinds) {
+      return offered(state, sources, kinds) !== undefined;
     },
     setAside(item) {
       switch (item.kind) {
@@ -232,11 +251,14 @@ export function createOwedAttempts(): OwedAttempts {
           refreshes.push({ ...item.entry });
           return;
         case 'renderedSync':
-          renderedSync = true;
+          if (startedSyncGeneration === syncGeneration) {
+            renderedSync = true;
+          }
           return;
       }
     },
     renderedSyncOwedAgain() {
+      syncGeneration += 1;
       renderedSync = false;
     }
   };

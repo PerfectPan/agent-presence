@@ -1,8 +1,9 @@
-import { mkdirSync, readdirSync, renameSync, utimesSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, readdirSync, renameSync, utimesSync, writeFileSync } from 'node:fs';
 import { readdir } from 'node:fs/promises';
 import { basename, dirname, join } from 'node:path';
-import type { ProcessLock } from '@rivus/agent-kit-collab/process-lock';
+import type { ProcessLock, ProcessLockPlatform } from '@rivus/agent-kit-collab/process-lock';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test';
+import type { OwedWorkEffects } from '../src/queue/follow-up.js';
 import { kitPlatform } from '../src/kit-platform.js';
 import {
   queuePaths,
@@ -33,6 +34,7 @@ import {
   T0,
   until,
   virtualTime,
+  writeState,
   type FakeEffects,
   type QueueHome,
   type VirtualTime,
@@ -164,6 +166,26 @@ function touchesByHand(): { delay: Delay; tick: () => void } {
   return { delay, tick: () => endWait?.() };
 }
 
+/** The kit's platform counting the worker lock's acquisition attempts: an attempt opens the lock database writable. */
+function tryCountingPlatform(tries: { count: number }): ProcessLockPlatform {
+  const base = kitPlatform();
+  const { sqlite } = base;
+  if (!sqlite) {
+    throw new Error('the platform has no SQLite');
+  }
+  return {
+    ...base,
+    sqlite: {
+      open(path, options) {
+        if (path.endsWith('.worker.lock.db') && options?.readonly !== true) {
+          tries.count += 1;
+        }
+        return sqlite.open(path, options);
+      }
+    }
+  };
+}
+
 describe('a started worker', () => {
   it('takes the free lock, writes its version, applies, and leaves after the idle interval with its version gone', async () => {
     await recordAt(home.statePath, T0, eventBody('SessionStart', 's1'));
@@ -255,6 +277,31 @@ describe('a started worker', () => {
     expect(await requestFiles()).toEqual([]);
     expect(sessionIds(await readState(home.statePath))).toEqual(['s1']);
   });
+
+  it('makes no lock try while a stop request is live, and takes the lock once it is gone', async () => {
+    const lock = await holdLockAs(0);
+    // The command waits with a live request; its toucher keeps the request fresh on this clock.
+    const request = await holdStopRequest(home.statePath, { clock: vt.clock, pid: COMMAND_PID, delay: vt.delay });
+    const tries = { count: 0 };
+    let settled = false;
+    const pool = workers({ platform: tryCountingPlatform(tries), idleMs: 1_000 });
+    const run = pool.start().finally(() => {
+      settled = true;
+    });
+    await until(() => vt.monotonic.now() >= 5_000, 'a few rounds');
+    expect(settled).toBe(false);
+
+    // The holder leaves while the request is still live: the lock stays free for the waiting command.
+    await releaseLock(lock);
+    await until(() => vt.monotonic.now() >= 10_000, 'a few more rounds');
+    expect(settled).toBe(false);
+    expect(tries.count).toBe(0);
+    expect(await lockHeld()).toBe(false);
+
+    await request.release();
+    expect(await run).toBe('idle');
+    expect(tries.count).toBeGreaterThan(0);
+  }, 30_000);
 });
 
 describe('a worker holding the lock', () => {
@@ -361,6 +408,90 @@ describe('a worker holding the lock', () => {
     expect(sessionIds(await readState(home.statePath))).toEqual([]);
     expect(starts).toBe(1);
   });
+});
+
+describe('the follow-up lane', () => {
+  it('tries the rendered sync again when an event applied while a publish was in flight and that publish failed', async () => {
+    // Usage renders nothing here, so the applied event owes no refresh: the sync's retry is the only way it gets done.
+    await home.writeConfig({ provider: 'feishu-signature' });
+    await writeState(home.statePath, { queueOwed: { renderedSync: true } });
+    const published: string[] = [];
+    let first = true;
+    let releaseAt: number | undefined;
+    let started: () => void = () => undefined;
+    const inFlight = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    const publish: OwedWorkEffects['publish'] = async (value) => {
+      if (!first) {
+        published.push(value);
+        return;
+      }
+      first = false;
+      started();
+      // The failure waits past the iteration that applied the event, so the new sync is owed again before this one
+      // fails: that is the order in which a set-aside would cover it too.
+      await until(() => releaseAt !== undefined && vt.monotonic.now() >= releaseAt, 'the applied event settled');
+      throw new Error('provider unavailable');
+    };
+
+    const run = workers({ idleMs: 1_000 }).start(1, { effects: { ...fake.effects, publish } });
+    await inFlight;
+    await recordAt(home.statePath, vt.clock.now(), eventBody('SessionStart', 's1'));
+    await until(async () => sessionIds(await readState(home.statePath)).includes('s1'), 'the event applied');
+    releaseAt = vt.monotonic.now() + 750;
+
+    expect(await run).toBe('idle');
+    expect(published).toHaveLength(1);
+    expect((await readState(home.statePath)).queueOwed?.renderedSync).toBeUndefined();
+  }, 30_000);
+
+  it('sets a failed rendered sync aside instead of trying it again round after round', async () => {
+    await writeState(home.statePath, { queueOwed: { renderedSync: true } });
+    let attempts = 0;
+    const publish: OwedWorkEffects['publish'] = async () => {
+      attempts += 1;
+      throw new Error('provider unavailable');
+    };
+
+    expect(await workers({ idleMs: 1_000 }).start(1, { effects: { ...fake.effects, publish } })).toBe('idle');
+
+    expect(attempts).toBe(1);
+  }, 15_000);
+});
+
+describe('a worker whose iterations fail', () => {
+  it('leaves with failing after one idle interval of iterations that throw past the batch, releasing the lock', async () => {
+    await recordAt(home.statePath, T0, eventBody('SessionStart', 's1'));
+    // A source entry of null makes every iteration throw after the batch, when the source table is resolved.
+    writeFileSync(join(home.dir, 'config.json'), '{"plugins":{"sources":{"x":null}}}');
+    const pool = workers({ idleMs: 1_000 });
+
+    expect(await pool.start()).toBe('failing');
+
+    expect(vt.monotonic.now()).toBeGreaterThanOrEqual(1_000);
+    expect(await lockHeld()).toBe(false);
+    expect(await readWorkerVersion(home.statePath)).toBe(0);
+    expect(pool.startedByLeavers()).toBe(0);
+    expect(sessionIds(await readState(home.statePath))).toEqual(['s1']);
+  }, 15_000);
+
+  it('does not leave with failing when the failures stop within the interval', async () => {
+    writeFileSync(join(home.dir, 'config.json'), '{"plugins":{"sources":{"x":null}}}');
+    const pool = workers({ idleMs: 1_000 });
+    const run = pool.start();
+    await until(() => {
+      try {
+        return readFileSync(home.logPath, 'utf8').includes('worker.batch.failed');
+      } catch {
+        return false;
+      }
+    }, 'a failed iteration logged');
+
+    writeFileSync(join(home.dir, 'config.json'), JSON.stringify({ provider: 'feishu-signature' }));
+
+    expect(await run).toBe('idle');
+  }, 15_000);
 });
 
 describe('a command taking over', () => {

@@ -210,7 +210,7 @@ function createFollowUpLane(context: WorkerContext): FollowUpLane {
         });
     },
     async hasWork(config) {
-      return attempts.next(await loadState(context.statePath), knownSources(config)) !== undefined;
+      return attempts.remains(await loadState(context.statePath), knownSources(config));
     },
     renderedSyncOwedAgain: () => attempts.renderedSyncOwedAgain(),
     async stop() {
@@ -257,7 +257,6 @@ async function applyWhileHolding(
         clock: context.clock,
         onStep: context.onBatchStep
       });
-      failingSince = undefined;
       if (batch.applied > 0) {
         lastAppliedAt = context.monotonic.now();
       }
@@ -277,6 +276,9 @@ async function applyWhileHolding(
         end = 'idle';
         break;
       }
+      // A successful batch alone does not clear the failing clock: the checks and `hasWork` around it can throw too,
+      // and one of them throwing every round must still run the clock out and make the worker leave (3.10).
+      failingSince = undefined;
     } catch (error) {
       await logQuietly({ type: 'worker.batch.failed', error: errorMessage(error) });
       failingSince ??= context.monotonic.now();
