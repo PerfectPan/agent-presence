@@ -40,20 +40,35 @@ interpreted (Spec and Plan 0002).
   `reset --force` and the deferred `flush --force` publish without waiting. If a worker is killed during a publish, the
   next worker runs the sync again; because the interrupted publish already claimed the interval, that sync schedules the
   forced publish one debounce interval later.
-- A background worker (`agent-presence worker`) applies recorded events. At most one worker runs per state file. A hook
-  starts a worker when none is alive. The worker exits after the idle interval (default 5 minutes) once no event and no
-  follow-up work is pending; a publish scheduled for later is handed to the deferred flush, as the hook hands it today.
+- A background worker (`agent-presence worker`) applies recorded events. At most one worker applies events per state
+  file. A hook starts a worker unless a worker, or a command that took over, of the hook's release or a newer one is
+  applying events; of several workers started at once, one applies events and the others exit without applying any.
+  The worker exits after the idle interval (default 5 minutes) once no event and no follow-up work is pending, apart
+  from follow-up work that only a newer release can do (see the upgrade requirement below); a publish scheduled for
+  later is handed to the deferred flush, as the hook hands it today.
 - While a worker runs, a recorded event is applied to the state within 1 second, also while a publish or a usage scan is
   in progress. After a worker crash, the events pending at that moment are applied when a later hook or command runs.
   So are the events pending when a command that took over from the worker is killed (for example by a signal) before
   it exits, including every event recorded while it made its own change; that case waits for the owner to confirm it
   (paired Plan, section 7).
 - The commands that change state (`status`, `reset`, `flush`, `update`, including the shutdown watcher's `reset`) take
-  over from a running worker, apply every event recorded before them, make their own change and report as they do today,
-  with every option keeping its meaning. A running worker hands over within about a second. `reset` leaves usage
-  refreshes to the next worker, so it takes no longer than applying the pending events and its own publish. A command
-  that cannot take over within its wait (default 10 seconds, for example because a worker is stuck) fails as a command
-  failure does today.
+  over from a running worker, apply every event recorded before them (except as the next requirement states for a
+  command of an older release), make their own change and report as they do today, with every option keeping its
+  meaning. A running worker hands over within about a second. `reset` leaves usage refreshes to the next worker, so it
+  takes no longer than applying the pending events and its own publish. A command that cannot take over within its
+  wait (10 seconds, for example because a worker is stuck) fails as a command failure does today.
+- After an upgrade between two releases that both record events, a process of the older release can still apply events
+  for a while, for example a command that was already running, a publish the older release had scheduled, or a command
+  run from another installed release. It cannot apply events that the newer release recorded in a newer form, nor do
+  follow-up work that only the newer release can do, such as the usage refresh of an agent the newer release added; it
+  leaves that work pending and keeps it when it saves the state. A command of the older release makes its change
+  without the newer events pending when it takes over, and they are applied after it, so after a `reset` of the older
+  release, a session that such an event starts is running. While commands of the older release keep the worker's place
+  for more than 60 seconds, alone or one after another, or when a process of the older release is the next to apply
+  events right after a crash, newer events wait until a later hook or command runs. Follow-up work that only the newer
+  release can do waits while a process of the older release keeps the worker's place, and a worker of the older
+  release can exit when idle while that work is pending; a later hook or command gets it done. These cases wait for
+  the owner to confirm them (paired Plan, section 7).
 - `uninstall --all` stops the worker and removes recorded events together with the state; an event recorded by a hook
   that was already running when `uninstall --all` began is never applied. Until `setup` runs again,
   hooks that still fire record nothing, no worker starts, and the commands that change state change nothing. `uninstall`
@@ -74,8 +89,9 @@ interpreted (Spec and Plan 0002).
 - Session semantics (inactivity TTL, reopen on a new prompt, fallback finish), the source table, render templates,
   providers, the publishing behavior above, and the usage badge rules.
 - The diagnostic log records payload key names only, never payload values.
-- The state file gains only optional fields (the ids of applied events and pending follow-up work), which older releases
-  drop when they load it.
+- The state file gains only optional fields (the ids of applied events and pending follow-up work), which releases from
+  before the queue drop when they load it. Releases with the queue keep the parts of these fields they do not know when
+  they save the state.
 
 ## Domain Invariants
 
@@ -128,8 +144,9 @@ interpreted (Spec and Plan 0002).
 ### S7: Upgrade
 
 - Given a worker of the previous release is running
-- When a hook of the new release records an event in a newer record version
-- Then the old worker stops within about a second, and a worker of the new release applies the event
+- When hooks of the new release record events in a newer record version, one at a time or many at once
+- Then the old worker stops within about a second, one worker of the new release applies every event exactly once, and
+  any other workers those hooks started exit
 
 ### S8: Disk full
 
@@ -157,10 +174,15 @@ interpreted (Spec and Plan 0002).
   install the new release and run `setup`. A deferred flush the previous release had already scheduled still runs that
   release's `flush` when due (and retries while the provider rate-limits it); it can race the worker, and this is not
   handled.
-- Downgrade: run `agent-presence worker --stop` with the new release, then install the previous release, which ignores
-  the queue.
-- One state file uses one configuration: the worker reads the configuration file before each batch and uses the
-  environment of the process that started it (a hook or a command that took over) for credentials.
+- Upgrades between releases that both have the queue: every recorded event is applied once and no pending follow-up
+  work is lost, whichever release's process applies events or saves the state in between; the order and timing
+  exceptions for processes of the older release are stated above.
+- Downgrade: run `agent-presence worker --stop` with the new release, then install the previous release. A release from
+  before the queue ignores the queue. A release with the queue records nothing until its `setup` runs, so run `setup`
+  after installing it.
+- One state file uses one configuration: the worker reads the configuration file before each batch and uses for
+  credentials the environment of the hook or command whose run started it, passed on unchanged through any worker
+  started in between.
 - The worker uses `@rivus/agent-kit-collab`'s process lock and needs Node.js 22.13 or later, which presence already
   requires.
 
