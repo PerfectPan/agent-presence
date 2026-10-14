@@ -162,11 +162,11 @@ those locks to the kit's crash-safe process lock, which Plan 0002 batch 1 needs,
   `epoch` (the number the producer read from `<state>.epoch` before its tombstone check, 3.3 and 3.8; `0` while that file
   does not exist, as on a first install before any `setup` removed a tombstone):
 
-  | `kind`  | Fields                                                                                                                                        |
-  | ------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-  | `event` | `source`, `event` (presence's internal name), `sessionId`, `project`, `subagent` (`id`, `type`), `usage` (dsh only), `scanEnv`, `payloadKeys` |
-  | `skip`  | `code` (`missing-session-id`, `no-presence-source`, `ignored-event`), `source` or `agent`, `nativeEvent`, `payloadKeys`                       |
-  | `error` | `code` (for example `handler-refused`, `resolver-failed`, `hook-load-failed`), `source` if known, a message without payload values            |
+  | `kind`  | Fields                                                                                                                                         |
+  | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+  | `event` | `source`, `event` (presence's internal name), `sessionId`, `project`, `subagent` (`id`, `type`), `usage` (dsh only), `scanEnv`, `payloadKeys`  |
+  | `skip`  | `code` (open, like an error's: `missing-session-id`, `no-presence-source`, `ignored-event`), `source` or `agent`, `nativeEvent`, `payloadKeys` |
+  | `error` | `code` (for example `handler-refused`, `resolver-failed`, `hook-load-failed`), `source` if known, a message without payload values             |
   - `usage` holds the normalized dsh usage event: `model` (a model name, needed for pricing, `src/usage/pricing.ts:122-128`)
     and the token and cost numbers (`src/usage-events.ts:63-71`); nothing else from the payload.
   - `scanEnv` holds the environment values that locate the source's transcripts (for example `CLAUDE_CONFIG_DIR`); Q1
@@ -178,6 +178,8 @@ those locks to the kit's crash-safe process lock, which Plan 0002 batch 1 needs,
     record's `scanEnv`. Either way, a variable a scan reads is always one the producer copies. It is set on boundary
     events only and never carries credentials.
   - `payloadKeys` holds key names, for the diagnostic log.
+  - A `skip` record's `code` is any non-empty string, as an `error` record's is: a later release may skip for a reason
+    of its own without raising `v`, and an older applier only logs a code it does not know.
 
 - `v` increases on an incompatible change, and when a release adds a kind of owed work or a built-in source (3.5). A
   worker applies every record with its own `v` or a lower one, and never one with a higher `v`: it hands over to a
@@ -270,10 +272,9 @@ The producer takes no lock, and its own reads use no schema (3.2). In order, it:
   missing file reads as free and is not created), opens it read-only with `busy_timeout = 0` and runs one statement
   under a shared lock: it never takes the lock, writes no `<path>.holder`, reads no process identity, and checks
   running at once do not see each other as holders. An acquisition's first attempt waits out a check, so the idle-exit
-  retake and a started worker's tries, all with `wait: false` (3.6, above), still get a free lock. A command waiting
-  with `wait: true` (3.7) can find the lock busy on a later retry while a check reads it, and gets it one backoff later:
-  a delay, never a missed lock. Producers' checks can cause it, and so can a check that a started worker began just
-  before the request was written; while the request is live, started workers make no new check (above). The answer can
+  retake, a started worker's tries and a waiting command's tries, all with `wait: false` (3.6, 3.7, above), still get
+  a free lock. The kit's caveat, that the later retries of a `wait: true` acquisition can find the lock busy while a
+  check reads it, does not arise: no applier waits with `wait: true`. The answer can
   be stale when it arrives; only the acquisition decides who holds the lock, and the exit order (3.6) covers a holder
   that leaves right after a check.
 - `acquireProcessLock` with `wait: false` cannot stand in for the check. When the lock is free, it takes it and writes
@@ -314,7 +315,9 @@ only adds to these fields, and every release keeps what it does not know:
   `looseObject`, so keys and fields a release does not know are kept verbatim and written back on every save. A release
   that changes a known entry, for example increases its generation, changes the parsed entry in place and never builds
   a new object for it, so the entry keeps its unknown fields; the dsh append writes an entry's `usage` as parsed, unknown
-  fields included.
+  fields included. A boundary updates the `usageRefresh` entry whose `source` and whole `scanEnv`, keys it does not
+  know included and in any key order, equal its own, so an older release never merges entries a newer release keeps
+  apart.
 - Working off: a release works off only the owed work it can do, which is every entry of the kinds it knows except a
   `usageRefresh` entry whose source is not in its merged source table (its built-in sources and the sources in the
   configuration file, `src/sources.ts`). It leaves the rest owed and untouched, and that work neither keeps it from its
@@ -354,16 +357,26 @@ stop (3.7):
   repeated id. The item leaves `queueOwed` only after the append wrote.
 - Usage refresh: through the existing refresh for that source, with its `scanEnv` and boundary time so the day rule
   (`usage-badge.ts:71-79`) holds; an entry whose source is not in the merged source table is skipped and stays owed
-  (above). The refresh gains an abort signal and returns whether it completed. Afterwards, under
-  the state lock, the entry is removed only if its generation is still the one the refresh started with; a boundary that
-  arrived during the scan keeps it owed.
+  (above). The scanners read their transcript roots from the worker's environment with every variable that the
+  entry's built-in source reads, or that the entry recorded, set to the recorded value, or unset when none was
+  recorded. The refresh gains an abort signal and returns whether it completed. In the refresh's own locked save, the
+  entry is removed only if its generation is still the one the refresh started with; a boundary that arrived during
+  the scan keeps it owed. A refresh that completes without saving (nothing to scan, or a failed scan that keeps the
+  cache) removes the entry the same way in a save of its own.
 - Rendered sync: when `renderedSync` is set, today's `syncRenderedSlotWithDeferredFlush` runs once with the worker's
   clock. It publishes or schedules the deferred flush exactly as the hook does today. `renderedSync` is cleared in the
-  locked save that records the publish's success, in the save that schedules the deferred flush, or when the sync finds
-  nothing to publish; a rollback after a failed or aborted publish keeps it. So if the worker dies or hands over before
-  the publish finished, the next applier runs the sync again; when the interrupted publish already claimed the interval,
-  that sync schedules the forced publish one debounce interval later.
-- A completed usage refresh sets `renderedSync` again, because it changes what the slot renders.
+  locked save that records the publish's success when the state still renders the published value (records applied
+  during the publish that render another value keep it), in the save that schedules the deferred flush or finds one
+  due in time, or when the sync finds nothing to publish; a rollback after a failed or aborted publish keeps it. So if
+  the worker dies or hands over before the publish finished, the next applier runs the sync again; when the
+  interrupted publish already claimed the interval, that sync schedules the forced publish one debounce interval later.
+  Commands' rendered syncs clear it by the same rules; `update --value` publishes no rendered value and leaves it.
+- A usage refresh that completed and saved sets `renderedSync` again in that save, because it changes what the slot
+  renders.
+- An item that fails is not tried again by the same applier until new work for it is owed: a failed sync until an
+  applied event or a refresh owes a sync again, a refresh until a boundary updates its entry, a dsh append not at all;
+  the next applier tries each again. So a provider that keeps failing cannot keep a worker busy, and an item set aside
+  this way does not keep the worker from its idle exit, though it counts as owed work when a holder leaves (3.6).
 
 A live stop request, or a record with a higher `v` (3.7), aborts the item in progress through its abort signal (the dsh
 append's wait for the log lock, the refresh's scans, the publish's request), so the holder stops within about a second;
@@ -418,7 +431,9 @@ a worker of its own release, which waits for the lock (3.3).
 ### 3.7 Taking over
 
 - Only a command asks for the applier's place. It writes its own request file `<state>.worker.stop.<token>` holding its
-  pid and waits for the lock with `wait: true`, up to 10 seconds in every release. While it waits, it touches the file
+  pid and waits for the lock up to 10 seconds in every release: every 50 ms it checks the lock with `isProcessLockHeld`
+  and, when it is free, tries once with `wait: false`, as a started worker does (3.3), so every try is an acquisition's
+  first attempt and none pays a try against a held lock. While it waits, it touches the file
   (sets its modification time to now) every 2 seconds and writes it again, with the same name and pid, if the file is
   gone. When it gets the lock or gives up, it stops touching the file, then deletes it. It stays alive for its whole
   wait, so its request counts exactly while it waits. A request is live while its pid is alive and its file's
@@ -518,6 +533,7 @@ a worker of its own release, which waits for the lock (3.3).
 | Worker killed            | The kernel releases the SQLite lock; `queueApplied` and `queueOwed` finish the work (Spec S4)                        |
 | Worker stuck             | It keeps the lock, so producers start no other worker; takeovers time out and commands fail; records wait; section 7 |
 | Bad record               | Moved to `<state>.queue/failed/` (kept 7 days), logged, skipped                                                      |
+| Applying keeps failing   | Retried every iteration; after a whole idle interval of failures the worker leaves, starting no worker; records wait |
 | Large backlog            | Nothing is dropped; above 10,000 records the worker logs a warning                                                   |
 | External call hangs      | Scans and the publish take an abort signal and a timeout; the apply lane continues                                   |
 
@@ -527,8 +543,9 @@ The producer writes no log line. Source resolution returns its diagnostics inste
 records them as `error` records; the hook-module load fallback records an `error` record, and if recording fails too it
 only prints the output. The worker writes the diagnostic line for each event (payload key names), the line the hook
 writes today for each `skip` and `error` record, and `worker.start`, `worker.exit` with its reason (idle, a stop
-request, a record with a higher `v`, the tombstone, a holder of its release or a newer one, or the 60-second limit,
-3.3, 3.6), batch sizes, failed records and backlog warnings.
+request, a record with a higher `v`, the tombstone, a holder of its release or a newer one, the 60-second limit, or
+applying failing for a whole idle interval, 3.3, 3.6, 3.10), batch sizes, failed records and backlog warnings. The lines
+of one batch's records go into one append, so a batch takes the log lock once.
 
 ### 3.12 Compatibility and migration
 
@@ -751,7 +768,8 @@ queue (3.12).
   the `v`-only schema, and the loose `queueApplied` and `queueOwed` schemas, 3.5) with the reader, the stop request and
   takeover (3.7, with the request's touches and age bound), the leaving order (3.6) and the tombstone writer, which the
   worker and the commands import, and `produce.ts` (record writer, epoch read, tombstone check and lock check, 3.3),
-  which imports no schema module; `src/cli/commands/worker.ts`; `src/state.ts`, split the same way: the types and the
+  which imports no schema module; `src/cli/commands/worker.ts`, registered in `src/cli/app.ts` and not listed in the
+  help; `src/state.ts`, split the same way: the types and the
   session functions (`applyAgentEvent`, `isSessionBoundaryEvent`) stay there without a schema, and loading (with the queue-field schemas), saving and `withStateLock` on the kit's process lock move to a
   state-store module that the worker and the commands import; `src/log-retention.ts` (the log lock on the kit's process
   lock, with an append that waits until it holds the lock; the hardlink lock and its marker deleted), the shared lazy
@@ -792,7 +810,7 @@ queue (3.12).
 
 - Files: `src/cli/commands/hook.ts` (the producer, through a static import of `src/queue/produce.ts`; it no longer loads
   the direct path), `src/sources.ts` (diagnostics returned instead of written), `src/cli/hook-output.ts` (error record),
-  `src/cli/app.ts` (`worker`), `src/cli/commands/{status,reset,flush,update,uninstall}.ts` (takeover), `src/setup.ts`
+  `src/cli/commands/{status,reset,flush,update,uninstall}.ts` (takeover), `src/setup.ts`
   (tombstone removal), `docs/architecture.md` (the hook runtime: producer, queue, worker, takeover and tombstone), a
   changeset.
 - Tests: every scenario in 6.2, and 5.3's producer and command checks: the upgrade burst, producers while a command
