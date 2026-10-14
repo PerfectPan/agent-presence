@@ -392,43 +392,28 @@ describe('credential storage', () => {
       ]);
     });
 
-    it('omits the keychain argument entirely when no path is set', async () => {
-      execFileMock.mockImplementation(cbIgnore);
+    // Write and delete argv without a path stay pinned by the preserved-
+    // behavior block above; this case pins the reads, which nowhere else do.
+    it('keeps find-generic-password free of a keychain argument when no path is set', async () => {
+      execFileMock
+        .mockImplementationOnce(cbReject('not found')) // primary token read
+        .mockImplementationOnce(cbResolve('legacy\n')) // legacy token read
+        .mockImplementationOnce(cbResolve('slot\n')); // slotId read
 
       const store = createCredentialStore();
-      await store.writeCredential({ token: 'tok', slotId: 'sid' });
-      await store.deleteCredential();
+      await expect(store.readCredential()).resolves.toEqual({ token: 'legacy', slotId: 'slot' });
 
       const calls = execFileMock.mock.calls;
-      expect(calls[0]![1]).toEqual([
-        'add-generic-password',
-        '-U',
-        '-s',
-        'agent-signature:l-garyyang',
-        '-a',
-        'token',
-        '-w',
-        'tok'
-      ]);
+      expect(calls[0]![1]).toEqual(['find-generic-password', '-s', 'agent-signature:l-garyyang', '-a', 'token', '-w']);
       expect(calls[1]![1]).toEqual([
-        'add-generic-password',
-        '-U',
-        '-s',
-        'agent-signature:l-garyyang',
-        '-a',
-        'slotId',
-        '-w',
-        'sid'
-      ]);
-      expect(calls[2]![1]).toEqual(['delete-generic-password', '-s', 'agent-signature:l-garyyang', '-a', 'token']);
-      expect(calls[3]![1]).toEqual(['delete-generic-password', '-s', 'agent-signature:l-garyyang', '-a', 'slotId']);
-      expect(calls[4]![1]).toEqual([
-        'delete-generic-password',
+        'find-generic-password',
         '-s',
         'agent-signature-slot-credential',
         '-a',
-        process.env.USER ?? 'agent-presence'
+        process.env.USER ?? 'agent-presence',
+        '-w'
       ]);
+      expect(calls[2]![1]).toEqual(['find-generic-password', '-s', 'agent-signature:l-garyyang', '-a', 'slotId', '-w']);
     });
   });
 });

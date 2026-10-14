@@ -90,8 +90,9 @@ async function withIsolatedCredentialStore(run: (store: CredentialStore) => Prom
 }
 
 describe('credential storage integration', () => {
-  // The macOS case runs against a throwaway keychain file created per run, so
-  // fixed values cannot collide with anything.
+  // Fixed values keep the assertions readable: the macOS case runs against a
+  // throwaway keychain file, so they cannot collide with anything, while the
+  // opt-in Linux case writes to the real keyring under a unique service name.
   const testToken = 'integration-test-token';
   const testSlotId = 'integration-test-slot';
   const updatedToken = 'integration-test-token-updated';
