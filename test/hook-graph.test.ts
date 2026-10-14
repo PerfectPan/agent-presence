@@ -62,7 +62,8 @@ const scriptsDir = resolve(repoRoot, 'scripts');
 // that brings a package into the hook path adds it here; `effect` and `zod`
 // never go on this list (docs/architecture.md, "CLI"). The kit's process lock
 // and Node platform are here because the log lock reaches them through
-// `src/sources.ts`, `src/cli/hook-output.ts`, and `src/cli/io.ts`.
+// `src/sources.ts` and `src/cli/io.ts`, and the producer through
+// `src/cli/hook-output.ts`.
 const hookGraphPackages = [
   '@rivus/agent-kit-collab/process-lock',
   '@rivus/agent-kit/harness/events',
@@ -177,7 +178,8 @@ describe('hook static import graph', () => {
     expect(usageScanners).toContain(resolve(usageDir, 'scan-dsh.ts'));
     const graph = walkStaticGraph([cliEntry, hookCommandEntry]);
 
-    expect(graph.files).toEqual(expect.arrayContaining([cliEntry, hookCommandEntry, deepHookModule]));
+    // The producer is in the walk: the hook records through it (Plan 0003 3.3).
+    expect(graph.files).toEqual(expect.arrayContaining([cliEntry, hookCommandEntry, deepHookModule, producerEntry]));
     const reachedForbidden = graph.files.filter(
       (file) => forbiddenHookGraphModules.includes(file) || file.startsWith(`${scriptsDir}/`)
     );

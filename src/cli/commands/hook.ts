@@ -1,13 +1,12 @@
 import { getStatePath, loadConfig } from '../../config.js';
 import { produceRecord, type RecordBody } from '../../queue/produce.js';
-import { startWorkerProcess, type StartWorker } from '../../queue/start-worker.js';
 import { isSessionBoundaryEvent } from '../../state.js';
 import { usageEventFromPayload } from '../../usage-events.js';
 import { hasFlag, optionValue } from '../args.js';
 import { errorMessage } from '../errors.js';
 import { describePayloadKeys } from '../hook-diagnostics.js';
 import { interpretAgentHook } from '../hook-interpret.js';
-import { recordHookFailure, writeHookOutput } from '../hook-output.js';
+import { recordHookFailure, startHookWorker, writeHookOutput } from '../hook-output.js';
 import { BUILTIN_SOURCE_PLUGINS } from '../hook-context.js';
 import { readStdinJson } from '../io.js';
 import { resolveHookContextForSource, type SourceDiagnostics } from '../../sources.js';
@@ -18,35 +17,12 @@ import { resolveHookContextForSource, type SourceDiagnostics } from '../../sourc
 // loses the event (3.10). The direct application path stays in `src/cli/hook-apply.ts` until Q2 deletes it; the
 // event-table test uses it as the oracle.
 
-// Tests run the worker in process instead of detached (test/hook-producer-support.ts).
-let startWorker: StartWorker = startWorkerProcess;
-
-/** Test-only: route the producer's worker starts through `override` until restored with `undefined`. */
-export function setHookStartWorkerForTests(override: StartWorker | undefined): void {
-  startWorker = override ?? startWorkerProcess;
-}
-
 /** The queue writes of one hook run: whether a worker is wanted, and whether the run already recorded its failure. */
 interface HookProduction {
-  readonly statePath: string;
+  /** Set inside the run's try: reading it can fail (no HOME, no passwd entry), and the run still prints its output. */
+  statePath: string;
   startRequested: boolean;
   failureRecorded: boolean;
-}
-
-/** The error-record codes for the source-resolution lines, by their `source <verb>` prefix. */
-const SOURCE_DIAGNOSTIC_CODES: ReadonlyArray<readonly [prefix: string, code: string]> = [
-  ['source refused ', 'source-refused'],
-  ['source invalid ', 'source-invalid'],
-  ['source id mismatch ', 'source-id-mismatch'],
-  ['source load failed ', 'source-load-failed'],
-  ['source loaded ', 'source-loaded'],
-  ['source resolve failed ', 'source-resolve-failed'],
-  ['source skipped ', 'source-skipped']
-];
-
-function sourceDiagnosticCode(line: string): string {
-  const kind = SOURCE_DIAGNOSTIC_CODES.find(([prefix]) => line.startsWith(prefix));
-  return kind?.[1] ?? 'source-diagnostic';
 }
 
 /** The recorded `scanEnv` of a boundary event: the transcript-root variables this source's scanner reads, set ones only. */
@@ -71,7 +47,9 @@ async function record(production: HookProduction, body: RecordBody): Promise<voi
   } catch (error) {
     if (!production.failureRecorded) {
       production.failureRecorded = true;
-      await recordHookFailure(`hook failed: ${errorMessage(error)}`);
+      if (await recordHookFailure(`hook failed: ${errorMessage(error)}`)) {
+        production.startRequested = true;
+      }
     }
   }
 }
@@ -86,9 +64,15 @@ async function recordResolvedHook(
   const context = await resolveHookContextForSource(source, payload, config, { diagnostics });
   const event = options.event ?? context.event ?? 'Heartbeat';
 
-  // The resolution lines precede the record, as the log lines they replace were written first (3.11).
-  for (const line of diagnostics) {
-    await record(production, { kind: 'error', code: sourceDiagnosticCode(line), message: line });
+  // The resolution lines become error records like the run's main record below (3.11); with the same recorded time,
+  // the applier's file-name order decides when they are applied.
+  for (const diagnostic of diagnostics) {
+    await record(production, {
+      kind: 'error',
+      code: diagnostic.code,
+      source: diagnostic.source,
+      message: diagnostic.message
+    });
   }
 
   const sessionId = context.sessionId;
@@ -155,18 +139,34 @@ async function runSourceHook(args: string[], production: HookProduction): Promis
 
 export async function hook(args: string[]): Promise<void> {
   const silent = hasFlag(args, '--silent');
-  const production: HookProduction = { statePath: getStatePath(), startRequested: false, failureRecorded: false };
+  const production: HookProduction = { statePath: '', startRequested: false, failureRecorded: false };
+  let startRequested = false;
   try {
+    production.statePath = getStatePath();
     if (args.includes('--agent')) {
       await runAgentHook(args, production);
     } else {
       await runSourceHook(args, production);
     }
-    if (production.startRequested) {
-      startWorker();
-    }
+    startRequested = production.startRequested;
   } catch (error) {
-    await recordHookFailure(`hook failed: ${errorMessage(error)}`);
+    // The records so far asked for a worker too, and one `hook failed` record per run at most: a failed write has
+    // already recorded it.
+    startRequested = production.startRequested;
+    if (!production.failureRecorded && (await recordHookFailure(`hook failed: ${errorMessage(error)}`))) {
+      startRequested = true;
+    }
+  }
+
+  if (startRequested) {
+    try {
+      startHookWorker();
+    } catch (error) {
+      // A failed start loses the records to the next producer (3.10); the run still prints its output.
+      if (!production.failureRecorded) {
+        await recordHookFailure(`hook failed: ${errorMessage(error)}`);
+      }
+    }
   }
 
   writeHookOutput(silent);

@@ -22,6 +22,7 @@ import { hook } from '../src/cli/commands/hook.js';
 import {
   captureHookWorkerStarts,
   drainQueue,
+  failHookWorkerStarts,
   hookWorkerStarts,
   restoreHookWorkerStarts
 } from './hook-producer-support.js';
@@ -33,6 +34,9 @@ import {
 
 const publishValueMock = vi.hoisted(() => vi.fn<(value: string) => Promise<void>>());
 const stdinPayload = vi.hoisted(() => ({ current: {} as unknown }));
+// Lets a test fail the run's first record write, the way a full or blocked queue does, while the queue stays writable
+// for the failure record after it.
+const produceCalls = vi.hoisted(() => ({ failFirst: false }));
 
 vi.mock('../src/providers/registry.js', () => ({
   createProvider: () => ({
@@ -40,6 +44,34 @@ vi.mock('../src/providers/registry.js', () => ({
     publishValue: publishValueMock
   })
 }));
+
+vi.mock('../src/queue/produce.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../src/queue/produce.js')>();
+  return {
+    ...actual,
+    produceRecord: async (...args: Parameters<typeof actual.produceRecord>) => {
+      if (produceCalls.failFirst) {
+        produceCalls.failFirst = false;
+        throw new Error('first write failed');
+      }
+      return actual.produceRecord(...args);
+    }
+  };
+});
+
+vi.mock('../src/config.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../src/config.js')>();
+  return {
+    ...actual,
+    // A HOME whose passwd entry is gone makes os.homedir() throw; the flag stands in for that.
+    getStatePath: () => {
+      if (process.env.FAIL_STATE_PATH === '1') {
+        throw new Error('no passwd entry for the current user');
+      }
+      return actual.getStatePath();
+    }
+  };
+});
 
 vi.mock('../src/secret.js', () => ({
   readCredential: vi
@@ -362,7 +394,8 @@ describe('hook producer — source-resolution diagnostics', () => {
     const records = await runSourceWith({});
     expect(errorRecord(records, 'source skipped source=mysrc reason=no-handler-or-match')).toMatchObject({
       kind: 'error',
-      code: 'source-skipped'
+      code: 'source-skipped',
+      source: 'mysrc'
     });
     await drainAndExpectLogLine('source skipped source=mysrc reason=no-handler-or-match');
   });
@@ -502,7 +535,7 @@ describe('hook producer — source-resolution diagnostics', () => {
 });
 
 describe('hook producer — failures and quietness', () => {
-  it('records hook failed for an error from the interpretation', async () => {
+  it('records hook failed for an error from the interpretation and starts a worker for it', async () => {
     await runHook(['--agent', 'bogus'], {});
 
     const records = await writtenRecords();
@@ -512,7 +545,35 @@ describe('hook producer — failures and quietness', () => {
       code: 'hook-failed',
       message: 'hook failed: Agent "bogus" has no hook dialect'
     });
+    // The failure record asked for a worker like any record (3.3); the worker logs the line.
+    expect(hookWorkerStarts.requested).toBe(1);
     await drainAndExpectLogLine('hook failed: Agent');
+  });
+
+  it('starts at most one worker per run, and a failed write costs one hook failed record', async () => {
+    failHookWorkerStarts();
+    produceCalls.failFirst = true;
+    await runHook(['--source', 'claude', '--event', 'Heartbeat'], { session_id: 's1' });
+
+    // The event record was lost to the failed write, whose failure record carried the start request the failing
+    // start could not honor; the run recorded that failure once, not again for the failed start.
+    expect(await writtenRecords()).toHaveLength(1);
+    expect((await writtenRecords())[0]).toMatchObject({ kind: 'error', code: 'hook-failed' });
+    expect(hookWorkerStarts.requested).toBe(1);
+  });
+
+  it('prints its output with exit code 0 when the state path cannot be read', async () => {
+    process.env.FAIL_STATE_PATH = '1';
+    try {
+      await runHook(['--source', 'claude', '--event', 'Heartbeat'], { session_id: 's1' });
+
+      expect(stdoutWrites).toEqual(['{}\n']);
+      expect(process.exitCode).toBeUndefined();
+      // Nothing was recorded: the run never reached the queue.
+      expect(await readdir(homeDir)).not.toContain('state.json.queue');
+    } finally {
+      delete process.env.FAIL_STATE_PATH;
+    }
   });
 
   it('writes no log line and no stop request, in an event run and in a skip run', async () => {
@@ -577,13 +638,19 @@ describe('source resolution outside the hook still writes its lines', () => {
     await rm(logPath, { force: true });
   });
 
-  it('the hook path collects the lines instead of writing them', async () => {
+  it('the hook path collects the diagnostics with their codes instead of writing them', async () => {
     const diagnostics: SourceDiagnostics = [];
     const config: AppConfig = { plugins: { sources: { ghost: {} } } };
     const context = await resolveHookContextForSource('ghost', { session_id: 'x' }, config, { diagnostics });
 
     expect(context).toEqual({});
-    expect(diagnostics).toEqual(['source skipped source=ghost reason=no-handler-or-match']);
+    expect(diagnostics).toEqual([
+      {
+        code: 'source-skipped',
+        source: 'ghost',
+        message: 'source skipped source=ghost reason=no-handler-or-match'
+      }
+    ]);
     expect(existsSync(logPath)).toBe(false);
   });
 

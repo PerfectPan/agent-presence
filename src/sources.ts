@@ -17,19 +17,29 @@ import { writeLog } from './log.js';
 
 export type { SourcePlugin, SourceContext } from './cli/hook-context.js';
 
+/** A diagnostic a resolver emits: the log line, with the code and source the producer's error record carries. */
+export interface SourceDiagnostic {
+  /** The error-record code, kebab-case. */
+  code: string;
+  /** The source the diagnostic names; every line this module emits names one. */
+  source: string;
+  /** The line, without payload values, that the callers outside the hook write. */
+  message: string;
+}
+
 /**
- * The diagnostic lines source resolution would write. The producer passes a list and records each line as an `error`
- * record instead (Plan 0003 3.11); every other caller leaves it `undefined` and resolution writes the lines as before.
+ * The diagnostics source resolution would write. The producer passes a list and records each as an `error` record
+ * instead (Plan 0003 3.11); every other caller leaves it `undefined` and resolution writes the lines as before.
  */
-export type SourceDiagnostics = string[];
+export type SourceDiagnostics = SourceDiagnostic[];
 
 /** Emit a resolution diagnostic: collected for the producer, or written to the log, as always, for the rest. */
-async function diagnose(line: string, diagnostics: SourceDiagnostics | undefined): Promise<void> {
+async function diagnose(diagnostic: SourceDiagnostic, diagnostics: SourceDiagnostics | undefined): Promise<void> {
   if (diagnostics) {
-    diagnostics.push(line);
+    diagnostics.push(diagnostic);
     return;
   }
-  await writeLog(line);
+  await writeLog(diagnostic.message);
 }
 
 /** A `handler` of the form `builtin:<id>` reuses a shipped in-code resolver. */
@@ -205,7 +215,11 @@ async function resolveHandlerSpecifier(
       return pathToFileURL(require.resolve(handler, { paths: [join(getPluginsDir(), 'node_modules')] })).href;
     } catch (error) {
       await diagnose(
-        `source refused source=${source} reason=specifier-unresolved error=${errorName(error)}`,
+        {
+          code: 'source-refused',
+          source,
+          message: `source refused source=${source} reason=specifier-unresolved error=${errorName(error)}`
+        },
         diagnostics
       );
       return undefined;
@@ -215,15 +229,24 @@ async function resolveHandlerSpecifier(
   try {
     const info = lstatSync(handler);
     if (info.isSymbolicLink()) {
-      await diagnose(`source refused source=${source} reason=symlink-handler`, diagnostics);
+      await diagnose(
+        { code: 'source-refused', source, message: `source refused source=${source} reason=symlink-handler` },
+        diagnostics
+      );
       return undefined;
     }
     if (typeof process.getuid === 'function' && info.uid !== process.getuid()) {
-      await diagnose(`source refused source=${source} reason=handler-not-owned`, diagnostics);
+      await diagnose(
+        { code: 'source-refused', source, message: `source refused source=${source} reason=handler-not-owned` },
+        diagnostics
+      );
       return undefined;
     }
     if ((info.mode & 0o022) !== 0) {
-      await diagnose(`source refused source=${source} reason=handler-world-writable`, diagnostics);
+      await diagnose(
+        { code: 'source-refused', source, message: `source refused source=${source} reason=handler-world-writable` },
+        diagnostics
+      );
       return undefined;
     }
     // A writable parent dir lets another user swap the (otherwise fine) file, so
@@ -232,15 +255,32 @@ async function resolveHandlerSpecifier(
     // TOCTOU gap (see docs/architecture.md), but removes the easy directory-swap vector.
     const parent = lstatSync(dirname(handler));
     if (typeof process.getuid === 'function' && parent.uid !== process.getuid()) {
-      await diagnose(`source refused source=${source} reason=handler-dir-not-owned`, diagnostics);
+      await diagnose(
+        { code: 'source-refused', source, message: `source refused source=${source} reason=handler-dir-not-owned` },
+        diagnostics
+      );
       return undefined;
     }
     if ((parent.mode & 0o022) !== 0) {
-      await diagnose(`source refused source=${source} reason=handler-dir-world-writable`, diagnostics);
+      await diagnose(
+        {
+          code: 'source-refused',
+          source,
+          message: `source refused source=${source} reason=handler-dir-world-writable`
+        },
+        diagnostics
+      );
       return undefined;
     }
   } catch (error) {
-    await diagnose(`source refused source=${source} reason=handler-stat-failed error=${errorName(error)}`, diagnostics);
+    await diagnose(
+      {
+        code: 'source-refused',
+        source,
+        message: `source refused source=${source} reason=handler-stat-failed error=${errorName(error)}`
+      },
+      diagnostics
+    );
     return undefined;
   }
 
@@ -256,7 +296,10 @@ async function loadHandlerSource(
   // slot credential. Guard the two things an attacker who cannot touch the
   // Keychain might still control: the config file and the handler file.
   if (!isConfigFileTrusted()) {
-    await diagnose(`source refused source=${source} reason=untrusted-config`, diagnostics);
+    await diagnose(
+      { code: 'source-refused', source, message: `source refused source=${source} reason=untrusted-config` },
+      diagnostics
+    );
     return undefined;
   }
 
@@ -269,17 +312,29 @@ async function loadHandlerSource(
     const module = (await import(specifier)) as { default?: unknown };
     const plugin = module.default;
     if (!isSourcePlugin(plugin)) {
-      await diagnose(`source invalid source=${source} reason=bad-default-export`, diagnostics);
+      await diagnose(
+        { code: 'source-invalid', source, message: `source invalid source=${source} reason=bad-default-export` },
+        diagnostics
+      );
       return undefined;
     }
     if (plugin.id !== source) {
-      await diagnose(`source id mismatch source=${source} handlerId=${plugin.id}`, diagnostics);
+      await diagnose(
+        { code: 'source-id-mismatch', source, message: `source id mismatch source=${source} handlerId=${plugin.id}` },
+        diagnostics
+      );
       return undefined;
     }
-    await diagnose(`source loaded source=${source} handler=${handler}`, diagnostics);
+    await diagnose(
+      { code: 'source-loaded', source, message: `source loaded source=${source} handler=${handler}` },
+      diagnostics
+    );
     return plugin;
   } catch (error) {
-    await diagnose(`source load failed source=${source} error=${errorName(error)}`, diagnostics);
+    await diagnose(
+      { code: 'source-load-failed', source, message: `source load failed source=${source} error=${errorName(error)}` },
+      diagnostics
+    );
     return undefined;
   }
 }
@@ -296,7 +351,10 @@ async function loadConfiguredSourceUncached(
     return buildMatchSource(source, entry.match);
   }
 
-  await diagnose(`source skipped source=${source} reason=no-handler-or-match`, diagnostics);
+  await diagnose(
+    { code: 'source-skipped', source, message: `source skipped source=${source} reason=no-handler-or-match` },
+    diagnostics
+  );
   return undefined;
 }
 
@@ -337,7 +395,14 @@ export async function resolveSourcePlugin(
   if (builtinId) {
     const plugin = BUILTIN_SOURCE_PLUGINS[builtinId];
     if (!plugin) {
-      await diagnose(`source invalid source=${source} reason=unknown-builtin builtin=${builtinId}`, diagnostics);
+      await diagnose(
+        {
+          code: 'source-invalid',
+          source,
+          message: `source invalid source=${source} reason=unknown-builtin builtin=${builtinId}`
+        },
+        diagnostics
+      );
       return undefined;
     }
     return { plugin, trusted: true };
@@ -383,7 +448,14 @@ export async function resolveHookContextForSource(
   try {
     return resolved.plugin.resolveHookContext(payload, env) ?? {};
   } catch (error) {
-    await diagnose(`source resolve failed source=${source} error=${errorName(error)}`, options.diagnostics);
+    await diagnose(
+      {
+        code: 'source-resolve-failed',
+        source,
+        message: `source resolve failed source=${source} error=${errorName(error)}`
+      },
+      options.diagnostics
+    );
     return {};
   }
 }

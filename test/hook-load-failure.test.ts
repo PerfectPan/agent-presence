@@ -6,7 +6,12 @@ import { runCli } from '../src/cli/app.js';
 import { getStatePath } from '../src/config.js';
 import { queuePaths } from '../src/queue/files.js';
 import { listQueue, readQueueFile } from '../src/queue/reader.js';
-import { drainQueue } from './hook-producer-support.js';
+import {
+  captureHookWorkerStarts,
+  drainQueue,
+  hookWorkerStarts,
+  restoreHookWorkerStarts
+} from './hook-producer-support.js';
 
 // The throwing namespace getter makes `const { hook } = await
 // import('./commands/hook.js')` inside runCli reject, which is the injected
@@ -36,6 +41,7 @@ describe('hook command load failure', () => {
     // The fallback records an error record next to the state file: keep it out of the real home.
     previousHome = process.env.AGENT_PRESENCE_HOME;
     process.env.AGENT_PRESENCE_HOME = workDir;
+    captureHookWorkerStarts();
     stdoutWrites = [];
     stderrWrites = [];
     vi.spyOn(process.stdout, 'write').mockImplementation((chunk: Uint8Array | string) => {
@@ -49,6 +55,7 @@ describe('hook command load failure', () => {
   });
 
   afterEach(async () => {
+    restoreHookWorkerStarts();
     vi.restoreAllMocks();
     if (previousLogFile === undefined) {
       delete process.env.AGENT_PRESENCE_LOG_FILE;
@@ -83,6 +90,8 @@ describe('hook command load failure', () => {
     expect(stderrWrites).toEqual([]);
     expect(process.exitCode).toBeUndefined();
     expect(await recordedLoadFailureMessage()).toBe('hook failed: hook module failed to load');
+    // The failure record asked for a worker like any record (3.3).
+    expect(hookWorkerStarts.requested).toBe(1);
   });
 
   it('logs the same `hook failed` line through the worker that the hook logged before the queue', async () => {
