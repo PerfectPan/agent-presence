@@ -19,8 +19,8 @@ export interface SlotPreviewUrlOptions {
 export interface SlotBackend {
   createQrCode(): Promise<QrCodeResponse>;
   getLoginStatus(sceneId: string): Promise<LoginStatus>;
-  /** Write the rendered presence value to the slot. */
-  updateSlot(value: string): Promise<void>;
+  /** Write the rendered presence value to the slot; `signal` aborts the request. */
+  updateSlot(value: string, options?: { signal?: AbortSignal }): Promise<void>;
   /** Raw slot read, surfaced by `status --remote`. */
   getInfo(): Promise<unknown>;
   /** The backend's own direct link-preview URL (used by `feishu-signature`). */

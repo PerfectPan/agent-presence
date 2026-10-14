@@ -27,7 +27,7 @@ function slotCapabilities(
   return {
     createQrCode: () => slot.createQrCode(),
     getLoginStatus: (sceneId) => slot.getLoginStatus(sceneId),
-    publishValue: (value) => slot.updateSlot(value),
+    publishValue: (value, options) => slot.updateSlot(value, options),
     getInfo: () => slot.getInfo()
   };
 }

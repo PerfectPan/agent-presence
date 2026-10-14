@@ -210,14 +210,15 @@ export class LGaryYangSlotBackend implements SlotBackend {
     return { status: response.status };
   }
 
-  async updateSlot(value: string): Promise<void> {
+  async updateSlot(value: string, options: { signal?: AbortSignal } = {}): Promise<void> {
     const credential = this.requireCredential();
     await this.requestJson(
       '/api/slot/update',
       {
         method: 'POST',
         headers: this.authHeaders(credential),
-        body: JSON.stringify({ slotId: credential.slotId, value })
+        body: JSON.stringify({ slotId: credential.slotId, value }),
+        signal: options.signal
       },
       { logSuccess: true, slotId: credential.slotId, value }
     );
