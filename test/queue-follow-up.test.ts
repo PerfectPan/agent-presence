@@ -506,12 +506,12 @@ describe('defaultOwedWorkEffects', () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     try {
       let settled = false;
-      const appending = defaultOwedWorkEffects.appendUsage(dshUsage, 'r1', new AbortController().signal).then(
-        (written) => {
+      const appending = defaultOwedWorkEffects
+        .appendUsage(dshUsage, 'r1', new AbortController().signal)
+        .then((written) => {
           settled = true;
           return written;
-        }
-      );
+        });
       // Longer than the 2.5 s default bound: with the lane's signal, the wait does not give up.
       await vi.advanceTimersByTimeAsync(3_000);
       expect(settled).toBe(false);
