@@ -24,6 +24,8 @@ vi.mock('../src/secret.js', () => ({
 
 vi.mock('../src/config.js', () => ({
   configSlotId: () => 'slot_config',
+  // Under the tombstone check `setup` reads the state next to this path; it does not exist here.
+  getStatePath: () => '/fake-home/agent-presence/state.json',
   loadConfig: vi
     .fn<typeof import('../src/config.js').loadConfig>()
     .mockResolvedValue({ provider: 'feishu-signature', slot_id: 'slot_config' }),

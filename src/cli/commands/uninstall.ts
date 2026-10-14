@@ -1,12 +1,15 @@
 import { rm } from 'node:fs/promises';
 import { getConfigPath, getStatePath, loadConfig, saveConfig } from '../../config.js';
+import { deleteWorkerVersion, queuePaths, writeTombstone } from '../../queue/files.js';
+import { deleteStopRequests } from '../../queue/stop-request.js';
+import { takeOver, type TakeoverOptions } from '../../queue/takeover.js';
 import { removePluginsDir } from '../../plugin-install.js';
 import { deleteCredential } from '../../secret.js';
 import { runUninstallScripts } from '../../setup.js';
 import { hasFlag } from '../args.js';
 import { createSpinner, finishOutro, showInfo, startIntro } from '../ui.js';
 
-export async function uninstall(args: string[] = []): Promise<void> {
+export async function uninstall(args: string[] = [], takeover: TakeoverOptions = {}): Promise<void> {
   const clearCredentials = hasFlag(args, '--credentials') || hasFlag(args, '--all');
   const clearState = hasFlag(args, '--all');
 
@@ -31,7 +34,20 @@ export async function uninstall(args: string[] = []): Promise<void> {
   }
 
   if (clearState) {
-    await rm(getStatePath(), { force: true });
+    const statePath = getStatePath();
+    // The tombstone goes down first (Plan 0003 3.8): producers record nothing from here on, and the takeover below
+    // leaves without starting a worker.
+    await writeTombstone(statePath);
+    await takeOver(
+      statePath,
+      async () => {
+        await rm(queuePaths(statePath).queueDir, { recursive: true, force: true });
+        await deleteStopRequests(statePath);
+        await deleteWorkerVersion(statePath);
+        await rm(statePath, { force: true });
+      },
+      takeover
+    );
     showInfo('local state cleared');
   }
 

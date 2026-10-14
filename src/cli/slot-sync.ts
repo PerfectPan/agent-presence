@@ -153,10 +153,20 @@ export async function syncRenderedSlotWithStateLock(
   });
 }
 
+/**
+ * What the tombstoned commands print (Plan 0003 3.8): they change nothing, and the slot keeps the value it last
+ * published.
+ */
+export async function disabledSlotResult(statePath: string): Promise<SyncSlotResult> {
+  const state = await loadState(statePath);
+  return { status: 'skipped', reason: 'disabled', value: state.lastValue ?? '' };
+}
+
 export async function syncExplicitSlotValueWithStateLock(
   statePath: string,
   options: ExplicitSlotOptions,
-  updateSlot: (value: string) => Promise<void>
+  updateSlot: (value: string) => Promise<void>,
+  onSuccess?: (state: PresenceState) => void
 ): Promise<SyncSlotResult> {
   let decision: SlotSyncDecision | undefined;
   let result: SyncSlotResult | undefined;
@@ -184,5 +194,5 @@ export async function syncExplicitSlotValueWithStateLock(
     return result;
   }
 
-  return applySlotSyncDecision(statePath, requireDecision(decision), updateSlot);
+  return applySlotSyncDecision(statePath, requireDecision(decision), updateSlot, onSuccess);
 }
