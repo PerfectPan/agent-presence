@@ -72,39 +72,33 @@ afterEach(async () => {
 
 describe('the upgrade burst', () => {
   it('of 100 newer producers while an older worker runs leaves one newer worker applying every event once', async () => {
-    // A running session older than every burst event: the burst's fallback finish must never reach it.
-    await writeState(home.statePath, {
-      sessions: {
-        keep: {
-          id: 'keep',
-          source: 'codex',
-          kind: 'coding',
-          status: 'running',
-          startedAt: T0 - 60_000,
-          lastHeartbeatAt: T0 - 60_000
-        }
+    // 200 running sessions with distinct heartbeats, all older than the burst events and inside the ttl, so none of
+    // them expires: each burst `Stop` fallback-finishes the running session with the latest heartbeat, so one
+    // application finishes 100 of them and a batch applied twice finishes 200. The session a second pass revives
+    // keeps its old heartbeat, so the fallback would pick it again — finishes, not starts, are what a doubling shows.
+    const seeded = Array.from({ length: 200 }, (_, index) => [
+      `p${index}`,
+      {
+        id: `p${index}`,
+        source: 'codex',
+        kind: 'coding' as const,
+        status: 'running' as const,
+        startedAt: T0 - 100_000 + index,
+        lastHeartbeatAt: T0 - 100_000 + index
       }
-    });
+    ]);
+    await writeState(home.statePath, { sessions: Object.fromEntries(seeded) });
     // A long idle interval keeps the older worker at the lock until the burst's first record arrives.
     const older = pool.start(OLDER, { idleMs: 300_000 });
     await until(async () => (await readWorkerVersion(home.statePath)) === OLDER, 'the older worker holding the lock');
 
-    // 99 starts at once, then one `Stop` for a session none of them names, recorded after every start. Its fallback
-    // finish consumes the running session with the latest heartbeat, so a batch applied twice consumes a second one:
-    // every event applied once shows as exactly one burst session finished, the rest and `keep` still running.
     const produced = await Promise.all(
-      Array.from({ length: 99 }, (_, index) =>
-        produceRecord(home.statePath, eventBody('SessionStart', `s${index}`), {
+      Array.from({ length: 100 }, (_, index) =>
+        produceRecord(home.statePath, eventBody('Stop', `gone${index}`), {
           version: NEWER,
           clock: vt.clock
         })
       )
-    );
-    produced.push(
-      await produceRecord(home.statePath, eventBody('Stop', 'gone'), {
-        version: NEWER,
-        clock: { now: () => vt.clock.now() + 1_000 }
-      })
     );
     expect(produced.every((outcome) => outcome.status === 'recorded')).toBe(true);
 
@@ -123,12 +117,10 @@ describe('the upgrade burst', () => {
     expect(reasons.filter((reason) => reason === 'idle')).toHaveLength(1);
     expect(reasons.filter((reason) => reason === 'holder')).toHaveLength(reasons.length - 1);
 
-    const state = await readState(home.statePath);
-    const burst = Object.values(state.sessions).filter((session) => session.id !== 'keep');
-    expect(burst).toHaveLength(99);
-    expect(burst.filter((session) => session.status === 'finished')).toHaveLength(1);
-    expect(burst.filter((session) => session.status === 'running')).toHaveLength(98);
-    expect(state.sessions.keep).toMatchObject({ status: 'running' });
+    const sessions = Object.values((await readState(home.statePath)).sessions);
+    expect(sessions).toHaveLength(200);
+    expect(sessions.filter((session) => session.status === 'finished')).toHaveLength(100);
+    expect(sessions.filter((session) => session.status === 'running')).toHaveLength(100);
     expect((await listQueue(home.statePath)).records).toEqual([]);
   }, 120_000);
 });
