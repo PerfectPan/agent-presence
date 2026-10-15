@@ -45,7 +45,7 @@ Out of scope: everything else. See "Unchanged behavior".
 
 Everything not listed above stays unchanged, explicitly including:
 
-- The npx-form installed hook command stays recognizable by its markers (`@rivus/agent-presence`, `agent-presence hook`); the absolute-path form keeps carrying `dist/src/cli.js hook` in its command text, but that generic fragment is not a marker — the paired Plan records which old command forms `setup` detects and which it does not.
+- The installed command still carries the `agent-presence hook` marker when the shim path is unquoted. The paired Plan records which previous-release command forms `setup` detects and which it does not.
 - Presence source ids stay `claude`, `codex`, `gemini`, `opencode`, `pi`, `dsh` (plus the new `grok`); persisted state, render templates, and user configuration keep working.
 - The presence state file format is unchanged: this adoption adds no state fields beyond Spec 0003's optional `queueApplied` and `queueOwed`, which older versions drop (usage scans are stateless, as the owner decided in the paired Plan's usage-scan-state decision), and older versions load files this version writes.
 - Render templates, providers, keyring credentials, the power watcher, the dsh plugin flow, and the source-table mechanism.
@@ -148,11 +148,11 @@ Everything not listed above stays unchanged, explicitly including:
 
 - Given any configuration, state file, and render template valid before this change
 - When this version runs
-- Then source ids, the hook command markers (`agent-presence hook`, `@rivus/agent-presence`), templates, providers, keyring usage, power watcher, dsh plugin flow, TTL expiry, reopen, and fallback-finish behave as before, and old state files load correctly
+- Then source ids, templates, providers, keyring usage, power watcher, dsh plugin flow, TTL expiry, reopen, and fallback-finish behave as before, and old state files load correctly; both command modes install the same shim invocation, carrying `agent-presence hook` when its path is unquoted
 
 ## Compatibility And Constraints
 
-- Public API: none (no exported library surface). CLI: `hook`, `setup`, `uninstall`, `update` keep their names and existing flags; `doctor` and `inventory` are new.
+- Public API: none (no exported library surface). CLI: `hook`, `setup`, `uninstall`, `update` keep their names and existing flags; `setup` gains `--yes`; `doctor` and `inventory` are new.
 - Upgrade from a previous version: run that version's `agent-presence uninstall` (without `--credentials` or `--all`, so credentials, configuration, and state stay), then install this version and run `setup`. When the previous version was set up with install-target override variables such as `CLAUDE_SETTINGS_FILE`, its uninstall runs with the same variables set; this version ignores them and `setup` warns when one is set. Later upgrades from this version need no uninstall.
 - Persisted data: `PresenceState`'s usage shape is unchanged — scans are stateless (the owner's usage-scan-state decision in the paired Plan) and no usage fields are added; the only new state fields are Spec 0003's optional `queueApplied` and `queueOwed`, which older versions drop. The kit's install ledger is a JSON file under `$XDG_STATE_HOME/agent-kit/harness/<scope>` (default `~/.local/state/agent-kit/harness`) with its own SQLite ledger lock, and the presence-side lock databases are new local files under the presence state directory.
 - Configuration: no existing key changes meaning. `effect` is added as an exact dependency (`4.0.3`, the kit's exact peer for its `/harness` entry), and `engines.node` rises to `>= 22.13` (the kit's Node adapters).

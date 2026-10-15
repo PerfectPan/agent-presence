@@ -8,9 +8,7 @@ function doctorProgram() {
   const installedCommands = bundle.artifacts.flatMap((artifact) =>
     artifact.type === 'hooks' ? PRESENCE_AGENTS.map((agent) => artifact.command.replaceAll('{agent}', agent)) : []
   );
-  // Previous-release markers join the installed commands here.
-  const markers = installedCommands;
-  return checkHarness({ owner: bundle.owner, agents: PRESENCE_AGENTS, markers });
+  return checkHarness({ owner: bundle.owner, agents: PRESENCE_AGENTS, markers: installedCommands });
 }
 
 export async function doctor(args: string[]): Promise<void> {

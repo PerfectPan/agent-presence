@@ -1,10 +1,11 @@
 import { createHash } from 'node:crypto';
-import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Bundle, HookSpec, JsonValue } from '@rivus/agent-kit/harness';
 import { builtinHookDialects } from '@rivus/agent-kit/harness/events';
 import * as z from 'zod/mini';
 import { getHomeDir } from '../config.js';
+import { packageVersion } from '../package-version.js';
+import { shellQuote } from '../shell-quote.js';
 
 const CLAUDE_EVENTS = [
   'SessionStart',
@@ -30,33 +31,6 @@ const PRESENCE_EVENTS = {
 export const PRESENCE_AGENTS: readonly (keyof typeof PRESENCE_EVENTS)[] = Object.keys(
   PRESENCE_EVENTS
 ) as (keyof typeof PRESENCE_EVENTS)[];
-
-const packageSchema = z.object({
-  name: z.literal('@rivus/agent-presence'),
-  version: z.string().check(z.minLength(1))
-});
-
-function packageVersion(): string {
-  for (const url of [
-    new URL('../../package.json', import.meta.url),
-    new URL('../../../package.json', import.meta.url)
-  ]) {
-    try {
-      return packageSchema.parse(JSON.parse(readFileSync(url, 'utf8'))).version;
-    } catch {
-      // Source and dist builds resolve package.json from different depths.
-    }
-  }
-  throw new Error('unable to resolve @rivus/agent-presence package version');
-}
-
-function shellQuote(value: string): string {
-  // Match the installer quoting rule without loading its agent-config writers.
-  if (/^[A-Za-z0-9_/:=@.-]+$/.test(value)) {
-    return value;
-  }
-  return `'${value.replaceAll("'", "'\\''")}'`;
-}
 
 function canonicalJson(value: JsonValue): string {
   // This narrows the known JSON union, not an unvalidated object.

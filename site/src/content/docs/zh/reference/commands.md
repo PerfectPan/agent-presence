@@ -47,8 +47,8 @@ agent-presence uninstall --all
 
 hook 命令由 `setup` 自动安装,且永不阻塞智能体。添加、覆盖或禁用被统计的智能体见 [Sources](/zh/guide/sources/)。
 
-`doctor` 逐项打印 harness 检查及其状态，任何警告或错误都会使退出码非零。检查范围包括 Claude Code、Codex、Gemini CLI、Grok、opencode 和 Pi。重复检测覆盖命令式 hook 文件，不覆盖 opencode 和 Pi 桥接文件；它识别当前 harness 命令，暂不识别旧版本命令。它不会修复智能体配置，但检查安装记录锁时可能在 harness 状态目录中创建锁文件。presence home 路径含空格时，目前可能误报程序不存在。
+`doctor` 逐项打印 harness 检查及其状态，任何警告或错误都会使退出码非零。检查范围包括 Claude Code、Codex、Gemini CLI、Grok、opencode 和 Pi。重复检测覆盖命令式 hook 文件，不覆盖 opencode 和 Pi 桥接文件；它识别当前 harness 命令，暂不识别旧版本命令。它不会修复智能体配置，但检查安装记录锁时可能在 harness 状态目录中创建锁文件。presence home 路径含空格时，目前可能误报程序不存在。`doctor` 也会报告其他工具 hook 中的 `stale-path`、`unknown-event` 和 `timeout-unit` 问题，并以退出码 1 结束。
 
-`inventory` 打印 harness 安装记录的修订号、已安装条目和待完成操作。两个命令都支持 `--json`。setup 通过 harness 安装的产物会出现在记录中；旧版本安装的 hook 不会自动记入记录。
+`inventory` 打印 harness 安装记录的修订号、已安装条目和待完成操作。两个命令都支持 `--json`。setup 通过 harness 安装的产物会出现在记录中；旧版本安装的 hook 不会自动记入记录。`inventory` 包含共享安装记录中所有 kit 应用的条目，不限于 presence。
 
 `uninstall` 只移除 harness 记录的产物，逐项报告移除结果和保留位置及原因，然后移除 shim、dsh 插件和 macOS watcher。harness 失败时仍会继续这些独立清理步骤，并以非零退出码结束；旧版本留下的产物需要用该版本的 uninstall 移除。默认保留凭据、配置和状态；`--credentials` 清除凭据及配置中的 slot 标识，`--all` 还会清除 session 状态、队列记录和已安装的源插件，同时保留防止旧进程恢复状态的队列 tombstone。其他配置字段会保留。
