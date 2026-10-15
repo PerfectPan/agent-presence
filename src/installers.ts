@@ -1,9 +1,11 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { hasNodeErrorCode, readJsonFile, writeJsonAtomic } from './json-file.js';
+import { packageVersion } from './package-version.js';
+import { shellQuote } from './shell-quote.js';
 
 export interface HookCommand {
   type: 'command';
@@ -352,20 +354,6 @@ function resolveCliPath(): string {
     }
   }
   throw new Error('unable to resolve @rivus/agent-presence CLI path');
-}
-
-function packageVersion(): string {
-  for (const url of [new URL('../package.json', import.meta.url), new URL('../../package.json', import.meta.url)]) {
-    try {
-      const parsed = JSON.parse(readFileSync(url, 'utf8')) as { version?: unknown };
-      if (typeof parsed.version === 'string' && parsed.version.length > 0) {
-        return parsed.version;
-      }
-    } catch {
-      // Source and dist builds resolve package.json from different depths.
-    }
-  }
-  throw new Error('unable to resolve @rivus/agent-presence package version');
 }
 
 function agentPresenceCommandParts(): string[] {
@@ -769,13 +757,6 @@ export async function installDshPlugin(paths: DshPluginPaths): Promise<DshInstal
   }
 
   return { status: 'installed', pluginPath: paths.pluginPath, patchPath: paths.patchPath, patchUpdated, patchError };
-}
-
-function shellQuote(value: string): string {
-  if (/^[A-Za-z0-9_/:=@.-]+$/.test(value)) {
-    return value;
-  }
-  return `'${value.replaceAll("'", "'\\''")}'`;
 }
 
 export function buildAgentPresenceShellCommand(args: string[]): string {
