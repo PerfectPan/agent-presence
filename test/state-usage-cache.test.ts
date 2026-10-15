@@ -8,8 +8,9 @@ describe('isSessionBoundaryEvent', () => {
     expect(isSessionBoundaryEvent('SessionStart')).toBe(true);
     expect(isSessionBoundaryEvent('Stop')).toBe(true);
     expect(isSessionBoundaryEvent('SessionEnd')).toBe(true);
-    expect(isSessionBoundaryEvent('session.created')).toBe(true);
-    expect(isSessionBoundaryEvent('session.deleted')).toBe(true);
+    expect(isSessionBoundaryEvent('StopFailure')).toBe(true);
+    expect(isSessionBoundaryEvent('start')).toBe(true);
+    expect(isSessionBoundaryEvent('finish')).toBe(true);
   });
 
   it('excludes subagent boundaries to avoid per-subagent rescans', () => {
@@ -22,6 +23,7 @@ describe('isSessionBoundaryEvent', () => {
     expect(isSessionBoundaryEvent('PostToolUse')).toBe(false);
     expect(isSessionBoundaryEvent('Heartbeat')).toBe(false);
     expect(isSessionBoundaryEvent('UserPromptSubmit')).toBe(false);
+    expect(isSessionBoundaryEvent('heartbeat')).toBe(false);
   });
 });
 

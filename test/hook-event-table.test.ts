@@ -1,32 +1,19 @@
-import { readFile, mkdtemp, rm, writeFile } from 'node:fs/promises';
-import { performance } from 'node:perf_hooks';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { pathToFileURL } from 'node:url';
-import { transformWithOxc } from 'vite-plus';
 import { beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 import { hook } from '../src/cli/commands/hook.js';
 import { SCAN_ENV } from '../src/cli/hook-context.js';
-import { buildOpenCodePluginSource, buildPiExtensionSource } from './fixtures/previous-release.js';
 import { createEmptyState, type AgentSession } from '../src/state.js';
 import { loadState, saveState } from '../src/state-store.js';
 import { captureHookWorkerStarts, drainQueue, restoreHookWorkerStarts } from './hook-producer-support.js';
 
-// Regression oracle for today's hook-event mapping: one case per event the
-// `--source/--event` form handles (the source mapping in docs/architecture.md,
-// "Hook Normalization"). Existing-source cases run the way today's
-// installed hooks run them: Claude/Codex/Gemini/Grok cases call
-// `hook --source <id> --event <Name>` directly; opencode and Pi cases go
-// through the generated old bridge/extension themselves, so the row asserts
-// the mapping those generators actually perform, not a pre-mapped presence
-// name. Since the queue (Plan 0003), each case records through the producer
-// and then applies through one in-process worker run (`drainQueue`), and the
-// row asserts the state the direct path (`applyHookEvent`, the oracle) produces
-// from the same seed. Every case seeds a state where start, heartbeat and
-// finish diverge (a running session whose startedAt is in the past, so a start
-// would reset it) and asserts the boundary effect (usage badge refresh owed
-// and done, or not) alongside the state change. The cases must keep passing
-// unchanged when hook interpretation moves to the kit.
+// Pin the remaining invocation forms in docs/architecture.md, "Hook
+// Normalization": internal names through `--source/--event`, and native
+// opencode/Pi payloads through `--agent`. Each case records through the hook
+// producer and applies through one in-process worker run (`drainQueue`). The
+// seeded running sessions distinguish start from heartbeat by startedAt, and
+// the usage badge assertions distinguish session boundaries from activity.
 
 const publishValueMock = vi.hoisted(() => vi.fn<(value: string) => Promise<void>>());
 const stdinPayload = vi.hoisted(() => ({ current: {} as unknown }));
@@ -76,7 +63,7 @@ vi.mock('../src/cli/deferred-update.js', () => ({
 }));
 
 const NOW = new Date(2026, 9, 9, 15, 0).getTime();
-// Movable clock: cases that drive several lifecycle steps through a bridge
+// Movable clock: cases that drive several lifecycle steps
 // advance it so a late heartbeat lands at a different timestamp than the
 // session's start.
 const clock = { now: NOW };
@@ -95,6 +82,8 @@ const MANAGED_ENV_KEYS = [
   'XDG_STATE_HOME',
   'AGENT_PRESENCE_HOME',
   ...Object.values(SCAN_ENV),
+  'AGENT_PRESENCE_LOG_FILE',
+  'AGENT_SIGNATURE_LOG_FILE',
   'CLAUDE_HOOK_EVENT_NAME',
   'CLAUDE_SESSION_ID',
   'CLAUDE_TRANSCRIPT_PATH',
@@ -153,12 +142,18 @@ interface HookRun {
   loud?: boolean;
 }
 
-async function runHook(run: HookRun): Promise<void> {
-  stdinPayload.current = run.payload;
-  for (const [key, value] of Object.entries(run.env ?? {})) {
+async function runHookCommand(args: string[], payload: unknown, env: Record<string, string> = {}): Promise<void> {
+  stdinPayload.current = payload;
+  for (const [key, value] of Object.entries(env)) {
     process.env[key] = value;
   }
   stdoutWrites.length = 0;
+  await hook(args);
+  // The worker applies what the hook recorded before the case reads the state.
+  await drainQueue();
+}
+
+async function runHook(run: HookRun): Promise<void> {
   const args = ['--source', run.source];
   if (run.event !== undefined) {
     args.push('--event', run.event);
@@ -166,200 +161,11 @@ async function runHook(run: HookRun): Promise<void> {
   if (!run.loud) {
     args.push('--silent');
   }
-  await hook(args);
-  // The worker applies what the hook recorded before the case reads the state.
-  await drainQueue();
+  await runHookCommand(args, run.payload, run.env);
 }
 
-// --- Generated bridge/extension harness -------------------------------------
-//
-// The opencode and Pi rows do not call `hook` with pre-mapped presence names.
-// They evaluate the generators' output with a fake host and a capture script
-// standing in for the CLI, then feed each captured invocation (the source,
-// event, env and stdin the generator chose) into the in-process hook command.
-
-const CAPTURE_SCRIPT = `import { appendFileSync, readFileSync } from "node:fs";
-const captureFile = process.argv[2];
-const args = process.argv.slice(3);
-const flag = (name) => {
-  const index = args.indexOf(name);
-  return index === -1 ? undefined : args[index + 1];
-};
-const ENV_KEYS = [
-  "OPENCODE_CWD",
-  "OPENCODE_HOOK_EVENT",
-  "OPENCODE_PROJECT",
-  "OPENCODE_SESSION_ID",
-  "PI_CWD",
-  "PI_EVENT",
-  "PI_HOOK_EVENT",
-  "PI_PROJECT",
-  "PI_SESSION_ID",
-];
-const env = {};
-for (const key of ENV_KEYS) {
-  if (process.env[key] !== undefined) env[key] = process.env[key];
-}
-appendFileSync(
-  captureFile,
-  JSON.stringify({
-    source: flag("--source"),
-    event: flag("--event"),
-    env,
-    stdin: readFileSync(0, "utf8"),
-  }) + "\\n"
-);
-`;
-
-interface CapturedInvocation {
-  source: string;
-  event: string;
-  env: Record<string, string>;
-  stdin: unknown;
-}
-
-interface CaptureReader {
-  next: () => Promise<CapturedInvocation>;
-  expectNone: () => Promise<void>;
-}
-
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-async function readCaptureLines(file: string): Promise<string[]> {
-  const content = await readFile(file, 'utf8').catch(() => '');
-  return content.split('\n').filter((line) => line.length > 0);
-}
-
-function createCaptureReader(file: string): CaptureReader {
-  let consumed = 0;
-  return {
-    // Fire-and-forget spawns land asynchronously; poll for the record.
-    async next() {
-      const start = performance.now();
-      for (;;) {
-        const lines = await readCaptureLines(file);
-        const line = lines[consumed];
-        if (line !== undefined) {
-          consumed += 1;
-          const record: { source: string; event: string; env: Record<string, string>; stdin: string } =
-            JSON.parse(line);
-          return {
-            source: record.source,
-            event: record.event,
-            env: record.env,
-            stdin: JSON.parse(record.stdin || '{}')
-          };
-        }
-        if (performance.now() - start > 5_000) {
-          throw new Error(`timed out waiting for a captured hook invocation in ${file}`);
-        }
-        await delay(10);
-      }
-    },
-    async expectNone() {
-      await delay(200);
-      expect(await readCaptureLines(file)).toEqual([]);
-    }
-  };
-}
-
-async function runCaptured(captures: CaptureReader): Promise<void> {
-  const invocation = await captures.next();
-  await runHook({
-    source: invocation.source,
-    event: invocation.event,
-    payload: invocation.stdin,
-    env: invocation.env
-  });
-}
-
-interface OpenCodeBridgeHandlers {
-  event: (input: { event: Record<string, unknown> }) => Promise<void>;
-  'tool.execute.before': (input: Record<string, unknown>) => Promise<void>;
-  'tool.execute.after': (input: Record<string, unknown>) => Promise<void>;
-}
-
-// The generated bridge's export, called with the fake plugin input.
-interface OpenCodeBridgeModule {
-  AgentSignaturePlugin: (ctx: { directory: string }) => Promise<OpenCodeBridgeHandlers>;
-}
-
-interface OpenCodeBridge {
-  busEvent: (event: Record<string, unknown>) => Promise<void>;
-  toolBefore: (input: Record<string, unknown>) => Promise<void>;
-  toolAfter: (input: Record<string, unknown>) => Promise<void>;
-  captures: CaptureReader;
-}
-
-async function loadOpenCodeBridge(): Promise<OpenCodeBridge> {
-  const captureFile = join(homeDir, 'opencode-hook-captures.jsonl');
-  const scriptFile = join(homeDir, 'capture-hook.mjs');
-  await writeFile(scriptFile, CAPTURE_SCRIPT);
-  const pluginFile = join(homeDir, 'opencode-bridge.mjs');
-  await writeFile(pluginFile, buildOpenCodePluginSource(['node', scriptFile, captureFile]));
-  const module: OpenCodeBridgeModule = await import(pathToFileURL(pluginFile).href);
-  const handlers = await module.AgentSignaturePlugin({ directory: '/work/repo' });
-  return {
-    busEvent: (event) => handlers.event({ event }),
-    toolBefore: (input) => handlers['tool.execute.before'](input),
-    toolAfter: (input) => handlers['tool.execute.after'](input),
-    captures: createCaptureReader(captureFile)
-  };
-}
-
-type PiEventHandler = (event: unknown, ctx: PiHostContext) => unknown;
-
-interface PiHostContext {
-  sessionManager: { getSessionId: () => string };
-  cwd: string;
-}
-
-// The generated extension's default export, called with the fake host.
-interface PiExtensionModule {
-  default: (host: { on: (name: string, handler: PiEventHandler) => void }) => void;
-}
-
-interface PiExtensionHost {
-  handlers: Map<string, PiEventHandler>;
-  context: PiHostContext;
-  captures: CaptureReader;
-}
-
-async function loadPiExtension(): Promise<PiExtensionHost> {
-  const captureFile = join(homeDir, 'pi-hook-captures.jsonl');
-  const scriptFile = join(homeDir, 'capture-hook.mjs');
-  await writeFile(scriptFile, CAPTURE_SCRIPT);
-  // A broken transpile surfaces as the import below failing with a syntax
-  // error.
-  const transpiled = await transformWithOxc(
-    buildPiExtensionSource(['node', scriptFile, captureFile]),
-    'pi-extension.ts'
-  );
-  const extensionFile = join(homeDir, 'pi-extension.mjs');
-  await writeFile(extensionFile, transpiled.code);
-  const module: PiExtensionModule = await import(pathToFileURL(extensionFile).href);
-  const handlers = new Map<string, PiEventHandler>();
-  module.default({
-    on: (name: string, handler: PiEventHandler) => {
-      handlers.set(name, handler);
-    }
-  });
-  return {
-    handlers,
-    context: { sessionManager: { getSessionId: () => 'pi-session-1' }, cwd: '/work/repo' },
-    captures: createCaptureReader(captureFile)
-  };
-}
-
-async function firePiEvent(extension: PiExtensionHost, name: string): Promise<void> {
-  const handler = extension.handlers.get(name);
-  // An unregistered Pi event delivers nothing to the CLI.
-  if (!handler) {
-    return;
-  }
-  await handler({}, extension.context);
+async function runAgent(agent: string, payload: unknown): Promise<void> {
+  await runHookCommand(['--agent', agent, '--silent'], payload);
 }
 
 // --- Shared fixtures ---------------------------------------------------------
@@ -692,7 +498,7 @@ describe('hook event table — Codex', () => {
   });
 });
 
-describe('hook event table — Gemini CLI (today registrations)', () => {
+describe('hook event table — Gemini CLI via --source/--event', () => {
   const run = (event: string) => runHook({ source: 'gemini', event, payload: geminiPayload(event) });
 
   it('SessionStart creates a running session and refreshes the usage badge', async () => {
@@ -708,7 +514,7 @@ describe('hook event table — Gemini CLI (today registrations)', () => {
     expect(state.usageBadgesAt).toBe(NOW);
   });
 
-  it('UserPromptSubmit reopens a finished session (old-form invocation keeps the signal)', async () => {
+  it('UserPromptSubmit reopens a finished session through the internal vocabulary', async () => {
     await seedSessions({ ...runningSession('gemini', 'gemini-session-1'), ...finishedOverrides() });
     await run('UserPromptSubmit');
 
@@ -751,34 +557,17 @@ describe('hook event table — Gemini CLI (today registrations)', () => {
   });
 });
 
-describe('hook event table — opencode (driven through the generated old bridge)', () => {
-  let bridge: OpenCodeBridge;
-
-  beforeEach(async () => {
-    bridge = await loadOpenCodeBridge();
-  });
-
-  // The old bridge only emits once it has seen a created session (it remembers
-  // the id it last saw); rows about later lifecycle events replay a
-  // session.created first, then reseed the discriminating state and drive the
-  // row's own event.
-  const withLiveSession = async (drive: () => Promise<void>, seed?: AgentSession[]) => {
-    await bridge.busEvent({
-      type: 'session.created',
-      properties: { info: { id: 'opencode-session-1', directory: '/work/repo' } }
+describe('hook event table — opencode via --agent with kit bridge payloads', () => {
+  const run = (type: string, properties: Record<string, unknown> = {}, currentSessionId?: string) =>
+    runAgent('opencode', {
+      type,
+      properties,
+      directory: '/work/repo',
+      ...(currentSessionId === undefined ? {} : { currentSessionId })
     });
-    await runCaptured(bridge.captures);
-    await seedSessions(...(seed ?? [runningSession('opencode', 'opencode-session-1')]));
-    await drive();
-    await runCaptured(bridge.captures);
-  };
 
   it('session.created starts the session and refreshes the usage badge', async () => {
-    await bridge.busEvent({
-      type: 'session.created',
-      properties: { info: { id: 'opencode-session-1', directory: '/work/repo' } }
-    });
-    await runCaptured(bridge.captures);
+    await run('session.created', { info: { id: 'opencode-session-1', directory: '/work/repo' } });
 
     const state = await readState();
     expect(state.sessions['opencode-session-1']).toMatchObject({
@@ -789,15 +578,11 @@ describe('hook event table — opencode (driven through the generated old bridge
     });
     expect(state.usageBadgesAt).toBe(NOW);
     expect(Object.keys(state.usageSnapshots?.['1'] ?? {}).sort()).toEqual(BILLABLE_SOURCE_IDS);
-  }, 20_000);
+  });
 
   it('session.created restarts a running session (startedAt resets)', async () => {
     await seedSessions(runningSession('opencode', 'opencode-session-1'));
-    await bridge.busEvent({
-      type: 'session.created',
-      properties: { info: { id: 'opencode-session-1', directory: '/work/repo' } }
-    });
-    await runCaptured(bridge.captures);
+    await run('session.created', { info: { id: 'opencode-session-1', directory: '/work/repo' } });
 
     const state = await readState();
     expect(state.sessions['opencode-session-1']).toMatchObject({
@@ -806,118 +591,95 @@ describe('hook event table — opencode (driven through the generated old bridge
       lastHeartbeatAt: NOW
     });
     expect(state.usageBadgesAt).toBe(NOW);
-  }, 20_000);
+  });
 
-  it.each([
-    ['busy', { status: { type: 'busy' } }],
-    ['retry', { status: { type: 'retry' } }]
-  ])(
-    'session.status %s stays a heartbeat without a badge refresh',
-    async (_name, status) => {
-      await withLiveSession(() => bridge.busEvent({ type: 'session.status', properties: status }));
+  it.each(['busy', 'retry'])('session.status %s stays a heartbeat without a badge refresh', async (type) => {
+    await seedSessions(runningSession('opencode', 'opencode-session-1'));
+    await run('session.status', { sessionID: 'opencode-session-1', status: { type } });
 
-      const state = await readState();
-      expect(state.sessions['opencode-session-1']).toMatchObject({
-        status: 'running',
-        startedAt: NOW - 60_000,
-        lastHeartbeatAt: NOW
-      });
-      expect(state.usageBadgesAt).toBeUndefined();
-    },
-    20_000
-  );
+    const state = await readState();
+    expect(state.sessions['opencode-session-1']).toMatchObject({
+      status: 'running',
+      startedAt: NOW - 60_000,
+      lastHeartbeatAt: NOW
+    });
+    expect(state.usageBadgesAt).toBeUndefined();
+  });
 
   it('session.status idle finishes the session and refreshes the usage badge', async () => {
-    await withLiveSession(() => bridge.busEvent({ type: 'session.status', properties: { status: { type: 'idle' } } }));
+    await seedSessions(runningSession('opencode', 'opencode-session-1'));
+    await run('session.status', { sessionID: 'opencode-session-1', status: { type: 'idle' } });
 
     const state = await readState();
     expect(state.sessions['opencode-session-1']).toMatchObject({ status: 'finished', finishedAt: NOW });
     expect(state.usageBadgesAt).toBe(NOW);
-  }, 20_000);
+  });
 
   it.each([
     ['message.updated', { info: { id: 'msg_1', sessionID: 'opencode-session-1' } }],
-    ['message.part.updated', { part: { id: 'prt_1', sessionID: 'opencode-session-1' } }]
-  ])(
-    '%s keeps the session alive',
-    async (type, properties) => {
-      await withLiveSession(() => bridge.busEvent({ type, properties }));
+    ['message.part.updated', { part: { id: 'prt_1', sessionID: 'opencode-session-1' } }],
+    ['tool.execute.before', { tool: 'bash', sessionID: 'opencode-session-1', callID: 'call-1' }],
+    ['tool.execute.after', { tool: 'bash', sessionID: 'opencode-session-1', callID: 'call-1', args: {} }],
+    ['command.executed', { name: 'compact', sessionID: 'opencode-session-1', arguments: '', messageID: 'msg_1' }],
+    ['todo.updated', { sessionID: 'opencode-session-1', todos: [] }],
+    ['session.diff', { sessionID: 'opencode-session-1', diff: [] }],
+    ['session.updated', { info: { id: 'opencode-session-1' } }],
+    [
+      'permission.asked',
+      { id: 'perm-1', sessionID: 'opencode-session-1', permission: 'bash', patterns: [], metadata: {}, always: [] }
+    ],
+    ['permission.replied', { sessionID: 'opencode-session-1', permissionID: 'perm-1', response: 'once' }]
+  ])('%s keeps the session alive', async (type, properties) => {
+    await seedSessions(runningSession('opencode', 'opencode-session-1'));
+    await run(type, properties);
 
-      const state = await readState();
-      expect(state.sessions['opencode-session-1']).toMatchObject({
-        status: 'running',
-        startedAt: NOW - 60_000,
-        lastHeartbeatAt: NOW
-      });
-      expect(state.usageBadgesAt).toBeUndefined();
-    },
-    20_000
-  );
+    const state = await readState();
+    expect(state.sessions['opencode-session-1']).toMatchObject({
+      status: 'running',
+      startedAt: NOW - 60_000,
+      lastHeartbeatAt: NOW
+    });
+    expect(state.usageBadgesAt).toBeUndefined();
+  });
 
-  it.each(['tool.execute.before', 'tool.execute.after'])(
-    '%s keeps the session alive',
-    async (type) => {
-      await withLiveSession(async () => {
-        const toolHook = type === 'tool.execute.before' ? bridge.toolBefore : bridge.toolAfter;
-        await toolHook({ tool: 'bash' });
-      });
+  it('file.edited keeps the bridge current session alive', async () => {
+    await seedSessions(runningSession('opencode', 'opencode-session-1'));
+    await run('file.edited', { file: '/work/repo/src/index.ts' }, 'opencode-session-1');
 
-      const state = await readState();
-      expect(state.sessions['opencode-session-1']).toMatchObject({
-        status: 'running',
-        startedAt: NOW - 60_000,
-        lastHeartbeatAt: NOW
-      });
-      expect(state.usageBadgesAt).toBeUndefined();
-    },
-    20_000
-  );
+    const state = await readState();
+    expect(state.sessions['opencode-session-1']).toMatchObject({
+      status: 'running',
+      startedAt: NOW - 60_000,
+      lastHeartbeatAt: NOW
+    });
+    expect(state.usageBadgesAt).toBeUndefined();
+  });
 
   it.each([
-    'command.executed',
-    'file.edited',
-    'todo.updated',
-    'session.diff',
-    'session.updated',
-    'permission.asked',
-    'permission.replied'
-  ])(
-    '%s keeps the session alive',
-    async (type) => {
-      await withLiveSession(() => bridge.busEvent({ type }));
+    ['session.idle', { sessionID: 'opencode-session-1' }],
+    ['session.error', { sessionID: 'opencode-session-1' }],
+    ['session.deleted', { info: { id: 'opencode-session-1' } }]
+  ])('%s finishes the session and refreshes the usage badge', async (type, properties) => {
+    await seedSessions(runningSession('opencode', 'opencode-session-1'));
+    await run(type, properties);
 
-      const state = await readState();
-      expect(state.sessions['opencode-session-1']).toMatchObject({
-        status: 'running',
-        startedAt: NOW - 60_000,
-        lastHeartbeatAt: NOW
-      });
-      expect(state.usageBadgesAt).toBeUndefined();
-    },
-    20_000
-  );
+    const state = await readState();
+    expect(state.sessions['opencode-session-1']).toMatchObject({ status: 'finished', finishedAt: NOW });
+    expect(state.usageBadgesAt).toBe(NOW);
+  });
 
-  it.each(['session.idle', 'session.error', 'session.deleted'])(
-    '%s finishes the session and refreshes the usage badge',
-    async (type) => {
-      await withLiveSession(() => bridge.busEvent({ type }));
+  it('a session.error without sessionID finishes the bridge current session and refreshes the usage badge', async () => {
+    await seedSessions(runningSession('opencode', 'opencode-session-1'));
+    await run('session.error', { error: { name: 'UnknownError', data: { message: 'failed' } } }, 'opencode-session-1');
 
-      const state = await readState();
-      expect(state.sessions['opencode-session-1']).toMatchObject({ status: 'finished', finishedAt: NOW });
-      expect(state.usageBadgesAt).toBe(NOW);
-    },
-    20_000
-  );
+    const state = await readState();
+    expect(state.sessions['opencode-session-1']).toMatchObject({ status: 'finished', finishedAt: NOW });
+    expect(state.usageBadgesAt).toBe(NOW);
+  });
 
   it('a finished session stays finished on message updates (no reopen path)', async () => {
-    await withLiveSession(
-      () =>
-        bridge.busEvent({
-          type: 'message.updated',
-          properties: { info: { id: 'msg_1', sessionID: 'opencode-session-1' } }
-        }),
-      [{ ...runningSession('opencode', 'opencode-session-1'), ...finishedOverrides() }]
-    );
+    await seedSessions({ ...runningSession('opencode', 'opencode-session-1'), ...finishedOverrides() });
+    await run('message.updated', { info: { id: 'msg_1', sessionID: 'opencode-session-1' } });
 
     const state = await readState();
     expect(state.sessions['opencode-session-1']).toMatchObject({
@@ -926,51 +688,35 @@ describe('hook event table — opencode (driven through the generated old bridge
       lastHeartbeatAt: NOW - 30_000
     });
     expect(state.usageBadgesAt).toBeUndefined();
-  }, 20_000);
+    expect(await readFile(join(homeDir, 'agent-presence.log'), 'utf8')).toContain(
+      'source=opencode event=Heartbeat hasSessionId=true'
+    );
+  });
 
-  it('a late message from the previous session stays on the env session (bridge sequence)', async () => {
-    // session.created A, then B: the bridge remembers the newest created
-    // session in OPENCODE_SESSION_ID.
-    await bridge.busEvent({ type: 'session.created', properties: { info: { id: 'ses_a', directory: '/work/repo' } } });
-    await runCaptured(bridge.captures);
-    await bridge.busEvent({ type: 'session.created', properties: { info: { id: 'ses_b', directory: '/work/repo' } } });
-    await runCaptured(bridge.captures);
+  it('a late message updates its named session before the bridge current session', async () => {
+    await run('session.created', { info: { id: 'ses_a', directory: '/work/repo' } });
+    await run('session.created', { info: { id: 'ses_b', directory: '/work/repo' } });
 
-    // A late message.updated from session A carries A's id in
-    // properties.info.sessionID, but the bridge does not read it there and
-    // emits OPENCODE_SESSION_ID=B; the heartbeat must land on B.
     advanceMs(5_000);
-    await bridge.busEvent({ type: 'message.updated', properties: { info: { id: 'msg_1', sessionID: 'ses_a' } } });
-    await runCaptured(bridge.captures);
+    await run('message.updated', { info: { id: 'msg_1', sessionID: 'ses_a' } }, 'ses_b');
 
     const state = await readState();
-    expect(state.sessions['ses_b']).toMatchObject({
+    expect(state.sessions['ses_a']).toMatchObject({
       status: 'running',
       startedAt: NOW,
       lastHeartbeatAt: NOW + 5_000
     });
-    expect(state.sessions['ses_a']).toMatchObject({
+    expect(state.sessions['ses_b']).toMatchObject({
       status: 'running',
       startedAt: NOW,
       lastHeartbeatAt: NOW
     });
-    // The badge was refreshed by the two session.created starts and not by the
-    // late heartbeat (a boundary would have moved it to NOW + 5_000).
     expect(state.usageBadgesAt).toBe(NOW);
-  }, 20_000);
+  });
 });
 
-describe('hook event table — Pi (driven through the generated old extension)', () => {
-  let extension: PiExtensionHost;
-
-  beforeEach(async () => {
-    extension = await loadPiExtension();
-  });
-
-  const runPi = async (name: string) => {
-    await firePiEvent(extension, name);
-    await runCaptured(extension.captures);
-  };
+describe('hook event table — Pi via --agent with kit bridge payloads', () => {
+  const runPi = (type: string) => runAgent('pi', { type, sessionId: 'pi-session-1', cwd: '/work/repo' });
 
   it('before_agent_start (SessionStart) starts the session and refreshes the usage badge', async () => {
     await runPi('before_agent_start');
@@ -984,17 +730,18 @@ describe('hook event table — Pi (driven through the generated old extension)',
     });
     expect(state.usageBadgesAt).toBe(NOW);
     expect(Object.keys(state.usageSnapshots?.['1'] ?? {}).sort()).toEqual(BILLABLE_SOURCE_IDS);
-  }, 20_000);
+  });
 
-  it('session_start has no handler — opening Pi creates no session', async () => {
-    expect(extension.handlers.has('session_start')).toBe(false);
-    await firePiEvent(extension, 'session_start');
-    await extension.captures.expectNone();
+  it('session_start is ignored and opening Pi creates no session', async () => {
+    await runPi('session_start');
 
     const state = await readState();
     expect(state.sessions).toEqual({});
     expect(state.usageBadgesAt).toBeUndefined();
-  }, 20_000);
+    expect(await readFile(join(homeDir, 'agent-presence.log'), 'utf8')).toContain(
+      'hook skipped: ignored event source=pi event=session_start'
+    );
+  });
 
   it.each(['turn_start', 'tool_execution_start', 'tool_execution_end'])(
     '%s (Heartbeat) keeps the session alive',
@@ -1009,8 +756,7 @@ describe('hook event table — Pi (driven through the generated old extension)',
         lastHeartbeatAt: NOW
       });
       expect(state.usageBadgesAt).toBeUndefined();
-    },
-    20_000
+    }
   );
 
   it.each(['agent_end', 'session_shutdown'])(
@@ -1022,8 +768,7 @@ describe('hook event table — Pi (driven through the generated old extension)',
       const state = await readState();
       expect(state.sessions['pi-session-1']).toMatchObject({ status: 'finished', finishedAt: NOW });
       expect(state.usageBadgesAt).toBe(NOW);
-    },
-    20_000
+    }
   );
 
   it('a finished session stays finished on turn activity', async () => {
@@ -1037,7 +782,10 @@ describe('hook event table — Pi (driven through the generated old extension)',
       lastHeartbeatAt: NOW - 30_000
     });
     expect(state.usageBadgesAt).toBeUndefined();
-  }, 20_000);
+    expect(await readFile(join(homeDir, 'agent-presence.log'), 'utf8')).toContain(
+      'source=pi event=Heartbeat hasSessionId=true'
+    );
+  });
 });
 
 describe('hook event table — Grok (driven via --event, presence-only source)', () => {

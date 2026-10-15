@@ -568,7 +568,7 @@ describe('hook --agent gemini-cli', () => {
     expect(finishedView(await readState(), 'gemini-session-1')).toEqual(finishedExpected());
   });
 
-  it('keeps today’s signal for the four names Gemini never dispatched', async () => {
+  it('preserves the Claude-style names accepted by the Gemini payload reader', async () => {
     await seedSessions({ ...runningSession('gemini', 'gemini-session-1'), ...finishedOverrides() });
     await run('UserPromptSubmit');
     const reopened = await readState();
@@ -777,6 +777,26 @@ describe('hook --agent opencode', () => {
     await seedSessions(runningSession('opencode', session));
     await run(type, properties);
     expect(keptView(await readState(), session)).toEqual(runningKept('opencode'));
+  });
+});
+
+describe('opencode source payloads outside the kit bridge', () => {
+  it('skips direct session_id and environment-only session fallbacks', async () => {
+    const session = 'opencode-session-1';
+    await seedSessions(runningSession('opencode', session));
+    stdinPayload.current = { session_id: session };
+    await hook(['--source', 'opencode', '--event', 'SessionStart', '--silent']);
+    await drainQueue();
+    expect(settledView(await readState(), session)).toEqual(untouchedRunning('opencode', session));
+    expect(await readLog()).toContain('hook skipped: missing session id for source=opencode event=SessionStart');
+
+    stdinPayload.current = {};
+    process.env.OPENCODE_HOOK_EVENT = 'SessionStart';
+    process.env.OPENCODE_SESSION_ID = session;
+    await hook(['--source', 'opencode', '--silent']);
+    await drainQueue();
+    expect(settledView(await readState(), session)).toEqual(untouchedRunning('opencode', session));
+    expect(await readLog()).toContain('hook skipped: missing session id for source=opencode event=Heartbeat');
   });
 });
 
