@@ -27,7 +27,6 @@ export async function uninstall(args: string[] = [], takeover: TakeoverOptions =
 
   if (clearCredentials) {
     await deleteCredential();
-    // The deletion applies to the file's content as read, so entries this command does not touch stay in the file.
     const { raw } = await loadValidatedConfig();
     delete raw.slot_id;
     delete raw.slotId;

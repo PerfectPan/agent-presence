@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vite-plus/test';
+import { parseConfigFile } from '../src/config-schema.js';
 import { parsePricingSnapshot } from '../src/usage/pricing.js';
 import { resolvePricing } from '../src/usage/index.js';
+import type { PricingOverrides } from '../src/usage/index.js';
 
 describe('resolvePricing', () => {
   it('matches the longest substring key', () => {
@@ -33,6 +35,20 @@ describe('resolvePricing', () => {
     // its unset fields come from the same key's snapshot entry, not the alias
     expect(pricing?.output).toBe(25);
     expect(pricing?.cacheWrite1h).toBe(10);
+  });
+
+  it('lets an empty-string override key price every model ahead of the snapshot', () => {
+    // Deliberate kit-lookup behavior, kept: the empty key is a substring of
+    // every id and overrides win over the tables, so it acts as a catch-all.
+    // The old walk's falsy-key check made the same config price nothing.
+    const every: PricingOverrides = { '': { input: 2, output: 4, cacheWrite: 1, cacheRead: 0.5 } };
+    expect(resolvePricing('totally-unknown-model', every)).toEqual({
+      input: 2,
+      output: 4,
+      cacheWrite: 1,
+      cacheRead: 0.5
+    });
+    expect(resolvePricing('gpt-5.5', every)).toEqual({ input: 2, output: 4, cacheWrite: 1, cacheRead: 0.5 });
   });
 
   it('gives an incomplete override of an untabulated key no price instead of guessing', () => {

@@ -8,9 +8,10 @@ import {
   magicBuilderFallbackTitle,
   providerBaseUrl,
   saveConfig,
-  setMagicBuilderConfig
+  setMagicBuilderConfig,
+  type AppConfig
 } from '../config.js';
-import { loadValidatedConfig } from '../config-schema.js';
+import { loadValidatedConfig, rawConfigMap } from '../config-schema.js';
 import { readMagicToken, writeMagicToken, type MagicTokenSource } from '../magic-token.js';
 import {
   DEFAULT_MAGIC_BUILDER_FAAS_NAME,
@@ -58,8 +59,6 @@ export interface PublishMagicBuilderFaasResult extends MagicBuilderPublishResult
 export async function publishMagicBuilderFaas(
   options: PublishMagicBuilderFaasOptions = {}
 ): Promise<PublishMagicBuilderFaasResult> {
-  // The persisted record id is written over the file's content as read, so entries this function does not change
-  // stay in the file (issue #106).
   const { config, raw } = await loadValidatedConfig();
   let tokenInfo = await readMagicToken();
   if ((!tokenInfo.token || !tokenInfo.source) && options.acquireToken) {
@@ -100,12 +99,23 @@ export async function publishMagicBuilderFaas(
 
   const persist = options.persist ?? true;
   if (persist) {
-    const existingProviderConfig = magicBuilderConfig(raw);
-    const updated = setMagicBuilderConfig(raw, {
-      faasId: result.id,
-      faasName: name,
-      baseUrl: existingProviderConfig.baseUrl ?? (baseUrl === 'https://magic.solutionsuite.cn' ? undefined : baseUrl)
-    });
+    // The magic-builder entry comes from the validated view (broken values dropped, unknown keys kept) with the
+    // change applied; the provider map's other entries and every other top-level key stay as the file holds them.
+    const existingProviderConfig = magicBuilderConfig(config);
+    const updated = setMagicBuilderConfig(
+      {
+        ...raw,
+        providers: {
+          ...rawConfigMap(raw.providers),
+          'magic-builder': existingProviderConfig
+        } as AppConfig['providers']
+      },
+      {
+        faasId: result.id,
+        faasName: name,
+        baseUrl: existingProviderConfig.baseUrl ?? (baseUrl === 'https://magic.solutionsuite.cn' ? undefined : baseUrl)
+      }
+    );
     if (!updated.provider) {
       updated.provider = 'magic-builder';
     }
