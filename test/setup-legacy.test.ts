@@ -153,7 +153,7 @@ async function seedQueue(): Promise<void> {
 async function expectRefusal(before: Record<string, string>): Promise<void> {
   expect(process.exitCode).toBe(1);
   expect(errors).not.toHaveBeenCalled();
-  expect(output()).toContain('setup refused: previous-release entries remain');
+  expect(output()).toContain('setup refused:');
   expect(boundary.login).not.toHaveBeenCalled();
   expect(boundary.hasCredential).not.toHaveBeenCalled();
   expect(ui.promptConfirm).not.toHaveBeenCalled();
@@ -299,34 +299,43 @@ describe('previous-release setup check', () => {
     }
   );
 
-  it('reports all distinct pinned versions and leaves renamed and hand-edited remnants for manual removal', async () => {
-    await put(
-      join(fixture.home, '.claude/settings.json'),
-      JSON.stringify({
-        hooks: {
-          SessionStart: [
-            {
-              hooks: [
-                { type: 'command', command: 'npx --yes @rivus/agent-presence@0.7.2 hook' },
-                { type: 'command', command: 'npx --yes @rivus/agent-presence@0.8.1 hook # edited' }
-              ]
-            }
-          ]
-        }
-      })
-    );
-    const copy = join(fixture.home, '.config/opencode/plugins/presence-copy.js');
-    await put(copy, buildOpenCodePluginSource());
-    const before = await snapshot();
-    await setup(ARGS, {}, fixture.layer);
-    await expectRefusal(before);
-    expect(output()).toContain('@rivus/agent-presence@0.7.2 uninstall');
-    expect(output()).toContain('@rivus/agent-presence@0.8.1 uninstall');
-    expect(output()).not.toContain('@rivus/agent-presence@0.9.0 uninstall');
-    expect(output()).toContain(copy);
-    expect(output()).toContain('renamed copies or hand-edited entries');
-    expect(output()).not.toContain('npx @rivus/agent-presence uninstall');
-  });
+  it.each(['bridge', 'reference'] as const)(
+    'adds the fallback alongside distinct pinned versions for a %s',
+    async (kind) => {
+      await put(
+        join(fixture.home, '.claude/settings.json'),
+        JSON.stringify({
+          hooks: {
+            SessionStart: [
+              {
+                hooks: [
+                  { type: 'command', command: 'npx --yes @rivus/agent-presence@0.7.2 hook' },
+                  { type: 'command', command: 'npx --yes @rivus/agent-presence@0.8.1 hook # edited' }
+                ]
+              }
+            ]
+          }
+        })
+      );
+      const copy =
+        kind === 'bridge'
+          ? join(fixture.home, '.config/opencode/plugins/presence-copy.js')
+          : previousReleasePaths(fixture.home).opencodeConfig;
+      await put(
+        copy,
+        kind === 'bridge' ? buildOpenCodePluginSource() : JSON.stringify({ plugin: ['./plugins/agent-presence.js'] })
+      );
+      const before = await snapshot();
+      await setup(ARGS, {}, fixture.layer);
+      await expectRefusal(before);
+      expect(output()).toContain('@rivus/agent-presence@0.7.2 uninstall');
+      expect(output()).toContain('@rivus/agent-presence@0.8.1 uninstall');
+      expect(output()).toContain('@rivus/agent-presence@0.9.0 uninstall');
+      expect(output()).toContain(copy);
+      expect(output()).toContain('renamed copies or hand-edited entries');
+      expect(output()).not.toContain('npx @rivus/agent-presence uninstall');
+    }
+  );
 
   it.each(['dotfiles-managed', 'symlinked'] as const)(
     'refuses an old hook in a %s settings file before unrelated conflict resolution',
@@ -371,12 +380,34 @@ describe('previous-release setup check', () => {
     expect(output()).toContain('your kept file');
     expect(output()).toContain('Move or remove it by hand');
     if (mixed) {
-      expect(output()).toContain('before running any previous-release uninstall');
+      expect(output()).toContain('before uninstalling replacement entries');
       expect(output().indexOf('your kept file')).toBeLessThan(output().indexOf('npx --yes'));
       expect(output()).toContain('For replace entries, after moving or removing any kept files above');
     } else {
+      expect(output()).not.toContain('previous-release');
       expect(output()).not.toMatch(/npx|node <checkout>/);
     }
+  });
+
+  it('describes a current-version Grok hook kept by uninstall as a kept file, not a previous release', async () => {
+    await installManaged();
+    const path = join(fixture.home, '.grok/hooks/agent-presence.json');
+    const installed = await readFile(path, 'utf8');
+    expect(installed).toContain('agent-presence hook');
+    await writeFile(path, `${installed}\n`);
+    await fixture.run(harness.uninstall('agent-presence', { agents: PRESENCE_AGENTS }));
+    fixture.cliCalls.length = 0;
+    await seedQueue();
+    const before = await snapshot();
+
+    await setup(ARGS, {}, fixture.layer);
+
+    await expectRefusal(before);
+    expect(output()).toContain('setup refused: files kept from an earlier removal remain:');
+    expect(output()).toContain(`${path}; kind=file; treatment=protect`);
+    expect(output()).toContain('Move or remove it by hand');
+    expect(output()).not.toContain('previous-release');
+    expect(output()).not.toMatch(/npx|node <checkout>/);
   });
 
   it('leaves a tracked bridge overwrite to the ordinary user-modified force conflict', async () => {
@@ -494,7 +525,7 @@ describe('previous-release setup check', () => {
       vi.stubEnv('AGENT_PRESENCE_CLI_PATH', '/work/checkout/dist/src/cli.js');
       await setup([...ARGS, '--hook-command', mode], {}, fixture.layer);
       expect(process.exitCode).toBe(0);
-      expect(harnessRoot.runHarness).toHaveBeenCalledOnce();
+      expect(harnessRoot.runHarness).toHaveBeenCalledTimes(2);
       expect(output()).not.toContain('setup refused');
       for (const [path, content] of Object.entries(foreign)) {
         expect(await readFile(path, 'utf8')).toBe(content);

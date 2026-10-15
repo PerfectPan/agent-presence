@@ -156,34 +156,34 @@ export async function setup(
 
   warnPreviousReleaseOverrides();
 
-  async function prepareSetup() {
-    // A stopped worker left the tombstone: invalidate queued records before hooks can record again.
-    const statePath = getStatePath();
-    if (await isDisabled(statePath)) {
-      await takeOver(
-        statePath,
-        async () => {
-          // Temporary and failed records stay; a late rename's old epoch makes it inapplicable.
-          for (const file of (await listQueue(statePath)).records) {
-            await deleteQueueFile(file);
-          }
-          await increaseEpoch(statePath);
-          await removeTombstone(statePath);
-        },
-        takeover
-      );
-    }
+  if (!skipHooks && !(await runHarness(checkPreviousRelease(), layer))) {
+    return;
+  }
 
-    const { config } = await loadValidatedConfig();
-    const activeProvider = defaultCommandProviderId(config, optionValue(args, '--provider'));
-    if (!skipLogin && (forceLogin || !(await hasCredential()))) {
-      await login(['--provider', activeProvider]);
-    }
-    return { config, activeProvider };
+  // An uninstall --all or worker --stop left the tombstone: invalidate queued records before hooks can record again.
+  const statePath = getStatePath();
+  if (await isDisabled(statePath)) {
+    await takeOver(
+      statePath,
+      async () => {
+        // Temporary and failed records stay; a late rename's old epoch makes it inapplicable.
+        for (const file of (await listQueue(statePath)).records) {
+          await deleteQueueFile(file);
+        }
+        await increaseEpoch(statePath);
+        await removeTombstone(statePath);
+      },
+      takeover
+    );
+  }
+
+  const { config } = await loadValidatedConfig();
+  const activeProvider = defaultCommandProviderId(config, optionValue(args, '--provider'));
+  if (!skipLogin && (forceLogin || !(await hasCredential()))) {
+    await login(['--provider', activeProvider]);
   }
 
   if (skipHooks) {
-    const { config, activeProvider } = await prepareSetup();
     await publishProvider(config, activeProvider);
     finishOutro('setup: ok');
     return;
@@ -192,10 +192,6 @@ export async function setup(
   const bundle = createPresenceBundle();
   const completed = await runHarness(
     Effect.gen(function* () {
-      if (!(yield* checkPreviousRelease())) {
-        return false;
-      }
-      const { config, activeProvider } = yield* Effect.tryPromise(prepareSetup);
       const plan = yield* planSetupInstall(bundle);
       if (!plan) {
         return false;
@@ -229,20 +225,6 @@ export async function setup(
             `setup ${step.action}: ${step.locator.path}${step.locator.pointer ? `#${step.locator.pointer}` : ''}`
           );
         }
-        yield* Effect.tryPromise(async () => {
-          await maybeInstallDshPlugin();
-          const setupSpinner = createSpinner();
-          setupSpinner.start('Installing power watcher');
-          const results = await runSetupScripts();
-          setupSpinner.stop('Installers completed');
-          for (const result of results) {
-            showInfo(`setup installed: ${result.scriptName}`);
-          }
-          if (!isMacOS()) {
-            showInfo(LINUX_WATCHER_SKIP_MESSAGE);
-          }
-          await publishProvider(config, activeProvider);
-        });
         const verified = yield* verify('agent-presence', { bundle, agents: PRESENCE_AGENTS });
         for (const artifact of verified.artifacts) {
           showInfo(
@@ -265,7 +247,20 @@ export async function setup(
     }),
     layer
   );
-  if (completed) {
-    finishOutro('setup: ok');
+  if (!completed) {
+    return;
   }
+  await maybeInstallDshPlugin();
+  const setupSpinner = createSpinner();
+  setupSpinner.start('Installing power watcher');
+  const results = await runSetupScripts();
+  setupSpinner.stop('Installers completed');
+  for (const result of results) {
+    showInfo(`setup installed: ${result.scriptName}`);
+  }
+  if (!isMacOS()) {
+    showInfo(LINUX_WATCHER_SKIP_MESSAGE);
+  }
+  await publishProvider(config, activeProvider);
+  finishOutro('setup: ok');
 }

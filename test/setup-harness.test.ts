@@ -292,7 +292,7 @@ describe('setup through the harness', () => {
     expect(await snapshotTargets()).toEqual(before);
   });
 
-  it('keeps every target unchanged through the full preview, applies the exact confirmed handle, then verifies after publishing', async () => {
+  it('keeps every target unchanged through the full preview, applies the exact confirmed handle, then verifies before publishing', async () => {
     await seedSettings();
     const before = await snapshotTargets();
     let targetsAtConfirmation: Record<string, string> | undefined;
@@ -342,7 +342,7 @@ describe('setup through the harness', () => {
     });
     expect(
       timeline.filter((entry) => ['planned', 'confirm', 'apply', 'watcher', 'publish', 'verify'].includes(entry))
-    ).toEqual(['planned', 'confirm', 'apply', 'watcher', 'publish', 'verify']);
+    ).toEqual(['planned', 'confirm', 'apply', 'verify', 'watcher', 'publish']);
     expect(output()).toContain('setup create:');
     expect(output()).toMatch(/verif/i);
     expect(await snapshotTargets()).not.toEqual(before);
@@ -361,6 +361,33 @@ describe('setup through the harness', () => {
     expect(await snapshotTargets()).toEqual(before);
     await expect(readFile(join(fixture.presenceHome, 'bin/agent-presence'))).rejects.toThrow(/ENOENT/);
     expect(output()).toContain('nothing was written to agent configuration');
+  });
+
+  it('still asks for confirmation in a TTY with --yes', async () => {
+    const before = await snapshotTargets();
+    ui.promptConfirm.mockResolvedValue(false);
+
+    await setup([...argumentsForSetup, '--yes'], {}, fixture.layer);
+
+    expectStopped();
+    expect(ui.promptConfirm).toHaveBeenCalledExactlyOnceWith('Apply this installation plan?');
+    expect(hooks.discardPlan).toHaveBeenCalledExactlyOnceWith(plans[0]);
+    expect(plans[0]?.status).toBe('discarded');
+    expect(await snapshotTargets()).toEqual(before);
+  });
+
+  it('discards the plan without applying when writing the shim fails', async () => {
+    await seedSettings();
+    await put(join(fixture.presenceHome, 'bin'), 'not a directory\n');
+    const before = await snapshotTargets();
+
+    await setup(argumentsForSetup, {}, fixture.layer);
+
+    expectStopped();
+    expect(hooks.discardPlan).toHaveBeenCalledExactlyOnceWith(plans[0]);
+    expect(plans[0]?.status).toBe('discarded');
+    expect(await snapshotTargets()).toEqual(before);
+    expect(await readFile(join(fixture.presenceHome, 'bin'), 'utf8')).toBe('not a directory\n');
   });
 
   it('shows the full plan and requires --yes when the terminal cannot prompt', async () => {
@@ -561,7 +588,7 @@ describe('setup through the harness', () => {
     await fixture.run(realHarness.discardPlan(template));
   });
 
-  it('reports verification drift after publishing and exits non-zero', async () => {
+  it('reports verification drift and stops before publishing', async () => {
     const locator = { kind: 'file' as const, path: join(fixture.home, '.pi/agent/extensions/agent-presence.ts') };
     hooks.verify.mockReturnValue(
       Effect.succeed({ artifacts: [{ locator, agents: ['pi'], status: 'missing' }], acknowledged: [] })
@@ -570,10 +597,64 @@ describe('setup through the harness', () => {
     await setup(argumentsForSetup, {}, fixture.layer);
 
     expect(process.exitCode).toBe(1);
-    expect(dependencies.publish).toHaveBeenCalledOnce();
+    expect(dependencies.runScripts).not.toHaveBeenCalled();
+    expect(dependencies.readCredential).not.toHaveBeenCalled();
+    expect(dependencies.publish).not.toHaveBeenCalled();
     expect(hooks.verify).toHaveBeenCalledOnce();
     expect(output()).toContain(`verify missing: ${locator.path}`);
     expect(output()).toContain('setup verification failed');
+    expect(ui.finishOutro).not.toHaveBeenCalled();
+  });
+
+  it('reports verification before a provider-publishing failure using the original message', async () => {
+    dependencies.publish.mockImplementation(async () => {
+      timeline.push('publish');
+      throw new Error('fixture publishing unavailable');
+    });
+
+    await setup(argumentsForSetup, {}, fixture.layer);
+
+    expect(process.exitCode).toBe(0);
+    expect(errors).not.toHaveBeenCalled();
+    expect(hooks.verify).toHaveBeenCalledOnce();
+    expect(timeline.indexOf('verify')).toBeLessThan(timeline.indexOf('publish'));
+    expect(output()).toContain('verify in-sync:');
+    expect(ui.showInfo).toHaveBeenCalledWith('magic-builder setup failed: fixture publishing unavailable');
+    expect(ui.showInfo).toHaveBeenCalledWith('signature url: unavailable until publish succeeds');
+    expect(ui.finishOutro).toHaveBeenCalledExactlyOnceWith('setup: ok');
+  });
+
+  it('keeps signature URL failures outside the harness after reporting verification', async () => {
+    const failure = new Error('fixture signature URL unavailable');
+    dependencies.signatureUrl.mockImplementation(async () => {
+      timeline.push('signature URL');
+      throw failure;
+    });
+
+    await expect(setup(['--skip-login', '--provider', 'feishu-signature'], {}, fixture.layer)).rejects.toBe(failure);
+
+    expect(process.exitCode).toBe(0);
+    expect(errors).not.toHaveBeenCalled();
+    expect(hooks.verify).toHaveBeenCalledOnce();
+    expect(timeline.indexOf('verify')).toBeLessThan(timeline.indexOf('signature URL'));
+    expect(output()).toContain('verify in-sync:');
+    expect(ui.finishOutro).not.toHaveBeenCalled();
+  });
+
+  it('keeps dsh prompt cancellation outside the harness after reporting verification', async () => {
+    await mkdir(join(fixture.home, '.dsh'));
+    const cancellation = new Error('operation cancelled');
+    ui.promptConfirm.mockResolvedValueOnce(true).mockRejectedValueOnce(cancellation);
+
+    await expect(setup(argumentsForSetup, {}, fixture.layer)).rejects.toBe(cancellation);
+
+    expect(process.exitCode).toBe(0);
+    expect(errors).not.toHaveBeenCalled();
+    expect(hooks.verify).toHaveBeenCalledOnce();
+    expect(output()).toContain('verify in-sync:');
+    expect(dependencies.installDsh).not.toHaveBeenCalled();
+    expect(dependencies.runScripts).not.toHaveBeenCalled();
+    expect(dependencies.publish).not.toHaveBeenCalled();
     expect(ui.finishOutro).not.toHaveBeenCalled();
   });
 
@@ -652,6 +733,8 @@ describe('setup through the harness', () => {
       expect(process.exitCode).toBe(1);
       expect(hooks.planInstall).toHaveBeenCalledOnce();
       expect(hooks.applyInstall).toHaveBeenCalledExactlyOnceWith(plans[0]);
+      expect(hooks.discardPlan).toHaveBeenCalledExactlyOnceWith(plans[0]);
+      expect(plans[0]?.status).toBe('discarded');
       expect(hooks.verify).not.toHaveBeenCalled();
       expect(dependencies.runScripts).not.toHaveBeenCalled();
       expect(dependencies.publish).not.toHaveBeenCalled();

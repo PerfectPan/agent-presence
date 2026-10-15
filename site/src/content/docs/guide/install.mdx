@@ -40,7 +40,7 @@ agent-presence setup
 
 `setup` lists configuration conflicts and their allowed resolutions, re-plans with your choices, then shows the complete changes, commands and expected trust prompts. Review and confirm that plan before it writes agent configuration. Canceling, declining confirmation or encountering a protected target stops setup. Login and local home migration may already have written their own data.
 
-In a non-interactive terminal, `setup --yes` applies a conflict-free plan. It does not resolve conflicts automatically. An interactive terminal always asks for confirmation, including with `--yes`. After applying the plan, setup offers the optional dsh plugin, installs the macOS power watcher, configures the provider and verifies the installed bundle. Linux skips the watcher and relies on TTL pruning.
+In a non-interactive terminal, `setup --yes` applies a conflict-free plan. It does not resolve conflicts automatically. An interactive terminal always asks for confirmation, including with `--yes`. After applying the plan, setup immediately verifies the kit artifacts. It then offers the optional dsh plugin, installs the macOS power watcher and configures the provider. A canceled dsh prompt or provider failure does not skip the verification results. Linux skips the watcher and relies on TTL pruning.
 
 ## Without a global install
 
@@ -78,18 +78,18 @@ The default provider is `magic-builder`, so the first `setup` runs the QR login 
 
 ## Upgrade from 0.9.0 or earlier
 
-If setup lists previously kept files, first move them out of the old install locations, or remove them if unwanted. Do this before any previous-release uninstall, including when replacement entries are also listed. For the remaining old installation, run the previous release's own uninstall before upgrading, without `--credentials` or `--all`. This preserves credentials, configuration and state:
+If setup lists files kept from an earlier removal, first move them out of the install locations, or remove them if unwanted. This includes files installed by this version, such as a modified hook file kept by its uninstall. Do this before any previous-release uninstall, including when replacement entries are also listed. For the remaining old installation, run the previous release's own uninstall before upgrading, without `--credentials` or `--all`. This preserves credentials, configuration and state:
 
 ```bash
 npx --yes @rivus/agent-presence@<previous-version> uninstall
 ```
 
-Use the version pinned in the old hook command; run the command for each distinct pinned version if they differ. If no matched hook command pins a version, use `0.9.0`, the last release before the harness migration. For a checkout installation, run `node <checkout>/dist/src/cli.js uninstall` before updating that checkout. Then install this release and run `agent-presence setup` again. Do not use an unpinned uninstall: this version removes only agent artifacts in its harness ledger and leaves previous-release entries outside it untouched. Later upgrades update that ledger in place through setup, without an uninstall.
+Run the uninstall for each distinct version pinned in replacement hook commands. Also run `0.9.0`, the last release before the harness migration, whenever any replacement entry is not a hook command with a pinned version. Bridge files and opencode config references need this fallback even when other entries pin versions; an older pinned release may not know those later artifacts. For a checkout installation, run `node <checkout>/dist/src/cli.js uninstall` before updating that checkout. Then install this release and run `agent-presence setup` again. Do not use an unpinned uninstall: this version removes only agent artifacts in its harness ledger and leaves previous-release entries outside it untouched. Later upgrades update that ledger in place through setup, without an uninstall.
 
-When setup detects previous-release entries, it lists their agent, path and kind, plus the event and command for hooks, and exits non-zero before queue recovery, login or install confirmation. Agent targets and queue files remain unchanged; an approved legacy-home migration can already have run. `--no-hooks` skips this check.
+When setup detects previous-release entries or files kept from an earlier removal, it lists their agent, path and kind, plus the event and command for hooks, and exits non-zero before queue recovery, login or install confirmation. Agent targets and queue files remain unchanged; an approved legacy-home migration can already have run. `--no-hooks` skips this check.
 
 - Entries marked for replacement need the previous release's uninstall above. A renamed plugin copy or hand-edited entry that uninstall leaves must be removed by hand at the listed path.
-- Files marked as previously kept belong to you. Move or remove them by hand; do not use the old uninstall for them, because it would delete your kept file.
+- Files marked as kept from an earlier removal belong to you, including files installed by this version. Move or remove them by hand; do not use the old uninstall for them, because it would delete your kept file.
 
 This version ignores the old install-target override variables below. Setup names each one that is set, including on a refused run. Keep them set to their original values while running the previous release's uninstall; otherwise its artifacts at those targets remain outside the check:
 

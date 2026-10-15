@@ -41,9 +41,9 @@ agent-presence uninstall --credentials
 agent-presence uninstall --all
 ```
 
-`setup` 在队列恢复和登录前列出检测到的旧版本项目，并拒绝继续，直到这些项目被移除，见[升级指引](/zh/guide/install/#从-090-或更早版本升级)。随后列出每个配置冲突的位置、原因和允许的处理方式，按你的选择重新规划，展示完整计划后请求确认。没有可选处理方式的目标（如 dotfiles 管理或符号链接目标）会使 setup 退出。取消或拒绝确认会丢弃已有计划并以非零退出码结束，不写入智能体配置；本地迁移和登录可能已完成。
+`setup` 在队列恢复和登录前列出检测到的旧版本项目和此前卸载时保留的文件（也可能由本版本安装），并拒绝继续，直到这些项目被移走或移除，见[升级指引](/zh/guide/install/#从-090-或更早版本升级)。需要替换的项目应对每个固定的 hook 版本分别卸载；只要有一个需要替换的项目不是固定版本的 hook 命令，就额外运行 `0.9.0`。运行这些卸载命令前，先手动处理保留文件。随后列出每个配置冲突的位置、原因和允许的处理方式，按你的选择重新规划，展示完整计划后请求确认。没有可选处理方式的目标（如 dotfiles 管理或符号链接目标）会使 setup 退出。取消或拒绝确认会丢弃已有计划并以非零退出码结束，不写入智能体配置；本地迁移和登录可能已完成。
 
-非交互终端必须传 `--yes` 才会应用无冲突的计划；有冲突时无论是否传 `--yes` 都会退出。交互终端始终需要明确确认。确认后 setup 写入稳定的 hook shim、应用计划、运行 dsh 和电源 watcher 步骤、设置 provider，最后验证 bundle。`--no-hooks` 跳过旧版本检查、harness、shim、dsh 和 watcher；`--skip-login`（也可用 `--hooks-only`）跳过登录。`--hook-command absolute` 只改变 shim 调用的程序，安装到智能体中的命令保持不变。
+非交互终端必须传 `--yes` 才会应用无冲突的计划；有冲突时无论是否传 `--yes` 都会退出。交互终端始终需要明确确认。确认后 setup 写入稳定的 hook shim、应用计划并立即验证 kit 产物，再运行 dsh 和电源 watcher 步骤并设置 provider；取消 dsh 提示或 provider 失败不会跳过验证结果。`--no-hooks` 跳过旧版本检查、harness、shim、dsh 和 watcher；`--skip-login`（也可用 `--hooks-only`）跳过登录。`--hook-command absolute` 只改变 shim 调用的程序，安装到智能体中的命令保持不变。
 
 完整路径见[安装位置](/zh/guide/install/#安装位置)：Claude Code 使用插件，避免写入 Cursor 也会读取的 settings 文件；Gemini 使用扩展及其原生事件名；Codex 使用插件或 `config.toml`；Grok 使用独立 hook 文件；opencode/Pi 使用桥接文件。Claude Code、Codex、Gemini CLI 和 Grok 的命令式 hook 按各自的原生单位设置五秒超时。opencode/Pi 桥接仅对同步结束事件的交付设置五秒超时，其他事件异步发送，不设置子进程超时。切换到 shim 的 `hook --agent` 命令预计需要在 Codex 中重新信任一次 hook，后续只更新 shim 时会保留 hook 定义。真实智能体验收与隔离环境中的安装检查分开进行。
 

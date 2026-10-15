@@ -16,7 +16,7 @@ export const PREVIOUS_RELEASE_MARKERS = [
   '@rivus/agent-presence pi extension'
 ] as const;
 
-// This is the last release before ledger-backed installs; bridge-only matches carry no pinned command version.
+// This is the last release before ledger-backed installs; unpinned entries may need its later bridge removers.
 const PREVIOUS_RELEASE_VERSION = '0.9.0';
 
 const INSTALL_TARGET_OVERRIDES = [
@@ -42,32 +42,38 @@ export function warnPreviousReleaseOverrides(): void {
 }
 
 function reportPreviousRelease(entries: readonly LegacyEntry[]): void {
-  showInfo('setup refused: previous-release entries remain:');
-  for (const entry of entries) {
-    const location = `${entry.locator.path}${entry.locator.pointer ? `#${entry.locator.pointer}` : ''}`;
-    const hook = entry.command === undefined ? '' : `; event=${entry.event ?? 'unknown'}; command=${entry.command}`;
-    showInfo(`${entry.agent}: ${location}; kind=${entry.kind}; treatment=${entry.treatment}${hook}`);
-  }
-  for (const entry of entries.filter((entry) => entry.treatment === 'protect')) {
-    showInfo(
-      `${entry.locator.path} is your kept file from an earlier removal. Move or remove it by hand before running any previous-release uninstall, which would delete it.`
-    );
-  }
+  const protect = entries.filter((entry) => entry.treatment === 'protect');
   const replace = entries.filter((entry) => entry.treatment === 'replace');
-  if (replace.length > 0) {
-    const versions = new Set(
-      replace.flatMap((entry) =>
-        entry.command === undefined
-          ? []
-          : [
-              ...entry.command.matchAll(
-                /@rivus\/agent-presence@(\d+\.\d+\.\d+(?:-[\w.-]+)?(?:\+[\w.-]+)?)(?=[\s'";|&]|$)/g
-              )
-            ].map((match) => match[1]!)
-      )
+  for (const group of [
+    { entries: protect, heading: 'files kept from an earlier removal' },
+    { entries: replace, heading: 'previous-release entries' }
+  ]) {
+    if (group.entries.length === 0) {
+      continue;
+    }
+    showInfo(`setup refused: ${group.heading} remain:`);
+    for (const entry of group.entries) {
+      const location = `${entry.locator.path}${entry.locator.pointer ? `#${entry.locator.pointer}` : ''}`;
+      const hook = entry.command === undefined ? '' : `; event=${entry.event ?? 'unknown'}; command=${entry.command}`;
+      showInfo(`${entry.agent}: ${location}; kind=${entry.kind}; treatment=${entry.treatment}${hook}`);
+    }
+  }
+  for (const entry of protect) {
+    showInfo(
+      `${entry.locator.path} is your kept file from an earlier removal. Move or remove it by hand before uninstalling replacement entries, which could delete it.`
     );
-    if (versions.size === 0) {
-      versions.add(PREVIOUS_RELEASE_VERSION);
+  }
+  if (replace.length > 0) {
+    const versions = new Set<string>();
+    for (const entry of replace) {
+      const pins = [
+        ...(entry.command?.matchAll(
+          /@rivus\/agent-presence@(\d+\.\d+\.\d+(?:-[\w.-]+)?(?:\+[\w.-]+)?)(?=[\s'";|&]|$)/g
+        ) ?? [])
+      ].map((match) => match[1]!);
+      for (const version of pins.length > 0 ? pins : [PREVIOUS_RELEASE_VERSION]) {
+        versions.add(version);
+      }
     }
     showInfo(
       "For replace entries, after moving or removing any kept files above, run the previous release's uninstall without --credentials or --all to keep credentials, configuration and state:"

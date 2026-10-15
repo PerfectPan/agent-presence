@@ -52,15 +52,15 @@ agent-presence setup
 
 ## Upgrade from 0.9.0 or earlier
 
-If setup lists previously kept files, move them out of the old install locations first, or remove them if unwanted. Do this before any old uninstall, including when replacement entries are also listed. For the remaining old installation, run the previous release's own uninstall before installing this release, without `--credentials` or `--all`, so credentials, configuration and state stay:
+If setup lists files kept from an earlier removal, move them out of the install locations first, or remove them if unwanted. They can be files installed by this version, including a modified hook file kept by its uninstall. Do this before any old uninstall, including when replacement entries are also listed. For the remaining old installation, run the previous release's own uninstall before installing this release, without `--credentials` or `--all`, so credentials, configuration and state stay:
 
 ```bash
 npx --yes @rivus/agent-presence@<previous-version> uninstall
 ```
 
-Use each version pinned in the old hook commands; when no command pins a version, use `0.9.0`. A checkout install can instead use `node <checkout>/dist/src/cli.js uninstall` before updating that checkout. Then install this release and run `agent-presence setup`. The current uninstall removes only harness-recorded agent artifacts, so it cannot replace this step. Later upgrades use setup in place.
+Run the uninstall for each distinct version pinned in replacement hook commands. Also run `0.9.0` whenever any replacement entry is not a hook command with a pinned version, including bridge files and opencode config references, even when other entries pin versions. A checkout install can instead use `node <checkout>/dist/src/cli.js uninstall` before updating that checkout. Then install this release and run `agent-presence setup`. The current uninstall removes only harness-recorded agent artifacts, so it cannot replace this step. Later upgrades use setup in place.
 
-Setup lists detected previous-release entries and stops before queue recovery, login or install confirmation. Files it labels as previously kept are yours: move or remove them by hand; the old uninstall would delete them. Also remove renamed or hand-edited remnants that the old uninstall leaves. Keep any old install-target override variables set for that uninstall; this release ignores them and warns when they are set.
+Setup lists detected previous-release entries and files kept from an earlier removal, then stops before queue recovery, login or install confirmation. Kept files are yours: move or remove them by hand; the old uninstall would delete them. Also remove renamed or hand-edited remnants that the old uninstall leaves. Keep any old install-target override variables set for that uninstall; this release ignores them and warns when they are set.
 
 Old absolute-path hook commands from a checkout without a presence marker can escape detection. Inspect the agent configuration after the old uninstall, especially for quoted checkout paths. The old uninstall also removes other tools' Claude/Codex/Gemini hooks containing `dist/src/cli.js hook`; preserve and restore those entries if needed. Switching to the stable shim is expected to require one Codex hook re-trust; later shim-only upgrades keep the hook definition stable. See the [upgrade guide](https://agent-presence.vercel.app/guide/install/#upgrade-from-090-or-earlier).
 

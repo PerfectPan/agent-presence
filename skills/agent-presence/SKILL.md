@@ -11,7 +11,7 @@ description: Use when installing, configuring, verifying, or debugging @rivus/ag
 
 ## Use When
 
-- A user wants Codex, Claude Code, Gemini CLI, opencode, or Pi Coding Agent activity shown in Feishu signature.
+- A user wants Codex, Claude Code, Gemini CLI, Grok, opencode, or Pi Coding Agent activity shown in Feishu signature.
 - Hooks are installed but the signature is stale.
 - The count differs from visible terminal windows.
 - Laptop sleep, lid close, or wake behavior needs verification.
@@ -91,16 +91,14 @@ Pi only counts as active once the user submits a task (`before_agent_start`). Op
    tail -n 120 ~/.agent-presence/agent-presence.log ~/.agent-presence/agent-signature.log ~/.codex/agent-signature/agent-presence.log 2>/dev/null
    ```
 
-4. Verify hooks exist:
+4. Check the installation and its ledger:
 
    ```bash
-   sed -n '1,240p' ~/.codex/hooks.json
-   sed -n '1,320p' ~/.claude/settings.json
-   sed -n '1,220p' ~/.gemini/settings.json
-   sed -n '1,220p' ~/.config/opencode/opencode.json
-   sed -n '1,160p' ~/.pi/agent/extensions/agent-presence.ts
-   sed -n '1,160p' ~/.pi/agent/settings.json 2>/dev/null || true
+   agent-presence doctor
+   agent-presence inventory
    ```
+
+   Use the [install guide's installed locations](https://agent-presence.vercel.app/guide/install/#installed-locations) before inspecting the reported artifacts. Setup's plan shows resolved paths for overridden agent homes. `doctor` checks command-hook duplicates, not opencode/Pi bridge duplicates, and currently recognizes installed commands rather than previous-release markers. `inventory` includes all applications in the shared kit ledger. Both commands accept `--json`; the [command reference](https://agent-presence.vercel.app/reference/commands/) describes their limits.
 
 5. Verify platform watcher:
 
@@ -132,12 +130,12 @@ agent-presence config render \
 
 `{total}` is active count. `{details}` is grouped source counts like `codex 1 · claude 2 · gemini 1 · pi 1`.
 
-## Pi Coding Agent Notes
+## Pi and opencode Bridge Notes
 
-- Setup installs the extension at `~/.pi/agent/extensions/agent-presence.ts`. Pi auto-discovers files in that directory.
-- The extension shells out to `agent-presence hook --source pi --event <name> --silent`; failures are swallowed so Pi itself never crashes.
+- Setup installs kit-generated bridges at the locations in the install guide. Pi auto-discovers its extension from the extension directory.
+- The Pi and opencode bridges invoke the stable shim with `hook --agent pi` and `hook --agent opencode`, respectively. They pass native events to the kit dialects; failures do not interrupt the agent.
 - Activation gates on `before_agent_start`, not `session_start`, so an idle Pi TUI is not counted.
-- `agent_end` and `session_shutdown` deliver Stop synchronously to avoid leaving stale active state after a quick `pi -p` run exits.
+- Pi's `agent_end` and `session_shutdown` deliver finish events synchronously to avoid leaving stale active state after a quick `pi -p` run exits. Both bridges limit synchronous finish delivery to five seconds; other events are asynchronous without a child-process timeout.
 - To verify locally with a real LLM, read your provider key from a file outside the repo and run a non-interactive prompt, e.g.:
 
   ```bash

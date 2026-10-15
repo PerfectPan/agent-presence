@@ -1,6 +1,6 @@
 import { rm } from 'node:fs/promises';
 import { uninstall as uninstallHarness, type HarnessServices } from '@rivus/agent-kit/harness';
-import type { Layer } from 'effect';
+import { Effect, Exit, type Layer } from 'effect';
 import { getConfigPath, getStatePath, saveConfig } from '../../config.js';
 import { loadValidatedConfig } from '../../config-schema.js';
 import { PRESENCE_AGENTS } from '../../harness/bundle.js';
@@ -27,11 +27,26 @@ export async function uninstall(
 
   const spinner = createSpinner();
   spinner.start('Removing agent hooks');
-  const report = await runHarness(uninstallHarness('agent-presence', { agents: PRESENCE_AGENTS }), layer);
+  const report = await runHarness(
+    uninstallHarness('agent-presence', { agents: PRESENCE_AGENTS }).pipe(
+      Effect.onExit((exit) =>
+        Effect.sync(() => {
+          if (Exit.isSuccess(exit)) {
+            spinner.stop('Agent hook removal completed');
+          } else {
+            spinner.error('Agent hook removal failed; continuing independent removals');
+          }
+        })
+      )
+    ),
+    layer
+  );
   let failed = report === undefined;
   if (report) {
-    spinner.stop('Agent hook removal completed');
     for (const step of report.steps) {
+      if (step.removal === 'keep' || step.removal === 'release') {
+        continue;
+      }
       const path = `${step.locator.path}${step.locator.pointer ? `#${step.locator.pointer}` : ''}`;
       showInfo(`uninstall artifact: ${step.action}${step.removal ? ` (${step.removal})` : ''}: ${path}`);
     }
@@ -47,8 +62,6 @@ export async function uninstall(
       const path = `${locator.path}${locator.pointer ? `#${locator.pointer}` : ''}`;
       showInfo(`uninstall kept: ${path} (${reason})`);
     }
-  } else {
-    spinner.error('Agent hook removal failed; continuing independent removals');
   }
 
   async function remove(label: string, action: () => Promise<void>): Promise<void> {

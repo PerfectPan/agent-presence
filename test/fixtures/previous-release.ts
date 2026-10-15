@@ -6,13 +6,13 @@ import { hasNodeErrorCode, readJsonFile, writeJsonAtomic } from '../../src/json-
 import { shellQuote } from '../../src/shell-quote.js';
 
 export interface HookCommand {
-  type: 'command';
+  type?: unknown;
   command: string;
-  timeout?: number;
+  timeout?: unknown;
 }
 
 export interface HookGroup {
-  matcher?: string;
+  matcher?: unknown;
   hooks?: HookCommand[];
 }
 
@@ -39,7 +39,7 @@ export const PI_EXTENSION_FILE_NAME = 'agent-presence.ts';
 export const PI_EXTENSION_MARKER = '@rivus/agent-presence pi extension';
 
 export interface OpenCodeConfig {
-  plugin?: string | string[];
+  plugin?: unknown;
   [key: string]: unknown;
 }
 
@@ -76,12 +76,14 @@ export function withoutAgentSignatureHooks(input: Partial<HookSettings>): HookSe
   return settings;
 }
 
-function normalizeOpenCodePlugins(plugin: string | string[] | undefined): string[] {
-  if (Array.isArray(plugin)) {
-    return [...plugin];
+function normalizeOpenCodePlugins(plugin: unknown): unknown[] {
+  const entries = z.safeParse(z.array(z.unknown()), plugin);
+  if (entries.success) {
+    return [...entries.data];
   }
-  if (typeof plugin === 'string' && plugin.length > 0) {
-    return [plugin];
+  const entry = z.safeParse(z.string().check(z.minLength(1)), plugin);
+  if (entry.success) {
+    return [entry.data];
   }
   return [];
 }
@@ -566,13 +568,10 @@ const hookSettingsSchema = z.looseObject({
       z.string(),
       z.array(
         z.looseObject({
-          matcher: z.optional(z.string()),
           hooks: z.optional(
             z.array(
               z.looseObject({
-                type: z.literal('command'),
-                command: z.string(),
-                timeout: z.optional(z.number())
+                command: z.string()
               })
             )
           )
@@ -586,17 +585,12 @@ const preservingHookSettingsSchema = z.custom<Partial<HookSettings>>(
   (input) => z.safeParse(hookSettingsSchema, input).success
 );
 
-const openCodeConfigSchema = z.looseObject({
-  plugin: z.optional(z.union([z.string(), z.array(z.string())]))
-});
-
 async function readHookSettings(path: string): Promise<Partial<HookSettings>> {
   return z.parse(preservingHookSettingsSchema, await readJsonFile<unknown>(path, { hooks: {} }));
 }
 
 async function readOpenCodeConfig(path: string): Promise<OpenCodeConfig> {
-  const input = z.parse(z.record(z.string(), z.unknown()), await readJsonFile<unknown>(path, {}));
-  return { ...input, ...z.parse(openCodeConfigSchema, input) };
+  return z.parse(z.record(z.string(), z.unknown()), await readJsonFile<unknown>(path, {}));
 }
 
 async function installCodexHooks(hooksPath: string): Promise<void> {
