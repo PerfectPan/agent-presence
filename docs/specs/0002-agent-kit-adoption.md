@@ -45,7 +45,7 @@ Out of scope: everything else. See "Unchanged behavior".
 
 Everything not listed above stays unchanged, explicitly including:
 
-- Both command modes install the same shim invocation; an unquoted shim path carries `agent-presence hook`. The paired Plan records which previous-release command forms `setup` detects and which it does not.
+- The installed command still carries the `agent-presence hook` marker when the shim path is unquoted. The paired Plan records which previous-release command forms `setup` detects and which it does not.
 - Presence source ids stay `claude`, `codex`, `gemini`, `opencode`, `pi`, `dsh` (plus the new `grok`); persisted state, render templates, and user configuration keep working.
 - The presence state file format is unchanged: this adoption adds no state fields beyond Spec 0003's optional `queueApplied` and `queueOwed`, which older versions drop (usage scans are stateless, as the owner decided in the paired Plan's usage-scan-state decision), and older versions load files this version writes.
 - Render templates, providers, keyring credentials, the power watcher, the dsh plugin flow, and the source-table mechanism.
