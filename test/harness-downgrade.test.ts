@@ -13,6 +13,7 @@ import { stopWorker } from '../src/queue/takeover.js';
 import { listQueue } from '../src/queue/reader.js';
 import {
   installPreviousRelease,
+  buildOpenCodePluginSource,
   isAgentSignatureCommand,
   previousReleasePaths,
   type PreviousReleaseCommandMode
@@ -222,7 +223,7 @@ async function expectNoCurrentInstallation(bundle: Bundle): Promise<void> {
     join(fixture.home, '.codex/plugins/agent-presence'),
     join(fixture.home, '.codex/plugins/cache/agent-presence/agent-presence/local'),
     join(fixture.home, '.gemini/extensions/agent-presence'),
-    join(fixture.home, '.grok/hooks.json'),
+    join(fixture.home, '.grok/hooks/agent-presence.json'),
     previousReleasePaths(fixture.home).opencodePlugin,
     previousReleasePaths(fixture.home).piExtension
   ]) {
@@ -387,7 +388,9 @@ describe('documented harness downgrade order', () => {
       ).toEqual([await realpath(paths.opencodePlugin), await realpath(paths.piExtension)]);
       await expect(stat(join(fixture.presenceHome, 'bin/agent-presence'))).rejects.toMatchObject({ code: 'ENOENT' });
       // The previous release did not install Grok; it may still read the old Claude settings as its own agent behavior.
-      await expect(stat(join(fixture.home, '.grok/hooks.json'))).rejects.toMatchObject({ code: 'ENOENT' });
+      await expect(stat(join(fixture.home, '.grok/hooks/agent-presence.json'))).rejects.toMatchObject({
+        code: 'ENOENT'
+      });
       expect(boundary.process).not.toHaveBeenCalled();
       expect(boundary.login).not.toHaveBeenCalled();
       expect(boundary.publish).not.toHaveBeenCalled();
@@ -398,16 +401,34 @@ describe('documented harness downgrade order', () => {
   );
 
   it.each(['npx', 'absolute'] as const)(
-    'doctor exposes overlapping command hooks when old %s setup runs before new uninstall',
+    'old %s setup overwrites the ledgered opencode bridge and explicit legacy markers expose command overlap',
     async (mode) => {
       const bundle = await installCurrent(mode);
+      const paths = previousReleasePaths(fixture.home);
+      const installed = await fixture.run(inventory());
+      const currentBridge = await readFile(paths.opencodePlugin, 'utf8');
       await expect(installPreviousRelease({ homeDir: fixture.home, commandMode: mode })).rejects.toThrow(
-        `refusing to overwrite ${previousReleasePaths(fixture.home).piExtension}: it is not managed by @rivus/agent-presence. Delete or rename that file, then rerun setup.`
+        `refusing to overwrite ${paths.piExtension}: it is not managed by @rivus/agent-presence. Delete or rename that file, then rerun setup.`
       );
+      const oldBridge = await readFile(paths.opencodePlugin, 'utf8');
+      expect(oldBridge).not.toBe(currentBridge);
+      expect(oldBridge).toBe(
+        buildOpenCodePluginSource(
+          mode === 'npx'
+            ? ['npx', '--yes', '--registry=https://registry.npmjs.org', '@rivus/agent-presence@0.9.0']
+            : ['/usr/bin/node', '/work/checkout/dist/src/cli.js']
+        )
+      );
+      expect(await fixture.run(inventory())).toEqual(installed);
+      const report = await fixture.run(verify('agent-presence', { bundle, agents: PRESENCE_AGENTS }));
+      expect(report.artifacts.filter(({ agents }) => agents.includes('opencode'))).toMatchObject([
+        { status: 'user-modified', locator: { path: await realpath(paths.opencodePlugin) } }
+      ]);
       const currentOnly = await fixture.run(
         doctor({ owner: 'agent-presence', agents: PRESENCE_AGENTS, markers: installedMarkers(bundle) })
       );
       expect(currentOnly.filter(({ name }) => name === 'duplicate-hook')).toEqual([]);
+      // Absolute old commands need the test-only dist/src marker; production doctor supplies neither legacy marker.
       const checks = await fixture.run(
         doctor({
           owner: 'agent-presence',

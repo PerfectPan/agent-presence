@@ -38,7 +38,7 @@ describe.each(['npx', 'absolute'] as const)('previous-release fixture (%s)', (co
     }
   });
 
-  it('uninstalls with the old matcher while preserving unrelated hooks and config', async () => {
+  it('preserves foreign hook types and config values through old install and uninstall matchers', async () => {
     await installPreviousRelease({ homeDir, commandMode });
     const paths = previousReleasePaths(homeDir);
     for (const path of [paths.claudeSettings, paths.codexHooks, paths.geminiSettings]) {
@@ -48,6 +48,8 @@ describe.each(['npx', 'absolute'] as const)('previous-release fixture (%s)', (co
             {
               hooks: [
                 { command: 'echo keep', type: 'command' },
+                { command: 'echo keep prompt', type: 'prompt', prompt: 'keep prompt' },
+                { command: 'echo keep without type' },
                 { type: 'command', command: 'agent-presence hook --event Stop' },
                 { type: 'command', command: 'npx @rivus/agent-presence@0.9.0 hook --event Stop' },
                 { type: 'command', command: 'agent-signature hook --event Stop' },
@@ -61,22 +63,46 @@ describe.each(['npx', 'absolute'] as const)('previous-release fixture (%s)', (co
     }
     await writeJsonAtomic(paths.opencodeConfig, {
       theme: 'dark',
-      plugin: ['foreign-plugin', './plugins/agent-presence.js', './plugins/agent-signature.js']
+      plugin: [
+        'foreign-plugin',
+        42,
+        null,
+        { name: 'foreign-plugin' },
+        './plugins/agent-presence.js',
+        './plugins/agent-signature.js'
+      ]
     });
     await writeJsonAtomic(paths.piSettings, {
       theme: 'dark',
       extensions: ['/work/foreign-extension.ts', paths.piExtension, '', 42, null]
     });
 
+    await installPreviousRelease({ homeDir, commandMode });
     await uninstallPreviousRelease({ homeDir });
 
     for (const path of [paths.claudeSettings, paths.codexHooks, paths.geminiSettings]) {
       expect(await readFile(path, 'utf8')).toBe(
-        `${JSON.stringify({ hooks: { Stop: [{ hooks: [{ command: 'echo keep', type: 'command' }] }] } }, null, 2)}\n`
+        `${JSON.stringify(
+          {
+            hooks: {
+              Stop: [
+                {
+                  hooks: [
+                    { command: 'echo keep', type: 'command' },
+                    { command: 'echo keep prompt', type: 'prompt', prompt: 'keep prompt' },
+                    { command: 'echo keep without type' }
+                  ]
+                }
+              ]
+            }
+          },
+          null,
+          2
+        )}\n`
       );
     }
     expect(await readFile(paths.opencodeConfig, 'utf8')).toBe(
-      `${JSON.stringify({ theme: 'dark', plugin: ['foreign-plugin'] }, null, 2)}\n`
+      `${JSON.stringify({ theme: 'dark', plugin: ['foreign-plugin', 42, null, { name: 'foreign-plugin' }] }, null, 2)}\n`
     );
     expect(await readFile(paths.piSettings, 'utf8')).toBe(
       `${JSON.stringify({ theme: 'dark', extensions: ['/work/foreign-extension.ts'] }, null, 2)}\n`
