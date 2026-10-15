@@ -127,6 +127,22 @@ export interface ResolvedSource {
   trusted: boolean;
 }
 
+/**
+ * The entry of one source id, the way the merged table resolves it: the user's `plugins.sources[id]` when set, else
+ * the shipped default of that id, with `enabled: false` disabling it. Reading only this id keeps a broken entry of
+ * *another* source from failing the hook's lookup; the hook passes the schema-free config, so a broken entry of the
+ * hook's own source still throws here and fails open as before, and a null root throws at the `plugins` read — any
+ * other non-object root reads as no user entries, so the hook resolves the shipped default.
+ */
+function hookSourceEntry(source: string, config: AppConfig): SourcePluginConfig | undefined {
+  const userEntry = pluginSourcesConfig(config)[source];
+  const entry = userEntry !== undefined ? userEntry : defaultSources()[source];
+  if (entry === undefined) {
+    return undefined;
+  }
+  return entry.enabled === false ? undefined : entry;
+}
+
 function builtinHandlerId(handler: string | undefined): string | undefined {
   if (handler && handler.startsWith(BUILTIN_HANDLER_PREFIX)) {
     return handler.slice(BUILTIN_HANDLER_PREFIX.length);
@@ -417,8 +433,11 @@ export async function resolveSourcePlugin(
 }
 
 /**
- * Resolve a source id to its hook context through the merged source table.
- * A `builtin:` entry reuses a trusted shipped resolver (raw environment); a user
+ * Resolve a source id to its hook context. The entry is the source's own
+ * (user entry, else the shipped default — see `hookSourceEntry`), not the whole
+ * merged table: the hook passes the schema-free config, and one lookup per run
+ * must not trip over another source's broken entry. A `builtin:`
+ * entry reuses a trusted shipped resolver (raw environment); a user
  * `handler`/`match` entry is guarded and receives a credential-stripped
  * environment. A disabled or unknown source returns `{}` (the unchanged
  * fallback), so those `--source` hooks are silently skipped.
@@ -432,7 +451,7 @@ export async function resolveHookContextForSource(
   config: AppConfig,
   options: { diagnostics?: SourceDiagnostics } = {}
 ): Promise<SourceContext> {
-  const entry = mergedSources(config)[source];
+  const entry = hookSourceEntry(source, config);
   if (!entry) {
     return {};
   }

@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 
+import type { AppConfig } from '../src/config.js';
 import type { MagicBuilderProvider } from '../src/providers/magic-builder.js';
 
 type AcquireToken = () => Promise<string | undefined>;
@@ -38,7 +39,13 @@ vi.mock('../src/config.js', () => ({
   magicBuilderFallbackTitle: () => 'AI 牛马暂未开工',
   setMagicBuilderConfig: (c: Record<string, unknown>, patch: Record<string, unknown>) => ({
     ...c,
-    providers: { ...(c.providers as object), 'magic-builder': patch }
+    providers: {
+      ...(c.providers as object),
+      'magic-builder': {
+        ...(c.providers as Record<string, Record<string, unknown>> | undefined)?.['magic-builder'],
+        ...patch
+      }
+    }
   })
 }));
 
@@ -121,6 +128,42 @@ describe('publishMagicBuilderFaas', () => {
 
     expect(publishFaas).toHaveBeenCalledWith(expect.objectContaining({ recordId: 'rec_existing' }));
     expect(result.isUpdate).toBe(true);
+  });
+
+  it('keeps a broken sibling provider entry byte-for-byte when persisting the record id', async () => {
+    readMagicToken.mockResolvedValue({ token: 'tok', source: 'env' });
+    loadConfig.mockResolvedValue({
+      providers: { 'feishu-signature': 123, 'magic-builder': { faasId: 'rec_old', note: 'keep' } }
+    } as unknown as AppConfig);
+
+    await publishMagicBuilderFaas();
+
+    expect(saveConfig).toHaveBeenCalledWith(
+      {
+        provider: 'magic-builder',
+        providers: {
+          'feishu-signature': 123,
+          'magic-builder': { faasId: 'rec_new', faasName: 'agent_presence_preview', note: 'keep' }
+        }
+      },
+      '/tmp/config.json'
+    );
+  });
+
+  it('saves the published record id over a config file whose root is not an object', async () => {
+    readMagicToken.mockResolvedValue({ token: 'tok', source: 'env' });
+    loadConfig.mockResolvedValue(null as unknown as AppConfig);
+
+    await publishMagicBuilderFaas();
+
+    expect(publishFaas).toHaveBeenCalledTimes(1);
+    expect(saveConfig).toHaveBeenCalledWith(
+      expect.objectContaining({
+        provider: 'magic-builder',
+        providers: { 'magic-builder': expect.objectContaining({ faasId: 'rec_new' }) }
+      }),
+      '/tmp/config.json'
+    );
   });
 
   it('fails clearly when the l.garyyang credential is missing', async () => {

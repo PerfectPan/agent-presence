@@ -2,7 +2,8 @@ import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 
-import { configSlotId, defaultCommandProviderId, getStatePath, loadConfig } from '../../config.js';
+import { configSlotId, defaultCommandProviderId, getStatePath } from '../../config.js';
+import { loadValidatedConfig } from '../../config-schema.js';
 import { increaseEpoch, isDisabled, removeTombstone } from '../../queue/files.js';
 import { deleteQueueFile, listQueue } from '../../queue/reader.js';
 import { takeOver, type TakeoverOptions } from '../../queue/takeover.js';
@@ -97,7 +98,7 @@ export async function setup(args: string[], takeover: TakeoverOptions = {}): Pro
     );
   }
 
-  const config = await loadConfig();
+  const { config } = await loadValidatedConfig();
   const activeProvider = defaultCommandProviderId(config, optionValue(args, '--provider'));
 
   if (!skipLogin && (forceLogin || !(await hasCredential()))) {

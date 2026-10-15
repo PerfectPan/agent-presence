@@ -1,11 +1,12 @@
-import { configSlotId, defaultCommandProviderId, loadConfig } from '../../config.js';
+import { configSlotId, defaultCommandProviderId } from '../../config.js';
+import { loadValidatedConfig } from '../../config-schema.js';
 import { createProvider } from '../../providers/registry.js';
 import { assertSupportsSignatureUrl } from '../../providers/types.js';
 import { readCredential } from '../../secret.js';
 import { optionValue } from '../args.js';
 
 export async function resolveSignatureUrl(args: string[] = []): Promise<string> {
-  const config = await loadConfig();
+  const { config } = await loadValidatedConfig();
   const activeProvider = defaultCommandProviderId(config, optionValue(args, '--provider'));
   const credential = await readCredential(configSlotId(config));
   const provider = createProvider(activeProvider, { config, credential });

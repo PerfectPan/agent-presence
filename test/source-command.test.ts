@@ -87,6 +87,18 @@ describe('source add', () => {
     expect(process.exitCode).toBeFalsy();
   });
 
+  it('keeps a broken sibling source entry byte-for-byte when adding', async () => {
+    writeFileSync(configPath, JSON.stringify({ plugins: { sources: { br: null } }, unknownTop: { a: 1 } }));
+    writeFakeNpm('agent-presence-myagent', '1.2.3', 'myagent');
+
+    await source(['add', 'agent-presence-myagent', '--yes']);
+
+    expect(await readConfig()).toEqual({
+      plugins: { sources: { br: null, myagent: { handler: 'agent-presence-myagent' } } },
+      unknownTop: { a: 1 }
+    });
+  });
+
   it('records under an explicit --id that matches the declared id', async () => {
     writeFakeNpm('agent-presence-myagent', '1.0.0', 'myagent');
     await source(['add', 'agent-presence-myagent', '--id', 'myagent', '--yes']);

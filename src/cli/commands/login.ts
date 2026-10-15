@@ -1,4 +1,5 @@
-import { DEFAULT_LOGIN_POLL_MS, getConfigPath, loadConfig, providerId, saveConfig } from '../../config.js';
+import { DEFAULT_LOGIN_POLL_MS, getConfigPath, providerId, saveConfig } from '../../config.js';
+import { loadValidatedConfig } from '../../config-schema.js';
 import { createProvider } from '../../providers/registry.js';
 import { assertSupportsLogin } from '../../providers/types.js';
 import { writeCredential } from '../../secret.js';
@@ -7,7 +8,7 @@ import { sleep } from '../sleep.js';
 import { createSpinner, finishOutro, showNote, startIntro } from '../ui.js';
 
 export async function login(args: string[] = []): Promise<void> {
-  const config = await loadConfig();
+  const { config, raw } = await loadValidatedConfig();
   const activeProvider = providerId(config, optionValue(args, '--provider'));
   const provider = createProvider(activeProvider, { config });
   assertSupportsLogin(provider);
@@ -27,7 +28,7 @@ export async function login(args: string[] = []): Promise<void> {
     const status = await provider.getLoginStatus(qr.sceneId);
     if ('token' in status) {
       await writeCredential({ token: status.token, slotId: status.slotId });
-      await saveConfig({ ...config, provider: activeProvider, slot_id: status.slotId }, getConfigPath());
+      await saveConfig({ ...raw, provider: activeProvider, slot_id: status.slotId }, getConfigPath());
       pollSpinner.stop('Authorization complete');
       finishOutro(`login: ok\nslot_id: ${status.slotId}`);
       return;

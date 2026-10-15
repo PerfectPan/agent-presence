@@ -1,4 +1,5 @@
-import { loadConfig, usagePricingOverrides } from '../../config.js';
+import { usagePricingOverrides } from '../../config.js';
+import { loadValidatedConfig } from '../../config-schema.js';
 import { billableSources } from '../../usage/billable-sources.js';
 import { formatCost, formatTokens } from '../../usage/format.js';
 import { collectWindowUsage, type WindowUsage } from '../../usage/index.js';
@@ -92,7 +93,7 @@ export function renderUsageTable(windowDays: number[], windows: WindowUsage[]): 
 }
 
 export async function printUsage(args: string[]): Promise<void> {
-  const config = await loadConfig();
+  const { config } = await loadValidatedConfig();
   const pricing = usagePricingOverrides(config);
   const now = Date.now();
 

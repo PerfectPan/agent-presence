@@ -1,6 +1,7 @@
 import { setTimeout as sleep } from 'node:timers/promises';
 import type { ProcessLockPlatform } from '@rivus/agent-kit-collab/process-lock';
-import { loadConfig, type AppConfig } from '../config.js';
+import type { AppConfig } from '../config.js';
+import { loadValidatedConfig } from '../config-schema.js';
 import { errorMessage } from '../cli/errors.js';
 import { kitPlatform } from '../kit-platform.js';
 import { writeLogEvent } from '../log.js';
@@ -100,7 +101,7 @@ async function takeLockNow(context: WorkerContext): Promise<WorkerLockHold | und
 
 /** Whether owed work this release can do remains, the items this holder set aside included (3.5, 3.6). */
 export async function owedWorkRemains(statePath: string): Promise<boolean> {
-  const [state, config] = await Promise.all([loadState(statePath), loadConfig()]);
+  const [state, { config }] = await Promise.all([loadState(statePath), loadValidatedConfig({ report: false })]);
   return doableOwedItems(state.queueOwed, knownSources(config)).length > 0;
 }
 
@@ -170,7 +171,10 @@ function createFollowUpLane(context: WorkerContext): FollowUpLane {
 
   async function run(): Promise<void> {
     while (!controller.signal.aborted) {
-      const [state, config] = await Promise.all([loadState(context.statePath), loadConfig()]);
+      const [state, { config }] = await Promise.all([
+        loadState(context.statePath),
+        loadValidatedConfig({ report: false })
+      ]);
       const item = attempts.next(state, knownSources(config));
       if (!item) {
         return;
@@ -250,7 +254,7 @@ async function applyWhileHolding(
         end = 'stop-request';
         break;
       }
-      const config = await loadConfig();
+      const { config } = await loadValidatedConfig({ report: false });
       const batch = await applyQueueBatch(statePath, {
         version: context.version,
         config,

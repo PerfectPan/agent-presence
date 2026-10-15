@@ -18,7 +18,8 @@ const producerEntry = resolve(repoRoot, 'src/queue/produce.ts');
 // helpers only setup, uninstall, and login use, the direct application path
 // the producer replaced (`src/cli/hook-apply.ts`; Q2 deletes it), and the
 // modules that hold
-// schemas or scan transcripts: the state store, the queue's schemas and
+// schemas or scan transcripts: the state store, the config's schema module and
+// validated loader, the queue's schemas and
 // reader, the usage events log, the billable source table, every usage
 // scanner, and the queue's appliers: the worker, the takeover, and the modules
 // only they use. The bin entry and the dispatcher are walked as well as the
@@ -42,6 +43,7 @@ const forbiddenHookGraphModules = [
   'src/cli/commands/uninstall.ts',
   'src/cli/commands/login.ts',
   'src/state-store.ts',
+  'src/config-schema.ts',
   'src/queue/schema.ts',
   'src/queue/reader.ts',
   'src/usage-events-log.ts',
