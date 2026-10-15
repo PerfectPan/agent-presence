@@ -6,6 +6,7 @@ import { Effect } from 'effect';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 import { setup } from '../src/cli/commands/setup.js';
 import { createPresenceBundle, PRESENCE_AGENTS } from '../src/harness/bundle.js';
+import { shellQuote } from '../src/shell-quote.js';
 import { AGENT_HOME_VARIABLES, createHarnessFixture, type HarnessFixture } from './harness-support.js';
 
 const ui = vi.hoisted(() => ({
@@ -768,7 +769,7 @@ describe('setup through the harness', () => {
       const shim = join(fixture.presenceHome, 'bin/agent-presence');
       const initialShim = await readFile(shim, 'utf8');
       const npxCommand = 'exec npx --yes --registry=https://registry.npmjs.org @rivus/agent-presence@';
-      const absoluteShim = `#!/bin/sh\nexec ${process.execPath} /work/presence/dist/src/cli.js "$@"\n`;
+      const absoluteShim = `#!/bin/sh\nexec ${shellQuote(process.execPath)} /work/presence/dist/src/cli.js "$@"\n`;
       if (initialMode === 'npx') {
         expect(initialShim).toContain(npxCommand);
       } else {
