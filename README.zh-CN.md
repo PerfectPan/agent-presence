@@ -58,6 +58,8 @@ agent-presence setup
 
 `setup` 在确认安装计划前不会写入智能体配置。非交互终端需要 `setup --yes` 才会应用无冲突的计划；有冲突时即使传了 `--yes` 也会退出，交互终端仍需明确确认。安装结果会写入 harness 安装记录，并在发布 provider 后验证。
 
+安装的 hook 调用 `~/.agent-presence/bin/agent-presence` 中的稳定 shim。setup 更新其中固定版本的包命令，或绝对路径模式下的 Node/CLI 路径，智能体中的 hook 命令保持不变。Claude Code、Codex、Gemini CLI 和 Grok 的命令式 hook 按各自的原生单位设置五秒超时；opencode/Pi 桥接仅对同步结束事件的交付设置五秒超时，其他事件异步发送，不设置子进程超时。Gemini 使用自己的事件名。Claude hook 放在插件中，避免写入 Cursor 也会读取的共享 settings 文件。切换到 shim 命令预计需要在 Codex 中重新审阅一次 hook；后续只更新 shim 时，安装命令保持稳定。见[安装位置与检查](https://agent-presence.vercel.app/zh/guide/install/#安装位置)。
+
 重复运行 `setup` 会复用已有登录（无需再次扫码）。签名 URL —— `https://magic.solutionsuite.cn/r?fid=<faasId>` —— 不含任何凭据。本地配置、状态和日志在 `~/.agent-presence/`。
 
 > 还有一个旧的直连预览 provider（`--provider feishu-signature`，无需 Magic-Builder token），但飞书可能已经不再渲染它。仍想用的话见 [Providers 文档](https://agent-presence.vercel.app/zh/guide/providers/)。

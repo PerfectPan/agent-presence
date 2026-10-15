@@ -58,6 +58,8 @@ agent-presence setup
 
 `setup` writes no agent configuration before install confirmation. In a non-interactive terminal, `setup --yes` applies a conflict-free plan; conflicts still cause it to exit, and an interactive terminal still requires explicit confirmation. Setup records installed artifacts in the harness ledger and verifies them after provider publishing.
 
+The installed hooks use a stable shim at `~/.agent-presence/bin/agent-presence`. Setup updates its pinned package command, or its Node/CLI paths in absolute mode, without changing the agents' hook commands. Claude Code, Codex, Gemini CLI and Grok command hooks use a five-second timeout in each agent's native unit. The opencode/Pi bridges limit synchronous finish delivery to five seconds; other events are sent asynchronously without a child-process timeout. Gemini uses its own event names. Claude hooks live in a plugin instead of the shared settings file that Cursor also reads. Changing to the shim command is expected to require one Codex hook review; later shim-only updates keep the installed command stable. See [installed locations and checks](https://agent-presence.vercel.app/guide/install/#installed-locations).
+
 Re-running `setup` reuses an existing login (no second QR scan). The signature URL — `https://magic.solutionsuite.cn/r?fid=<faasId>` — carries no credentials. Local config, state, and logs live under `~/.agent-presence/`.
 
 > An older direct-preview provider (`--provider feishu-signature`, no Magic-Builder token) also exists, but Feishu may no longer render it. See [Providers](https://agent-presence.vercel.app/guide/providers/) if you still want it.

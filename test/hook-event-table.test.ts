@@ -7,7 +7,7 @@ import { transformWithOxc } from 'vite-plus';
 import { beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 import { hook } from '../src/cli/commands/hook.js';
 import { SCAN_ENV } from '../src/cli/hook-context.js';
-import { buildOpenCodePluginSource, buildPiExtensionSource } from '../src/installers.js';
+import { buildOpenCodePluginSource, buildPiExtensionSource } from './fixtures/previous-release.js';
 import { createEmptyState, type AgentSession } from '../src/state.js';
 import { loadState, saveState } from '../src/state-store.js';
 import { captureHookWorkerStarts, drainQueue, restoreHookWorkerStarts } from './hook-producer-support.js';

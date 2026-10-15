@@ -90,9 +90,9 @@ url                 -> raw URL only
 
 This keeps the pretty CLI layer out of hook and automation protocols.
 
-`setup`, `uninstall`, `doctor` and `inventory` load the harness lazily. `src/cli/harness.ts` is the sole Effect execution root, providing `HarnessLive` with `NodePlatformLive` and reporting failed programs on stderr with a non-zero exit code. Other command modules may import Effect to construct programs and use its types; Effect runners, including aliases or destructured runners, and `Runtime`/`ManagedRuntime` imports or use stay in this root. Every harness call during one setup run, including planning across prompts, apply and verification, shares one Effect program. The hook, status, render and usage paths do not load this root. `doctor` reports every check and fails on warnings or errors; `inventory` reads the ledger revision, entries and pending operations. Both support `--json`. Doctor's duplicate check covers command-hook files, not opencode and Pi bridge files.
+`setup`, `uninstall`, `doctor` and `inventory` load the harness lazily. `src/cli/harness.ts` is the sole Effect execution root, providing `HarnessLive` with `NodePlatformLive` and reporting failed programs on stderr with a non-zero exit code. Other command modules may import Effect to construct programs and use its types; Effect runners, including aliases or destructured runners, and `Runtime`/`ManagedRuntime` imports or use stay in this root. Every harness call during one setup run, including planning across prompts, apply and verification, shares one Effect program. The hook, status, render and usage paths do not load this root. `doctor` reports every check and fails on warnings or errors; `inventory` reads the ledger revision, entries and pending operations. Both support `--json`. Doctor's duplicate check covers command-hook files, not opencode and Pi bridge files. It currently recognizes the expanded installed commands, not previous-release markers; a presence home containing spaces may produce a false missing-program warning. It also reports `stale-path`, `unknown-event` and `timeout-unit` problems in other tools' hooks and exits 1 for them. Doctor does not repair agent targets, but checking the ledger lock can create harness lock files. Inventory includes every kit application's entries in the shared ledger, not only presence's.
 
-`src/harness/bundle.ts` defines the `agent-presence` bundle for Claude Code, Codex, Gemini CLI, Grok, opencode and Pi: one observer hook spec with the package version, a stable artifact digest and a five-second timeout. Its command names `<presence home>/bin/agent-presence`, with `{agent}` expanded by the kit. Gemini uses its own event names and receives the timeout in milliseconds. The bundle has no legacy markers, skills or MCP servers. Doctor uses the expanded commands as duplicate markers. Setup installs the bundle through the harness and records its artifacts in the harness ledger; uninstall uses that ledger to remove them.
+`src/harness/bundle.ts` defines the `agent-presence` bundle for Claude Code, Codex, Gemini CLI, Grok, opencode and Pi: one observer hook spec with the package version, a stable artifact digest and `timeoutSeconds: 5` for command-hook registrations. Its command names `<presence home>/bin/agent-presence`, with `{agent}` expanded by the kit. Gemini uses its own event names and receives the timeout in milliseconds. The bundle has no legacy markers, skills or MCP servers. Doctor uses the expanded commands as duplicate markers. Setup installs the bundle through the harness and records its artifacts in the harness ledger; uninstall uses that ledger to remove them.
 
 The CLI files are split by responsibility:
 
@@ -205,7 +205,7 @@ Current source mapping:
 ```text
 Codex       SessionStart, UserPromptSubmit, PreToolUse, Stop
 Claude Code SessionStart, UserPromptSubmit, PreToolUse, PostToolUse, Stop, StopFailure, SessionEnd, SubagentStart, SubagentStop
-Gemini CLI  SessionStart, UserPromptSubmit, PreToolUse, PostToolUse, Stop, SessionEnd
+Gemini CLI  SessionStart, BeforeAgent, BeforeTool, AfterTool, AfterAgent, SessionEnd
 opencode    session.created, command.executed, file.edited, message.*, permission.*, session.*, todo.updated, tool.execute.*
 Pi          before_agent_start, turn_start, tool_execution_start, tool_execution_end, agent_end, session_shutdown
 Grok        session_start, user_prompt_submit, pre_tool_use, post_tool_use, stop, stop_failure, session_end, subagent_start, subagent_stop (snake_case wire names; the PascalCase registration keys map the same way)
@@ -349,7 +349,7 @@ Trust follows the `builtin:` marker, not the id: a user who overrides `codex` wi
 
 Source table invariants:
 
-- `resolveHookContext` must be synchronous and do no I/O: it runs on the hook hot path. The framework cannot enforce that for a `handler`; the only hard bound is the agent-side hook timeout set on the managed hook entries, so a misbehaving handler fails only its own hook.
+- `resolveHookContext` must be synchronous and do no I/O: it runs on the hook hot path. The framework cannot enforce that for a `handler`. Managed command hooks have an agent-side timeout, but asynchronous bridge delivery has no child-process timeout; the handler must honor the synchronous, no-I/O rule itself.
 - A handler is imported lazily and cached per process. Each hook is a fresh short-lived process, so a handler is imported at most once per hook and only when its source fires; `builtin:` entries are static imports.
 - A bare handler specifier resolves only from the plugins dir's `node_modules` (`createRequire` anchored there), never from the user's cwd or an ancestor `node_modules`. An absolute path is imported through `pathToFileURL` after the ownership checks above.
 - The ownership checks `lstat` the handler file and its parent directory before `import()`. A same-user process can still swap the file between the check and the import; closing that window needs fd-based loading and is not done. The practical bound is that the operator owns the file and its directory and vets the code.
@@ -470,7 +470,7 @@ A Linux watcher would be a systemd user unit subscribed to logind's `PrepareForS
 
 `--no-hooks` skips the harness, shim, dsh prompt and watcher. Migration, queue recovery, login and provider setup retain their behavior. Credential and home-migration writes may happen before install confirmation; the confirmation protects agent-target installation writes. Harness planning can settle pending ledger operations.
 
-`src/setup.ts` now runs only the watcher installer, and its uninstall list contains only dsh and the watcher. The kit-covered installer files and scripts remain in the repository for the later cleanup part of Plan 0002, but setup and uninstall no longer call them. The previous-release check is a later batch 5c step; setup does not currently detect and refuse every previous-release installation.
+`src/setup.ts` runs only the watcher installer, and its uninstall list contains only dsh and the watcher. The hand-written Claude/Codex/Gemini hook writers and opencode/Pi bridge writers, their per-agent scripts, and the aggregate hook-install scripts are removed; previous-release generators and removal behavior live only in `test/fixtures/previous-release.ts`. Command-building helpers remain shared by the shim, dsh plugin and watcher. The previous-release check is a later batch 5c step in [Plan 0002](plans/0002-agent-kit-adoption.md#35-setup-through-harness); setup does not currently detect and refuse every previous-release installation.
 
 | Area                  | Idempotency rule                                                                                                                                                     |
 | --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -489,11 +489,28 @@ Run setup after package upgrades, path changes or partial installs to inspect th
 npx --yes --registry=https://registry.npmjs.org @rivus/agent-presence@<version> setup
 ```
 
+### Installed Agent Artifacts
+
+The bundle installs at the following default user locations; the kit resolves overridden agent homes before planning.
+
+| Agent       | Artifact                                                                                                                                                                                                                                                        |
+| ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Claude Code | `~/.claude/skills/agent-presence/`, containing `.claude-plugin/plugin.json` and `hooks/hooks.json`. No presence hook is added to `~/.claude/settings.json`.                                                                                                     |
+| Codex       | When the `codex` CLI is available, `~/.codex/plugins/agent-presence/` holds the marketplace/plugin; `codex plugin` registers it in `~/.codex/config.toml` and Codex runs the installed cache copy. Without the CLI, hooks are groups in `~/.codex/config.toml`. |
+| Gemini CLI  | `~/.gemini/extensions/agent-presence/`, containing `gemini-extension.json` and `hooks/hooks.json`.                                                                                                                                                              |
+| Grok        | `~/.grok/hooks/agent-presence.json`.                                                                                                                                                                                                                            |
+| opencode    | `~/.config/opencode/plugins/agent-presence.js`, generated by the kit bridge adapter.                                                                                                                                                                            |
+| Pi          | `~/.pi/agent/extensions/agent-presence.ts`, generated by the kit bridge adapter and loaded from the extension directory.                                                                                                                                        |
+
+`timeoutSeconds: 5` becomes `timeout: 5` for Claude Code, Codex and Grok, and `timeout: 5000` for Gemini. The opencode and Pi bridges apply a 5000 ms child-process timeout only to synchronous finish delivery. Other events are sent asynchronously without a child-process timeout. This replaces the old Claude writer's 5000-second timeout. Gemini registrations use its native `SessionStart`, `BeforeAgent`, `BeforeTool`, `AfterTool`, `AfterAgent` and `SessionEnd` names instead of Claude-only names.
+
+Claude's plugin placement avoids adding presence hooks to the shared settings file Cursor also reads. Presence installs no Cursor source; a Cursor payload that reaches `hook --agent` is skipped as described in [Hook Normalization](#hook-normalization). Isolated tests prove the rendered artifacts and dialect behavior. Real Claude plugin loading, Cursor behavior, Codex trust prompts and Gemini extension loading remain separate acceptance gates in [Plan 0002](plans/0002-agent-kit-adoption.md#53-end-to-end-acceptance); the minimum Gemini extension-support version remains unconfirmed.
+
 ### Codex Hook Trust
 
-Codex Desktop stores a trust hash for each hook entry. Rewriting `~/.codex/hooks.json` changes those hashes, so a hook can be present but not executed until the trust state is updated.
+Codex reviews each new or changed hook by a hash of its definition, including plugin hooks and hook groups in `config.toml`. A hook can be present but not executed until the user approves it.
 
-The harness plan lists the expected trust prompts before install confirmation. Setup leaves `~/.codex/config.toml` trust state untouched; the user approves hooks through Codex when required. The stable installed command avoids changing the command text when a later setup only updates the shim's pinned version or command mode.
+The harness plan lists expected trust prompts before install confirmation. Moving existing registrations to the stable shim's `hook --agent` command is expected to require one re-trust cycle. Setup does not edit Codex trust state; the user approves through Codex. Later setup runs that only update the shim's pinned version or command mode keep the installed hook definition stable.
 
 ### Uninstall
 
