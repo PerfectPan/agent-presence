@@ -60,7 +60,7 @@ function reportPreviousRelease(entries: readonly LegacyEntry[]): void {
   }
   for (const entry of protect) {
     showInfo(
-      `${entry.locator.path} is your kept file from an earlier removal. Move or remove it by hand before uninstalling replacement entries, which could delete it.`
+      `${entry.locator.path} is your kept file from an earlier removal. Move or remove it by hand${replace.length > 0 ? ' before uninstalling replacement entries, which could delete it' : ''}.`
     );
   }
   if (replace.length > 0) {

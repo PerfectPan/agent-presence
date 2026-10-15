@@ -384,6 +384,7 @@ describe('previous-release setup check', () => {
       expect(output().indexOf('your kept file')).toBeLessThan(output().indexOf('npx --yes'));
       expect(output()).toContain('For replace entries, after moving or removing any kept files above');
     } else {
+      expect(output()).not.toContain('before uninstalling replacement entries');
       expect(output()).not.toContain('previous-release');
       expect(output()).not.toMatch(/npx|node <checkout>/);
     }

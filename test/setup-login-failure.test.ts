@@ -151,13 +151,14 @@ afterEach(async () => {
 describe('setup login failure at the CLI entry', () => {
   it.each([false, true])('prints one message and exits 1 with --no-hooks=%s', async (noHooks) => {
     process.argv = [...previousArgv.slice(0, 2), 'setup', ...(noHooks ? ['--no-hooks'] : [])];
-
-    await import('../src/cli.js');
-    await vi.waitFor(() => {
-      expect(error).toHaveBeenCalled();
-      expect(process.exitCode).toBe(1);
+    const reported = new Promise<void>((resolve) => {
+      error.mockImplementation(() => resolve());
     });
 
+    await import('../src/cli.js');
+    await reported;
+
+    expect(process.exitCode).toBe(1);
     expect(error.mock.calls).toEqual([['login QR code expired']]);
     expect(stdout).not.toHaveBeenCalled();
     expect(stderr).not.toHaveBeenCalled();

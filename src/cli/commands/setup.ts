@@ -160,13 +160,15 @@ export async function setup(
     return;
   }
 
-  // An uninstall --all or worker --stop left the tombstone: invalidate queued records before hooks can record again.
+  // An uninstall --all or worker --stop left the tombstone (Plan 0003 3.8): drop the records it kept from applying, raise
+  // the epoch so a record a producer still writes with the old epoch is deleted unapplied, and let hooks record again.
   const statePath = getStatePath();
   if (await isDisabled(statePath)) {
     await takeOver(
       statePath,
       async () => {
-        // Temporary and failed records stay; a late rename's old epoch makes it inapplicable.
+        // `.tmp-` files and `failed/` stay: the worker removes expired `.tmp-` files, and a late rename lands with the
+        // old epoch and is deleted unapplied.
         for (const file of (await listQueue(statePath)).records) {
           await deleteQueueFile(file);
         }
