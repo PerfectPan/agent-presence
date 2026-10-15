@@ -43,14 +43,18 @@ export interface SourcePlugin {
 }
 
 /**
- * Environment variables that locate built-in sources' transcripts. The built-in usage scanners read these variables
- * only through these names, and each built-in lists the ones its scanner reads as its `scanEnv`, so a hook can copy
- * every variable a later scan reads without loading a scanner.
+ * Environment variables that locate built-in sources' transcripts. The usage scan reads these variables only through
+ * these names — the kit's agent-home rules for every agent batched into the window scan, plus the worker's own — and
+ * each built-in lists the ones its transcripts read as its `scanEnv`, so a hook can copy every variable a later scan
+ * reads without loading a scanner.
  */
 export const SCAN_ENV = {
   claudeConfigDir: 'CLAUDE_CONFIG_DIR',
+  codexHome: 'CODEX_HOME',
   geminiCliHome: 'GEMINI_CLI_HOME',
-  xdgDataHome: 'XDG_DATA_HOME'
+  grokHome: 'GROK_HOME',
+  xdgDataHome: 'XDG_DATA_HOME',
+  piCodingAgentDir: 'PI_CODING_AGENT_DIR'
 } as const;
 
 /** A source that ships in core: its presence resolver and the `SCAN_ENV` names its usage scanner reads. */
@@ -62,17 +66,16 @@ export interface BuiltinSource extends Omit<SourcePlugin, 'scanUsage'> {
  * The sources that ship in core, registered by id. A registry — not an
  * `if`-chain — so built-ins and config sources resolve through the same shape.
  * Built-ins always take precedence over a same-id config source. The table
- * holds no scanner: the built-in usage scanners are in `src/usage/billable-sources.ts`,
- * which the hook path does not load, and the ones without a scanner (`grok`)
- * contribute presence only.
+ * holds no scanner: the usage scan is table-driven through
+ * `src/usage/billable-sources.ts`, which the hook path does not load.
  */
 export const BUILTIN_SOURCE_PLUGINS: Record<string, BuiltinSource> = {
-  codex: { id: 'codex', resolveHookContext: resolveCodexHookContext, scanEnv: [] },
+  codex: { id: 'codex', resolveHookContext: resolveCodexHookContext, scanEnv: [SCAN_ENV.codexHome] },
   claude: { id: 'claude', resolveHookContext: resolveClaudeHookContext, scanEnv: [SCAN_ENV.claudeConfigDir] },
   gemini: { id: 'gemini', resolveHookContext: resolveGeminiHookContext, scanEnv: [SCAN_ENV.geminiCliHome] },
   opencode: { id: 'opencode', resolveHookContext: resolveOpenCodeHookContext, scanEnv: [SCAN_ENV.xdgDataHome] },
-  pi: { id: 'pi', resolveHookContext: resolvePiHookContext, scanEnv: [] },
-  grok: { id: 'grok', resolveHookContext: resolveGrokHookContext, scanEnv: [] },
+  pi: { id: 'pi', resolveHookContext: resolvePiHookContext, scanEnv: [SCAN_ENV.piCodingAgentDir] },
+  grok: { id: 'grok', resolveHookContext: resolveGrokHookContext, scanEnv: [SCAN_ENV.grokHome] },
   // dsh has no managed hook installer; presence is opt-in via dsh's own
   // `dsh-hooks-claude-code` bridge (see src/hooks/dsh.ts). Usage scanning is
   // independent and always active.

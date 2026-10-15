@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it, vi } from 'vite-plus/test';
 import { refreshUsageBadgeCache } from '../src/cli/usage-badge.js';
 import type { PresenceState } from '../src/state.js';
 import { loadState, saveState } from '../src/state-store.js';
-import type { BillableSource, UsageRecord } from '../src/usage/index.js';
+import type { BillableSource, HandlerBillableSource, UsageRecord } from '../src/usage/index.js';
 
 const NOW = new Date('2026-07-14T13:00:00+08:00').getTime();
 
@@ -60,9 +60,9 @@ describe('refreshUsageBadgeCache', () => {
       statePath
     );
 
-    const codexScan = vi.fn<BillableSource['scanUsage']>(async () => [record('codex', 9_999, 99)]);
-    const claudeScan = vi.fn<BillableSource['scanUsage']>(async () => [record('claude', 9_999, 99)]);
-    const opencodeScan = vi.fn<BillableSource['scanUsage']>(async () => [record('opencode', 50, 0.5)]);
+    const codexScan = vi.fn<HandlerBillableSource['scanUsage']>(async () => [record('codex', 9_999, 99)]);
+    const claudeScan = vi.fn<HandlerBillableSource['scanUsage']>(async () => [record('claude', 9_999, 99)]);
+    const opencodeScan = vi.fn<HandlerBillableSource['scanUsage']>(async () => [record('opencode', 50, 0.5)]);
     const sources: BillableSource[] = [
       { id: 'codex', scanUsage: codexScan },
       { id: 'claude', scanUsage: claudeScan },
@@ -110,8 +110,8 @@ describe('refreshUsageBadgeCache', () => {
       statePath
     );
 
-    const codexScan = vi.fn<BillableSource['scanUsage']>(async () => [record('codex', 120, 1.2)]);
-    const claudeScan = vi.fn<BillableSource['scanUsage']>(async () => [record('claude', 230, 2.3)]);
+    const codexScan = vi.fn<HandlerBillableSource['scanUsage']>(async () => [record('codex', 120, 1.2)]);
+    const claudeScan = vi.fn<HandlerBillableSource['scanUsage']>(async () => [record('claude', 230, 2.3)]);
     await refreshUsageBadgeCache({
       statePath,
       now: NOW,
@@ -155,14 +155,14 @@ describe('refreshUsageBadgeCache', () => {
       statePath
     );
 
-    const opencodeScan = vi.fn<BillableSource['scanUsage']>(async () => [record('opencode', 50, 0.5)]);
+    const opencodeScan = vi.fn<HandlerBillableSource['scanUsage']>(async () => [record('opencode', 50, 0.5)]);
     await refreshUsageBadgeCache({
       statePath,
       now: NOW,
       windows: [1, 7],
       sources: [
-        { id: 'codex', scanUsage: vi.fn<BillableSource['scanUsage']>(async () => []) },
-        { id: 'claude', scanUsage: vi.fn<BillableSource['scanUsage']>(async () => []) },
+        { id: 'codex', scanUsage: vi.fn<HandlerBillableSource['scanUsage']>(async () => []) },
+        { id: 'claude', scanUsage: vi.fn<HandlerBillableSource['scanUsage']>(async () => []) },
         { id: 'opencode', scanUsage: opencodeScan }
       ],
       source: 'opencode'
@@ -201,8 +201,8 @@ describe('refreshUsageBadgeCache', () => {
       statePath
     );
 
-    const codexScan = vi.fn<BillableSource['scanUsage']>(async () => [record('codex', 20, 0.2)]);
-    const claudeScan = vi.fn<BillableSource['scanUsage']>(async () => [record('claude', 30, 0.3)]);
+    const codexScan = vi.fn<HandlerBillableSource['scanUsage']>(async () => [record('codex', 20, 0.2)]);
+    const claudeScan = vi.fn<HandlerBillableSource['scanUsage']>(async () => [record('claude', 30, 0.3)]);
     await refreshUsageBadgeCache({
       statePath,
       now: NOW,
@@ -249,9 +249,9 @@ describe('refreshUsageBadgeCache', () => {
       statePath
     );
 
-    const codexScan = vi.fn<BillableSource['scanUsage']>(async () => [record('codex', 20, 0.2)]);
-    const claudeScan = vi.fn<BillableSource['scanUsage']>(async () => [record('claude', 30, 0.3)]);
-    const opencodeScan = vi.fn<BillableSource['scanUsage']>(async () => []);
+    const codexScan = vi.fn<HandlerBillableSource['scanUsage']>(async () => [record('codex', 20, 0.2)]);
+    const claudeScan = vi.fn<HandlerBillableSource['scanUsage']>(async () => [record('claude', 30, 0.3)]);
+    const opencodeScan = vi.fn<HandlerBillableSource['scanUsage']>(async () => []);
     const sources: BillableSource[] = [
       { id: 'codex', scanUsage: codexScan },
       { id: 'claude', scanUsage: claudeScan },
@@ -296,8 +296,8 @@ describe('refreshUsageBadgeCache', () => {
       statePath
     );
 
-    const codexScan = vi.fn<BillableSource['scanUsage']>(async () => [record('codex', 20, 0.2)]);
-    const claudeScan = vi.fn<BillableSource['scanUsage']>(async () => {
+    const codexScan = vi.fn<HandlerBillableSource['scanUsage']>(async () => [record('codex', 20, 0.2)]);
+    const claudeScan = vi.fn<HandlerBillableSource['scanUsage']>(async () => {
       throw new Error('temporarily unreadable');
     });
     const outcome = await refreshUsageBadgeCache({
@@ -342,7 +342,7 @@ describe('refreshUsageBadgeCache', () => {
     const before = await loadState(statePath);
     const scanStarted = deferred();
     const scanRelease = deferred();
-    const codexScan = vi.fn<BillableSource['scanUsage']>(async () => {
+    const codexScan = vi.fn<HandlerBillableSource['scanUsage']>(async () => {
       scanStarted.resolve();
       await scanRelease.promise;
       return [record('codex', 9_999, 99)];
@@ -367,7 +367,7 @@ describe('refreshUsageBadgeCache', () => {
 
   it('does not start when its signal has already aborted', async () => {
     dir = await mkdtemp(join(tmpdir(), 'agent-presence-usage-badge-'));
-    const codexScan = vi.fn<BillableSource['scanUsage']>(async () => []);
+    const codexScan = vi.fn<HandlerBillableSource['scanUsage']>(async () => []);
 
     await expect(
       refreshUsageBadgeCache({
@@ -401,7 +401,7 @@ describe('refreshUsageBadgeCache', () => {
 
     const oldScanStarted = deferred();
     const releaseOldScan = deferred();
-    const codexScan = vi.fn<BillableSource['scanUsage']>(async ({ untilMs }: { untilMs: number }) => {
+    const codexScan = vi.fn<HandlerBillableSource['scanUsage']>(async ({ untilMs }: { untilMs: number }) => {
       if (untilMs === olderBoundary) {
         oldScanStarted.resolve();
         await releaseOldScan.promise;
@@ -467,9 +467,9 @@ describe('refreshUsageBadgeCache', () => {
       statePath
     );
 
-    const codexScan = vi.fn<BillableSource['scanUsage']>(async () => [record('codex', 20, 0.2)]);
-    const claudeScan = vi.fn<BillableSource['scanUsage']>(async () => [record('claude', 30, 0.3)]);
-    const opencodeScan = vi.fn<BillableSource['scanUsage']>(async () => [] as UsageRecord[]);
+    const codexScan = vi.fn<HandlerBillableSource['scanUsage']>(async () => [record('codex', 20, 0.2)]);
+    const claudeScan = vi.fn<HandlerBillableSource['scanUsage']>(async () => [record('claude', 30, 0.3)]);
+    const opencodeScan = vi.fn<HandlerBillableSource['scanUsage']>(async () => [] as UsageRecord[]);
     const sources: BillableSource[] = [
       { id: 'codex', scanUsage: codexScan },
       { id: 'claude', scanUsage: claudeScan },
@@ -541,8 +541,8 @@ describe('refreshUsageBadgeCache', () => {
     const yesterday = new Date(2026, 6, 14, 23, 59).getTime();
     const today = new Date(2026, 6, 15, 0, 1).getTime();
     await saveState({ sessions: {}, usageBadgesAt: yesterday }, statePath);
-    const codexScan = vi.fn<BillableSource['scanUsage']>(async () => [record('codex', 20, 0.2)]);
-    const claudeScan = vi.fn<BillableSource['scanUsage']>(async () => []);
+    const codexScan = vi.fn<HandlerBillableSource['scanUsage']>(async () => [record('codex', 20, 0.2)]);
+    const claudeScan = vi.fn<HandlerBillableSource['scanUsage']>(async () => []);
     const env = { CLAUDE_CONFIG_DIR: '/fake-home/hook-claude' };
     const onSave = vi.fn<(state: PresenceState) => void>((state) => {
       state.lastValue = 'saved with the refresh';
@@ -573,7 +573,7 @@ describe('refreshUsageBadgeCache', () => {
     dir = await mkdtemp(join(tmpdir(), 'agent-presence-usage-badge-'));
     const statePath = join(dir, 'state.json');
     await saveState({ sessions: {}, usageBadgesAt: NOW - 1_000 }, statePath);
-    const codexScan = vi.fn<BillableSource['scanUsage']>(async () => []);
+    const codexScan = vi.fn<HandlerBillableSource['scanUsage']>(async () => []);
     const onSave = vi.fn<(state: PresenceState) => void>();
 
     const outcome = await refreshUsageBadgeCache({

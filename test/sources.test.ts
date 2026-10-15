@@ -330,12 +330,18 @@ describe('describeSources', () => {
 });
 
 describe('billableSources', () => {
-  it('exposes every built-in with a scanner as billable, in merged-table order', async () => {
+  it('exposes every built-in with a usage capability as billable, in merged-table order', async () => {
     const sources = await billableSources({});
-    expect(sources.map((s) => s.id)).toEqual(['codex', 'claude', 'gemini', 'opencode', 'pi', 'dsh']);
-    // grok ships presence-only until it gains a transcript scanner.
-    expect(sources.map((s) => s.id)).not.toContain('grok');
-    expect(sources.every((s) => typeof s.scanUsage === 'function')).toBe(true);
+    expect(sources.map((s) => s.id)).toEqual(['codex', 'claude', 'gemini', 'opencode', 'pi', 'grok', 'dsh']);
+    // The kit-decoded built-ins are scanned in one batched window scan; dsh keeps its own scanner.
+    expect(sources.filter((s) => 'kitAgent' in s).map((s) => s.id)).toEqual([
+      'codex',
+      'claude',
+      'gemini',
+      'opencode',
+      'pi',
+      'grok'
+    ]);
   });
 
   it('scans a configured id that reuses a built-in with that built-in scanner', async () => {
@@ -355,7 +361,7 @@ describe('billableSources', () => {
     const sources = await billableSources(config);
     expect(sources.map((s) => s.id)).not.toContain('otheragent');
     // the built-ins are still billable
-    expect(sources.map((s) => s.id)).toEqual(['codex', 'claude', 'gemini', 'opencode', 'pi', 'dsh']);
+    expect(sources.map((s) => s.id)).toEqual(['codex', 'claude', 'gemini', 'opencode', 'pi', 'grok', 'dsh']);
   });
 
   it('includes a JS handler that implements scanUsage', async () => {
@@ -375,7 +381,7 @@ describe('billableSources', () => {
     const sources = await billableSources(config);
     const myagent = sources.find((s) => s.id === 'myagent');
     expect(myagent).toBeDefined();
-    const records = await myagent!.scanUsage({ sinceMs: 0, untilMs: 1 });
+    const records = await myagent!.scanUsage!({ sinceMs: 0, untilMs: 1 });
     expect(records).toHaveLength(1);
     expect(records[0]?.source).toBe('myagent');
   });
@@ -388,6 +394,6 @@ describe('billableSources', () => {
     const config: AppConfig = { plugins: { sources: { myagent: { handler: handlerPath } } } };
 
     const sources = await billableSources(config, { includeHandlers: false });
-    expect(sources.map((s) => s.id)).toEqual(['codex', 'claude', 'gemini', 'opencode', 'pi', 'dsh']);
+    expect(sources.map((s) => s.id)).toEqual(['codex', 'claude', 'gemini', 'opencode', 'pi', 'grok', 'dsh']);
   });
 });

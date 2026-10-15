@@ -101,7 +101,8 @@ const MANAGED_ENV_KEYS = [
 let homeDir: string;
 let stdoutWrites: string[];
 
-const BILLABLE_SOURCE_IDS = ['claude', 'codex', 'dsh', 'gemini', 'opencode', 'pi'];
+// Grok is billable now that its kit decoder is scanned with the others.
+const BILLABLE_SOURCE_IDS = ['claude', 'codex', 'dsh', 'gemini', 'grok', 'opencode', 'pi'];
 
 function claudePayload(event: string, sessionId = 'claude-session-1', extra: Record<string, unknown> = {}) {
   return {
@@ -849,7 +850,8 @@ describe('hook --agent grok', () => {
     await run('session_start');
     const state = await readState();
     expect(startedView(state, 'grok-session-1')).toEqual(startedExpected('grok'));
-    expect(Object.keys(state.usageSnapshots?.['1'] ?? {})).not.toContain('grok');
+    // The grok boundary refresh now owns the grok source like any other built-in.
+    expect(Object.keys(state.usageSnapshots?.['1'] ?? {})).toContain('grok');
   });
 
   it('user_prompt_submit reopens a finished session without a badge refresh', async () => {

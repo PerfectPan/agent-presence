@@ -7,17 +7,15 @@
 export type UsageSource = string;
 
 /**
- * The window a scanner reads, plus an optional transcript-root override (mainly
- * for tests). Shared by every `scanUsage` implementation; `ScanOptions` in the
- * individual scanners is an alias of this shape.
+ * The window a scanner reads. Shared by every `scanUsage` implementation: a
+ * custom handler's own scanner receives it, and the batched kit scan derives
+ * its bounds from the same values.
  */
 export interface ScanWindow {
   /** Inclusive lower bound (epoch ms). */
   sinceMs: number;
   /** Exclusive upper bound (epoch ms); typically "now". */
   untilMs: number;
-  /** Override the transcript root (mainly for tests). */
-  root?: string;
   /**
    * The environment the scanner reads its transcript-root variables (`SCAN_ENV`) from; `process.env` when absent. A
    * worker passes the values a hook recorded, so a scan finds the transcripts of the agent that ran that hook.
@@ -29,16 +27,33 @@ export interface ScanWindow {
 export type ScanEnvironment = Readonly<Record<string, string | undefined>>;
 
 /**
- * A merged-table source that exposes usage scanning. `billableSources()` in
+ * A merged-table source that contributes usage. `billableSources()` in
  * `src/usage/billable-sources.ts` resolves these from the source table (in
  * table order) and `collectWindowUsage()` iterates them. Kept in this leaf
  * module, like the other usage types, so `src/usage/` and the source table can
  * name them without an import cycle.
+ *
+ * A built-in with a kit decoder carries `kitAgent`: its records come from the
+ * one batched kit `scanUsage` call per window, keyed by the kit agent id. Any
+ * other billable source (dsh, a JS handler) carries its own `scanUsage`, which
+ * returns records in the four-bucket shape; they are converted to kit records
+ * at the totals boundary.
  */
-export interface BillableSource {
+export interface KitBillableSource {
   id: string;
-  scanUsage: (window: ScanWindow) => Promise<UsageRecord[]>;
+  /** The kit agent whose decoder scans this source in the batched window scan. */
+  kitAgent: string;
+  scanUsage?: undefined;
 }
+
+export interface HandlerBillableSource {
+  id: string;
+  /** A source's own scanner, read at the four-bucket `UsageRecord` shape. */
+  scanUsage: (window: ScanWindow) => Promise<UsageRecord[]>;
+  kitAgent?: undefined;
+}
+
+export type BillableSource = KitBillableSource | HandlerBillableSource;
 
 /**
  * A single usage record extracted from one agent transcript entry. Token counts
@@ -67,10 +82,15 @@ export interface UsageRecord {
 }
 
 export interface UsageTotals {
+  /** In the kit record convention: includes the cache reads and writes below. */
   inputTokens: number;
+  /** Includes reasoning tokens where a source reports them separately. */
   outputTokens: number;
+  /** Subset of `inputTokens`. */
   cacheWriteTokens: number;
+  /** Subset of `inputTokens`. */
   cacheReadTokens: number;
+  /** `inputTokens + outputTokens`; the cache counts are subsets, not additions. */
   totalTokens: number;
   /** Sum of resolved costs; `null` when no record in the group had a known cost. */
   costUsd: number | null;
