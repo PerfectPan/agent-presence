@@ -1,47 +1,5 @@
-import { createReadStream, type Dirent } from 'node:fs';
-import { readdir, stat } from 'node:fs/promises';
-import { join } from 'node:path';
+import { createReadStream } from 'node:fs';
 import { createInterface } from 'node:readline';
-
-async function walk(dir: string, sinceMs: number, out: string[]): Promise<void> {
-  let entries: Dirent[];
-  try {
-    entries = await readdir(dir, { withFileTypes: true });
-  } catch {
-    return;
-  }
-
-  for (const entry of entries) {
-    const full = join(dir, entry.name);
-    if (entry.isDirectory()) {
-      await walk(full, sinceMs, out);
-      continue;
-    }
-    if (!entry.isFile() || !entry.name.endsWith('.jsonl')) {
-      continue;
-    }
-    try {
-      const info = await stat(full);
-      if (info.mtimeMs >= sinceMs) {
-        out.push(full);
-      }
-    } catch {
-      // racing deletion / permission — ignore this file.
-    }
-  }
-}
-
-/**
- * Recursively collect `*.jsonl` files under `root`. Files whose last
- * modification predates `sinceMs` are skipped: every entry they hold is older
- * than the window, so parsing them would be wasted work. Missing roots yield an
- * empty list rather than throwing.
- */
-export async function listJsonlFiles(root: string, sinceMs: number): Promise<string[]> {
-  const found: string[] = [];
-  await walk(root, sinceMs, found);
-  return found;
-}
 
 /**
  * Parse a `.jsonl` file line by line, invoking `onRecord` for every line that
@@ -75,13 +33,4 @@ export async function forEachJsonl(file: string, onRecord: (record: unknown) => 
     rl.close();
     stream.destroy();
   }
-}
-
-/** Parse an ISO timestamp to epoch ms, or `null` when absent/invalid. */
-export function parseTimestamp(value: unknown): number | null {
-  if (typeof value !== 'string') {
-    return null;
-  }
-  const ms = Date.parse(value);
-  return Number.isNaN(ms) ? null : ms;
 }

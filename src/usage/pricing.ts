@@ -3,8 +3,6 @@ import { readFileSync } from 'node:fs';
 import { createPricing, type Pricing } from '@rivus/agent-kit/cost';
 import * as z from 'zod/mini';
 
-import type { UsageRecord } from './types.js';
-
 /** Per-million-token rates in USD. */
 export interface ModelPricing {
   input: number;
@@ -84,13 +82,22 @@ const pricingByOverrides = new WeakMap<PricingOverrides, Pricing>();
 // reuses one pricing instance instead of building one per call.
 const NO_OVERRIDES: PricingOverrides = {};
 
-function pricingFor(overrides: PricingOverrides): Pricing {
+function pricingFor(overrides: PricingOverrides = NO_OVERRIDES): Pricing {
   let pricing = pricingByOverrides.get(overrides);
   if (pricing === undefined) {
     pricing = createPricing(LITELLM_PRICING, { overrides, fallback: DEFAULT_PRICING });
     pricingByOverrides.set(overrides, pricing);
   }
   return pricing;
+}
+
+/**
+ * The pricing the totals are computed through: the kit's `summarize` and
+ * `costOf` take it, applying a logged cost unmultiplied and a table cost times
+ * the record's pricing multiplier. One instance per overrides value.
+ */
+export function usagePricing(overrides?: PricingOverrides): Pricing {
+  return pricingFor(overrides);
 }
 
 /**
@@ -109,29 +116,4 @@ export function resolvePricing(model: string, overrides: PricingOverrides = NO_O
   const price = pricingFor(overrides).priceOf(model);
   // A fresh object per call: the kit hands out its shared table entries.
   return price === undefined ? null : { ...price };
-}
-
-/**
- * Compute the USD cost of a usage record. When the record already carries a
- * cost (Pi), that is authoritative. Otherwise the cost is derived from the
- * pricing table; an unknown model yields `null` (token counts stay intact).
- */
-export function resolveRecordCost(record: UsageRecord, overrides: PricingOverrides = NO_OVERRIDES): number | null {
-  if (record.costUsd !== null) {
-    return record.costUsd;
-  }
-  const pricing = pricingFor(overrides).priceOf(record.model);
-  if (pricing === undefined) {
-    return null;
-  }
-  const cacheWrite1hTokens = Math.min(record.cacheWriteTokens, Math.max(0, record.cacheWrite1hTokens ?? 0));
-  const cacheWrite5mTokens = record.cacheWriteTokens - cacheWrite1hTokens;
-  const bucketCost =
-    (record.inputTokens * pricing.input +
-      record.outputTokens * pricing.output +
-      cacheWrite5mTokens * pricing.cacheWrite +
-      cacheWrite1hTokens * (pricing.cacheWrite1h ?? pricing.cacheWrite) +
-      record.cacheReadTokens * pricing.cacheRead) /
-    1_000_000;
-  return bucketCost * Math.max(0, record.pricingMultiplier ?? 1);
 }

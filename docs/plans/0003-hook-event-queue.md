@@ -325,7 +325,7 @@ only adds to these fields, and every release keeps what it does not know:
   as done, the refresh of a built-in source that a later release added: the refresh returns at once for a source it
   has no scanner for (`src/cli/usage-badge.ts:79-81`), which reads as completed. The source table decides, not the
   scanner table, because a source without a scanner (`grok`, a source configured with a handler) still owes its refresh: on the first
-  boundary of a day it refreshes every built-in (`usage-badge.ts:71-79`). An entry for a source since removed from the
+  boundary of a day its promotion fills the day (`usage-badge.ts:71-79`). An entry for a source since removed from the
   configuration file stays owed in every release; it changes nothing but the state's size (inferred). A later release
   that gives a scanner to a source an earlier queue release has without one owes that source's refreshes under a new
   kind of owed work, since the earlier release would work them off without scanning.
@@ -356,10 +356,14 @@ stop (3.7):
   hand-written `asUsageEvent` (`src/usage-events.ts:75-92`) in a module the hook graph does not reach (3.2), and skips a
   repeated id. The item leaves `queueOwed` only after the append wrote.
 - Usage refresh: through the existing refresh for that source, with its `scanEnv` and boundary time so the day rule
-  (`usage-badge.ts:71-79`) holds; an entry whose source is not in the merged source table is skipped and stays owed
-  (above). The scanners read their transcript roots from the worker's environment with every variable that the
-  entry's built-in source reads, or that the entry recorded, set to the recorded value, or unset when none was
-  recorded. The refresh gains an abort signal and returns whether it completed. In the refresh's own locked save, the
+  (`usage-badge.ts:71-79`) holds; when that refresh is promoted to the other built-ins, it fills only what the day
+  lacks — its own source plus every source with no snapshot from this day and no owed refresh entry bounded on this
+  day — and never overwrites a snapshot it did not scan; an entry whose source is not in the merged source table is
+  skipped and stays owed (above). The scanners read their transcript roots from the worker's environment with every agent-home variable in
+  `SCAN_ENV` set to the value the entry recorded, or unset when it recorded none — for every source the refresh
+  scans, so a promoted first-boundary refresh reads no home variable the producer did not copy; a source whose
+  variable was not recorded reads its default root under the worker's home until its own boundary records one. The
+  worker's other variables stay. The refresh gains an abort signal and returns whether it completed. In the refresh's own locked save, the
   entry is removed only if its generation is still the one the refresh started with; a boundary that arrived during
   the scan keeps it owed. A refresh that completes without saving (nothing to scan, or a failed scan that keeps the
   cache) removes the entry the same way in a save of its own.
@@ -710,7 +714,7 @@ queue (3.12).
   worker that holds the lock with only that work owed exits when idle. A `usageRefresh` entry for a source the older
   release does not know, as a later release that added a built-in source would owe it, is treated the same way: the
   older worker leaves it owed and does not count it, while an entry for a source it knows without a scanner (`grok`) is
-  worked off and removed, refreshing every built-in on the first boundary of a day. A newer worker killed after its
+  worked off and removed, its promotion filling the day on the first boundary of a day. A newer worker killed after its
   save and before deleting the applied files, then an older command: no record whose id is in `queueApplied` is
   applied again.
 - Older commands, as section 7 describes them (the owner picked option (a), 2026-10-14): an older command that holds

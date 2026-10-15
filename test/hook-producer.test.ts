@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 import { getStatePath, type AppConfig, type SourcePluginConfig } from '../src/config.js';
+import { SCAN_ENV } from '../src/cli/hook-context.js';
 import { hookEventLogEvent } from '../src/cli/hook-diagnostics.js';
 import { formatLogEvent } from '../src/log.js';
 import { RECORD_VERSION, queuePaths, writeTombstone } from '../src/queue/files.js';
@@ -116,9 +117,7 @@ const MANAGED_ENV_KEYS = [
   'AGENT_PRESENCE_STATE_FILE',
   'AGENT_PRESENCE_CONFIG_FILE',
   'AGENT_PRESENCE_LOG_FILE',
-  'CLAUDE_CONFIG_DIR',
-  'GEMINI_CLI_HOME',
-  'XDG_DATA_HOME',
+  ...Object.values(SCAN_ENV),
   'AGENT_PRESENCE_USAGE_IN_SIGNATURE'
 ] as const;
 

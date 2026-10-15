@@ -45,7 +45,7 @@ function event(overrides: Partial<UsageEvent> = {}): UsageEvent {
 
 describe('scanDsh', () => {
   it('returns an empty list when no usage events exist', async () => {
-    const records = await scanDsh({ root: '', sinceMs: NOW - HOUR, untilMs: NOW });
+    const records = await scanDsh({ sinceMs: NOW - HOUR, untilMs: NOW });
     expect(records).toEqual([]);
   });
 
@@ -54,7 +54,7 @@ describe('scanDsh', () => {
     await appendUsageEvent(event({ timestamp: NOW - 5 * HOUR, inputTokens: 500 }));
     await appendUsageEvent(event({ source: 'codex', model: 'gpt-5.5' }));
 
-    const records = await scanDsh({ root: '', sinceMs: NOW - 2 * HOUR, untilMs: NOW });
+    const records = await scanDsh({ sinceMs: NOW - 2 * HOUR, untilMs: NOW });
     expect(records).toHaveLength(1);
     expect(records[0]).toEqual({
       source: 'dsh',
@@ -72,7 +72,7 @@ describe('scanDsh', () => {
     await appendUsageEvent(event());
     await writeFile(eventsFile, '{ broken\n', { flag: 'a' });
 
-    const records = await scanDsh({ root: '', sinceMs: NOW - 2 * HOUR, untilMs: NOW });
+    const records = await scanDsh({ sinceMs: NOW - 2 * HOUR, untilMs: NOW });
     expect(records).toHaveLength(1);
   });
 });

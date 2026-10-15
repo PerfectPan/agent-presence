@@ -1,22 +1,8 @@
 import { describe, expect, it } from 'vite-plus/test';
 import { parseConfigFile } from '../src/config-schema.js';
 import { parsePricingSnapshot } from '../src/usage/pricing.js';
-import { resolvePricing, resolveRecordCost } from '../src/usage/index.js';
-import type { PricingOverrides, UsageRecord } from '../src/usage/index.js';
-
-function record(partial: Partial<UsageRecord>): UsageRecord {
-  return {
-    source: 'claude',
-    model: 'claude-opus-4-8',
-    timestamp: 0,
-    inputTokens: 0,
-    outputTokens: 0,
-    cacheWriteTokens: 0,
-    cacheReadTokens: 0,
-    costUsd: null,
-    ...partial
-  };
-}
+import { resolvePricing } from '../src/usage/index.js';
+import type { PricingOverrides } from '../src/usage/index.js';
 
 describe('resolvePricing', () => {
   it('matches the longest substring key', () => {
@@ -176,47 +162,5 @@ describe('pricing overrides through the config loader', () => {
       cacheWrite: 5,
       cacheRead: 0.5
     });
-  });
-});
-
-describe('resolveRecordCost', () => {
-  it('uses the recorded cost when present (Pi display mode), even when 0', () => {
-    expect(resolveRecordCost(record({ source: 'pi', model: 'glm-5.1', costUsd: 0 }))).toBe(0);
-    expect(resolveRecordCost(record({ source: 'pi', model: 'glm-5.1', costUsd: 1.23 }))).toBe(1.23);
-  });
-
-  it('computes cost from the pricing table when none is recorded', () => {
-    const cost = resolveRecordCost(
-      record({ inputTokens: 1_000_000, outputTokens: 1_000_000, cacheReadTokens: 1_000_000 })
-    );
-    // claude-opus-4-8 from the LiteLLM snapshot: 5 input + 25 output + 0.5 cacheRead per MTok
-    expect(cost).toBeCloseTo(5 + 25 + 0.5, 5);
-  });
-
-  it('prices Claude one-hour cache writes at their dedicated rate', () => {
-    const cost = resolveRecordCost({
-      ...record({ model: 'claude-sonnet-5', cacheWriteTokens: 1_000_000 }),
-      cacheWrite1hTokens: 1_000_000
-    });
-
-    expect(cost).toBeCloseTo(4, 6);
-  });
-
-  it('applies the transcript billing-tier multiplier after bucket pricing', () => {
-    const cost = resolveRecordCost({
-      ...record({
-        model: 'gpt-5.6-sol',
-        inputTokens: 1_000_000,
-        outputTokens: 1_000_000,
-        cacheReadTokens: 1_000_000
-      }),
-      pricingMultiplier: 2
-    });
-
-    expect(cost).toBeCloseTo((5 + 30 + 0.5) * 2, 6);
-  });
-
-  it('returns null when the model is unpriced', () => {
-    expect(resolveRecordCost(record({ model: 'mystery-model', inputTokens: 1_000_000 }))).toBeNull();
   });
 });

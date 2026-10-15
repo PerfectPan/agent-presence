@@ -28,8 +28,11 @@ const usageSchema = z.looseObject({
 /** The environment values that locate a source's transcripts, by variable name. */
 const scanEnvSchema = z.looseObject({
   [SCAN_ENV.claudeConfigDir]: z.optional(z.string()),
+  [SCAN_ENV.codexHome]: z.optional(z.string()),
   [SCAN_ENV.geminiCliHome]: z.optional(z.string()),
-  [SCAN_ENV.xdgDataHome]: z.optional(z.string())
+  [SCAN_ENV.grokHome]: z.optional(z.string()),
+  [SCAN_ENV.xdgDataHome]: z.optional(z.string()),
+  [SCAN_ENV.piCodingAgentDir]: z.optional(z.string())
 });
 
 /** Parses `v` alone, so an applier leaves a record of a newer release in place without parsing the rest. */

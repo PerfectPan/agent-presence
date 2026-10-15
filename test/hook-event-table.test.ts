@@ -6,6 +6,7 @@ import { pathToFileURL } from 'node:url';
 import { transformWithOxc } from 'vite-plus';
 import { beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 import { hook } from '../src/cli/commands/hook.js';
+import { SCAN_ENV } from '../src/cli/hook-context.js';
 import { buildOpenCodePluginSource, buildPiExtensionSource } from '../src/installers.js';
 import { createEmptyState, type AgentSession } from '../src/state.js';
 import { loadState, saveState } from '../src/state-store.js';
@@ -91,17 +92,15 @@ const MANAGED_ENV_KEYS = [
   'HOME',
   'PWD',
   'XDG_CONFIG_HOME',
-  'XDG_DATA_HOME',
   'XDG_STATE_HOME',
   'AGENT_PRESENCE_HOME',
-  'CLAUDE_CONFIG_DIR',
+  ...Object.values(SCAN_ENV),
   'CLAUDE_HOOK_EVENT_NAME',
   'CLAUDE_SESSION_ID',
   'CLAUDE_TRANSCRIPT_PATH',
   'CODEX_SESSION_ID',
   'CODEX_THREAD_ID',
   'CMUX_SURFACE_ID',
-  'GEMINI_CLI_HOME',
   'GEMINI_HOOK_EVENT_NAME',
   'GEMINI_PROJECT_DIR',
   'GEMINI_SESSION_ID',
@@ -390,7 +389,8 @@ function finishedOverrides(): Partial<AgentSession> {
 }
 
 /** Every billable built-in the boundary refresh scans for a zero-usage day. */
-const BILLABLE_SOURCE_IDS = ['claude', 'codex', 'dsh', 'gemini', 'opencode', 'pi'];
+// Grok is billable now that its kit decoder is scanned with the others.
+const BILLABLE_SOURCE_IDS = ['claude', 'codex', 'dsh', 'gemini', 'grok', 'opencode', 'pi'];
 
 async function readState() {
   return loadState();
@@ -1060,7 +1060,8 @@ describe('hook event table — Grok (driven via --event, presence-only source)',
     });
     expect(state.usageBadgesAt).toBe(NOW);
     // The boundary scans the billable built-ins; grok is not among them yet.
-    expect(Object.keys(state.usageSnapshots?.['1'] ?? {})).not.toContain('grok');
+    // The grok boundary refresh now owns the grok source like any other built-in.
+    expect(Object.keys(state.usageSnapshots?.['1'] ?? {})).toContain('grok');
   });
 
   it('user_prompt_submit (UserPromptSubmit) reopens a finished session without a badge refresh', async () => {

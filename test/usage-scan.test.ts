@@ -1,19 +1,14 @@
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vite-plus/test';
 
-import { collectWindowUsage, resolveRecordCost, type BillableSource, type UsageRecord } from '../src/usage/index.js';
-import { scanClaude } from '../src/usage/scan-claude.js';
-import { scanCodex } from '../src/usage/scan-codex.js';
-import { scanPi } from '../src/usage/scan-pi.js';
+import { collectWindowUsage, type BillableSource, type UsageRecord } from '../src/usage/index.js';
 
-// Use real "now" so freshly-written temp files pass the mtime pre-filter in
-// listJsonlFiles (which skips files older than the window). Window math is
-// relative, so token assertions stay deterministic regardless of the value.
-const NOW = Date.now();
+// A fixed point inside a calendar day: the window math below is asserted
+// relative to it, so no assertion depends on the real clock.
+const NOW = new Date(2026, 6, 14, 12, 0, 0, 0).getTime();
 const DAY = 24 * 60 * 60 * 1000;
-const iso = (ms: number) => new Date(ms).toISOString();
 
 let dir: string;
 
@@ -25,319 +20,44 @@ afterEach(async () => {
   await rm(dir, { recursive: true, force: true });
 });
 
-async function writeJsonl(name: string, lines: unknown[]): Promise<string> {
-  const file = join(dir, name);
-  await writeFile(file, lines.map((line) => JSON.stringify(line)).join('\n'), 'utf8');
-  return dir;
-}
-
-describe('scanClaude', () => {
-  it('extracts usage, filters the window, and de-duplicates by id+requestId', async () => {
-    const root = await writeJsonl('session.jsonl', [
-      {
-        type: 'assistant',
-        timestamp: iso(NOW - 1000),
-        requestId: 'req_1',
-        message: {
-          id: 'msg_1',
-          model: 'claude-opus-4-8',
-          usage: {
-            input_tokens: 10,
-            output_tokens: 20,
-            cache_creation_input_tokens: 5,
-            cache_creation: {
-              ephemeral_5m_input_tokens: 2,
-              ephemeral_1h_input_tokens: 3
-            },
-            cache_read_input_tokens: 100
-          }
-        }
-      },
-      // duplicate of the first turn (resume/fork) — must be ignored
-      {
-        type: 'assistant',
-        timestamp: iso(NOW - 900),
-        requestId: 'req_1',
-        message: { id: 'msg_1', model: 'claude-opus-4-8', usage: { input_tokens: 10, output_tokens: 20 } }
-      },
-      // outside the window — must be dropped
-      {
-        type: 'assistant',
-        timestamp: iso(NOW - 3 * DAY),
-        requestId: 'req_old',
-        message: { id: 'msg_old', model: 'claude-opus-4-8', usage: { input_tokens: 999, output_tokens: 999 } }
-      }
-    ]);
-
-    const records = await scanClaude({ root, sinceMs: NOW - DAY, untilMs: NOW });
-    expect(records).toHaveLength(1);
-    expect(records[0]).toMatchObject({
-      source: 'claude',
-      model: 'claude-opus-4-8',
-      inputTokens: 10,
-      outputTokens: 20,
-      cacheWriteTokens: 5,
-      cacheWrite1hTokens: 3,
-      cacheReadTokens: 100,
-      costUsd: null
-    });
-  });
-
-  it('keeps the final (largest) occurrence when streaming rewrites output (matches ccusage)', async () => {
-    // Same id+requestId written twice: a partial turn then the complete one.
-    const root = await writeJsonl('stream.jsonl', [
-      {
-        type: 'assistant',
-        timestamp: iso(NOW - 2000),
-        requestId: 'req_s',
-        message: { id: 'msg_s', model: 'claude-opus-4-8', usage: { input_tokens: 100, output_tokens: 3 } }
-      },
-      {
-        type: 'assistant',
-        timestamp: iso(NOW - 1000),
-        requestId: 'req_s',
-        message: { id: 'msg_s', model: 'claude-opus-4-8', usage: { input_tokens: 100, output_tokens: 1810 } }
-      }
-    ]);
-
-    const records = await scanClaude({ root, sinceMs: NOW - DAY, untilMs: NOW });
-    expect(records).toHaveLength(1);
-    expect(records[0]?.outputTokens).toBe(1810);
-  });
-
-  it('uses the cache creation breakdown when present (matches ccusage)', async () => {
-    const root = await writeJsonl('cache-breakdown.jsonl', [
-      {
-        type: 'assistant',
-        timestamp: iso(NOW - 1000),
-        requestId: 'req_cache',
-        message: {
-          id: 'msg_cache',
-          model: 'claude-opus-4-8',
-          usage: {
-            input_tokens: 0,
-            output_tokens: 0,
-            cache_creation_input_tokens: 0,
-            cache_creation: {
-              ephemeral_5m_input_tokens: 0,
-              ephemeral_1h_input_tokens: 2103
-            },
-            cache_read_input_tokens: 0
-          }
-        }
-      }
-    ]);
-
-    const records = await scanClaude({ root, sinceMs: NOW - DAY, untilMs: NOW });
-    expect(records).toHaveLength(1);
-    expect(records[0]).toMatchObject({
-      cacheWriteTokens: 2103,
-      cacheWrite1hTokens: 2103
-    });
-    expect(resolveRecordCost(records[0]!)).toBeCloseTo(0.02103, 8);
-  });
-
-  it('excludes synthetic turns (matches ccusage)', async () => {
-    const root = await writeJsonl('synthetic.jsonl', [
-      {
-        type: 'assistant',
-        timestamp: iso(NOW - 1000),
-        requestId: 'req_x',
-        message: { id: 'msg_x', model: '<synthetic>', usage: { input_tokens: 5, output_tokens: 5 } }
-      }
-    ]);
-    const records = await scanClaude({ root, sinceMs: NOW - DAY, untilMs: NOW });
-    expect(records).toHaveLength(0);
-  });
-});
-
-function codexCount(
-  ts: number,
-  input: number,
-  cached: number,
-  output: number,
-  total: number,
-  last?: { input: number; cached: number; output: number; total: number }
-): unknown {
+/** A scanner record at the four-bucket shape a custom handler (or dsh) returns. */
+function record(partial: Partial<UsageRecord>): UsageRecord {
   return {
-    timestamp: iso(ts),
-    type: 'event_msg',
-    payload: {
-      type: 'token_count',
-      info: {
-        total_token_usage: {
-          input_tokens: input,
-          cached_input_tokens: cached,
-          output_tokens: output,
-          total_tokens: total
-        },
-        ...(last
-          ? {
-              last_token_usage: {
-                input_tokens: last.input,
-                cached_input_tokens: last.cached,
-                output_tokens: last.output,
-                total_tokens: last.total
-              }
-            }
-          : {})
-      }
-    }
+    source: 'handler',
+    model: 'test-model',
+    timestamp: NOW - 1000,
+    inputTokens: 0,
+    outputTokens: 0,
+    cacheWriteTokens: 0,
+    cacheReadTokens: 0,
+    costUsd: null,
+    ...partial
   };
 }
 
-describe('scanCodex', () => {
-  it('uses the current Codex priority tier for ccusage auto-mode parity', async () => {
-    const root = await writeJsonl('priority.jsonl', [
-      { timestamp: iso(NOW - 6000), type: 'turn_context', payload: { model: 'gpt-5.6-sol' } },
-      codexCount(NOW - 5000, 1000, 200, 50, 1050)
-    ]);
-    const configPath = join(dir, 'config.toml');
-    await writeFile(configPath, 'service_tier = "priority"\n', 'utf8');
-
-    const records = await scanCodex({ root, configPath, sinceMs: NOW - DAY, untilMs: NOW });
-    expect(records).toHaveLength(1);
-    expect(records[0]).toMatchObject({ model: 'gpt-5.6-sol', pricingMultiplier: 2 });
-  });
-
-  it('diffs the cumulative total (not summing overlapping deltas), splitting cached input', async () => {
-    const root = await writeJsonl('rollout.jsonl', [
-      { timestamp: iso(NOW - 6000), type: 'turn_context', payload: { model: 'gpt-5.5' } },
-      // cumulative snapshots: 1050 then 2120 — the increment is one turn's usage
-      codexCount(NOW - 5000, 1000, 200, 50, 1050),
-      codexCount(NOW - 4000, 2000, 400, 120, 2120)
-    ]);
-
-    const records = await scanCodex({ root, sinceMs: NOW - DAY, untilMs: NOW });
-    // total tokens across records must equal the final cumulative (2120), never the sum of cumulatives
-    const totalTokens = records.reduce(
-      (sum, r) => sum + r.inputTokens + r.outputTokens + r.cacheReadTokens + r.cacheWriteTokens,
-      0
-    );
-    expect(totalTokens).toBe(2120);
-    expect(records.every((r) => r.model === 'gpt-5.5')).toBe(true);
-    // first increment: input 1000 / cached 200 / output 50  → uncached input 800, cacheRead 200
-    expect(records[0]).toMatchObject({ inputTokens: 800, cacheReadTokens: 200, outputTokens: 50, cacheWriteTokens: 0 });
-  });
-
-  it('uses last_token_usage when a cumulative total resets', async () => {
-    const root = await writeJsonl('reset.jsonl', [
-      { timestamp: iso(NOW - 6000), type: 'turn_context', payload: { model: 'gpt-5.5' } },
-      codexCount(NOW - 5000, 5000, 0, 100, 5100),
-      // cumulative drops (compaction), but the per-turn usage remains exact
-      codexCount(NOW - 4000, 800, 0, 30, 830, { input: 800, cached: 0, output: 30, total: 830 })
-    ]);
-
-    const records = await scanCodex({ root, sinceMs: NOW - DAY, untilMs: NOW });
-    const totalTokens = records.reduce(
-      (sum, r) => sum + r.inputTokens + r.outputTokens + r.cacheReadTokens + r.cacheWriteTokens,
-      0
-    );
-    expect(totalTokens).toBe(5100 + 830);
-  });
-
-  it('skips a forked session replay prefix and counts only new subagent usage', async () => {
-    const replayMs = NOW - 5000;
-    const root = await writeJsonl('forked.jsonl', [
-      {
-        timestamp: iso(replayMs - 1),
-        type: 'session_meta',
-        payload: { forked_from_id: 'parent', source: { subagent: { thread_spawn: { depth: 1 } } } }
-      },
-      { timestamp: iso(replayMs - 1), type: 'turn_context', payload: { model: 'gpt-5.5' } },
-      // Replayed parent history: many cumulative events are collapsed into one second.
-      codexCount(replayMs, 100, 20, 10, 110, { input: 100, cached: 20, output: 10, total: 110 }),
-      codexCount(replayMs + 1, 250, 50, 25, 275, { input: 150, cached: 30, output: 15, total: 165 }),
-      // First real child event arrives in the next second and must be counted.
-      codexCount(replayMs + 1000, 290, 60, 35, 325, { input: 40, cached: 10, output: 10, total: 50 })
-    ]);
-
-    const records = await scanCodex({ root, sinceMs: NOW - DAY, untilMs: NOW });
-    expect(records).toHaveLength(1);
-    expect(records[0]).toMatchObject({
-      model: 'gpt-5.5',
-      inputTokens: 30,
-      cacheReadTokens: 10,
-      outputTokens: 10
-    });
-  });
-
-  it('maintains the cumulative baseline across the window edge (no inflated first increment)', async () => {
-    const root = await writeJsonl('edge.jsonl', [
-      { timestamp: iso(NOW - 2 * DAY - 1000), type: 'turn_context', payload: { model: 'gpt-5.5' } },
-      // out of window: establishes baseline 1000 but is not emitted
-      codexCount(NOW - 2 * DAY, 1000, 0, 0, 1000),
-      // in window: cumulative 1500 → increment is only 500, not 1500
-      codexCount(NOW - 1000, 1500, 0, 0, 1500)
-    ]);
-
-    const records = await scanCodex({ root, sinceMs: NOW - DAY, untilMs: NOW });
-    const totalTokens = records.reduce((sum, r) => sum + r.inputTokens, 0);
-    expect(totalTokens).toBe(500);
-  });
-});
-
-describe('scanPi', () => {
-  it('passes through the recorded cost, including zero', async () => {
-    const root = await writeJsonl('pi.jsonl', [
-      {
-        type: 'message',
-        timestamp: iso(NOW - 1000),
-        message: {
-          role: 'assistant',
-          model: 'glm-5.1',
-          usage: {
-            input: 11349,
-            output: 4,
-            cacheRead: 1024,
-            cacheWrite: 0,
-            totalTokens: 12377,
-            cost: { total: 0 }
-          }
-        }
-      }
-    ]);
-
-    const records = await scanPi({ root, sinceMs: NOW - DAY, untilMs: NOW });
-    expect(records).toHaveLength(1);
-    expect(records[0]).toMatchObject({
-      source: 'pi',
-      model: 'glm-5.1',
-      costUsd: 0,
-      inputTokens: 11349,
-      cacheReadTokens: 1024
-    });
-  });
-});
+function handlerSource(id: string, records: UsageRecord[]): BillableSource {
+  return { id, scanUsage: async () => records };
+}
 
 describe('collectWindowUsage', () => {
-  // Explicit source list so the run is hermetic (no reading the real ~/.claude,
-  // ~/.gemini, ~/.local/share/opencode on the test machine). Roots are keyed by id.
-  const claudeSource: BillableSource = { id: 'claude', scanUsage: scanClaude };
-  const codexSource: BillableSource = { id: 'codex', scanUsage: scanCodex };
-  const piSource: BillableSource = { id: 'pi', scanUsage: scanPi };
-
   it('aggregates across sources with per-source and total cost', async () => {
-    await writeJsonl('claude.jsonl', [
-      {
-        type: 'assistant',
-        timestamp: iso(NOW - 1000),
-        requestId: 'r',
-        message: { id: 'm', model: 'claude-opus-4-8', usage: { input_tokens: 1_000_000, output_tokens: 0 } }
-      }
-    ]);
-
     const window = await collectWindowUsage({
       days: 1,
       now: NOW,
-      sources: [claudeSource, codexSource, piSource],
-      roots: { claude: dir, codex: dir, pi: dir }
+      sources: [
+        handlerSource('alpha', [record({ model: 'priced-model', inputTokens: 1_000_000, costUsd: null })]),
+        handlerSource('beta', [record({ costUsd: 1.5 })])
+      ],
+      pricing: { 'priced-model': { input: 5, output: 25, cacheWrite: 6.25, cacheRead: 0.5 } }
     });
 
-    const claude = window.bySource.find((s) => s.source === 'claude');
-    expect(claude?.inputTokens).toBe(1_000_000);
-    expect(claude?.costUsd).toBeCloseTo(5, 5); // 1M input @ claude-opus-4-8 $5/MTok
-    expect(window.total.costUsd).toBeCloseTo(5, 5);
+    const alpha = window.bySource.find((s) => s.source === 'alpha');
+    // 1M input at $5/MTok through the kit's pricing; the converted record's
+    // cache-inclusive input is what the badge total reports.
+    expect(alpha?.inputTokens).toBe(1_000_000);
+    expect(alpha?.totalTokens).toBe(1_000_000);
+    expect(alpha?.costUsd).toBeCloseTo(5, 5);
+    expect(window.total.costUsd).toBeCloseTo(6.5, 5);
     const startOfToday = new Date(NOW);
     startOfToday.setHours(0, 0, 0, 0);
     expect(window.sinceMs).toBe(startOfToday.getTime()); // calendar-day: snaps to local midnight
@@ -345,40 +65,85 @@ describe('collectWindowUsage', () => {
   });
 
   it('a 7-day window starts at local midnight six days before today', async () => {
-    const window = await collectWindowUsage({
-      days: 7,
-      now: NOW,
-      sources: [claudeSource, codexSource, piSource],
-      roots: { claude: dir, codex: dir, pi: dir }
-    });
+    const window = await collectWindowUsage({ days: 7, now: NOW, sources: [] });
     const startOfToday = new Date(NOW);
     startOfToday.setHours(0, 0, 0, 0);
     expect(window.sinceMs).toBe(startOfToday.getTime() - 6 * DAY);
     expect(window.untilMs).toBe(NOW);
   });
 
-  it('iterates the given sources dynamically, in order, one row per source', async () => {
-    const fakeA: BillableSource = {
-      id: 'alpha',
-      scanUsage: async () => [
-        {
-          source: 'alpha',
-          model: 'x',
-          timestamp: NOW - 1000,
-          inputTokens: 3,
-          outputTokens: 0,
-          cacheWriteTokens: 0,
-          cacheReadTokens: 0,
-          costUsd: 1.5
-        } satisfies UsageRecord
+  it('converts handler records to the kit shape at the totals boundary (cache back into input)', async () => {
+    const window = await collectWindowUsage({
+      days: 1,
+      now: NOW,
+      sources: [
+        handlerSource('handler', [
+          record({
+            model: 'priced-model',
+            inputTokens: 100,
+            outputTokens: 20,
+            cacheWriteTokens: 5,
+            cacheReadTokens: 50
+          })
+        ])
+      ],
+      pricing: { 'priced-model': { input: 2, output: 8, cacheWrite: 2.5, cacheRead: 0.2 } }
+    });
+
+    const group = window.bySource[0]!;
+    // The reported input stays without the cache; the total is the kit's
+    // two-bucket sum (cache-inclusive input plus output).
+    expect(group.inputTokens).toBe(100);
+    expect(group.outputTokens).toBe(20);
+    expect(group.cacheWriteTokens).toBe(5);
+    expect(group.cacheReadTokens).toBe(50);
+    expect(group.totalTokens).toBe(175);
+    expect(group.entries).toBe(1);
+    // (100*2 + 20*8 + 5*2.5 + 50*0.2) / 1e6 — cached input is not charged at the input rate.
+    expect(group.costUsd).toBeCloseTo((200 + 160 + 12.5 + 10) / 1_000_000, 10);
+    expect(window.total.totalTokens).toBe(175);
+  });
+
+  it('applies a record multiplier to a table cost but not to a logged cost', async () => {
+    const window = await collectWindowUsage({
+      days: 1,
+      now: NOW,
+      sources: [
+        handlerSource('handler', [
+          record({ model: 'priced-model', inputTokens: 1_000_000, pricingMultiplier: 2 }),
+          record({ model: 'priced-model', inputTokens: 1_000_000, costUsd: 3, pricingMultiplier: 2 })
+        ])
+      ],
+      pricing: { 'priced-model': { input: 5, output: 25, cacheWrite: 6.25, cacheRead: 0.5 } }
+    });
+
+    expect(window.total.costUsd).toBeCloseTo(10 + 3, 8);
+  });
+
+  it('keeps a logged zero cost and reports n/a only when nothing is priced', async () => {
+    const window = await collectWindowUsage({
+      days: 1,
+      now: NOW,
+      sources: [
+        handlerSource('logged-zero', [record({ costUsd: 0 })]),
+        handlerSource('unknown-model', [record({ model: 'mystery-model', inputTokens: 42 })])
       ]
-    };
+    });
+
+    expect(window.bySource[0]).toMatchObject({ costUsd: 0, totalTokens: 0 });
+    // An unknown model keeps its tokens exact and leaves the cost absent.
+    expect(window.bySource[1]).toMatchObject({ totalTokens: 42, costUsd: null });
+    expect(window.total.costUsd).toBe(0);
+  });
+
+  it('iterates the given sources dynamically, in order, one row per source', async () => {
+    const fakeA = handlerSource('alpha', [record({ inputTokens: 3, costUsd: 1.5 })]);
     const fakeB: BillableSource = { id: 'beta', scanUsage: async () => [] };
 
     const window = await collectWindowUsage({ days: 1, now: NOW, sources: [fakeA, fakeB] });
     expect(window.bySource.map((s) => s.source)).toEqual(['alpha', 'beta']);
-    expect(window.bySource[0]).toMatchObject({ entries: 1, inputTokens: 3, costUsd: 1.5 });
-    expect(window.bySource[1]).toMatchObject({ entries: 0, totalTokens: 0 });
+    expect(window.bySource[0]).toMatchObject({ entries: 1, totalTokens: 3, costUsd: 1.5 });
+    expect(window.bySource[1]).toMatchObject({ entries: 0, totalTokens: 0, costUsd: null });
     expect(window.total.costUsd).toBeCloseTo(1.5, 5);
   });
 
@@ -396,26 +161,12 @@ describe('collectWindowUsage', () => {
         throw new Error('unreadable transcript store');
       }
     };
-    const ok: BillableSource = {
-      id: 'ok',
-      scanUsage: async () => [
-        {
-          source: 'ok',
-          model: 'y',
-          timestamp: NOW - 1000,
-          inputTokens: 7,
-          outputTokens: 0,
-          cacheWriteTokens: 0,
-          cacheReadTokens: 0,
-          costUsd: 0.25
-        } satisfies UsageRecord
-      ]
-    };
+    const ok = handlerSource('ok', [record({ inputTokens: 7, costUsd: 0.25 })]);
 
     const window = await collectWindowUsage({ days: 1, now: NOW, sources: [boom, ok] });
     expect(window.bySource.map((s) => s.source)).toEqual(['boom', 'ok']);
     expect(window.bySource[0]).toMatchObject({ entries: 0, totalTokens: 0 });
-    expect(window.bySource[1]).toMatchObject({ entries: 1, inputTokens: 7 });
-    expect(window.total.inputTokens).toBe(7);
+    expect(window.bySource[1]).toMatchObject({ entries: 1, totalTokens: 7 });
+    expect(window.total.totalTokens).toBe(7);
   });
 });
