@@ -13,7 +13,7 @@ export function resolveOpenCodeHookContext(payload: unknown, env: StringEnv = pr
       env,
       envKeys: ['OPENCODE_PROJECT', 'OPENCODE_CWD'],
       payloadKeys: ['cwd', 'directory', 'worktree', 'path'],
-      nestedPayloadKeys: ['event', 'session', 'input', 'context', 'project', 'properties', 'info']
+      nestedPayloadKeys: ['session', 'input', 'context', 'project', 'properties', 'info']
     })
   };
 }

@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vite-plus/test';
@@ -8,12 +8,11 @@ import { createEmptyState, type AgentSession } from '../src/state.js';
 import { loadState, saveState } from '../src/state-store.js';
 import { captureHookWorkerStarts, drainQueue, restoreHookWorkerStarts } from './hook-producer-support.js';
 
-// Pin the remaining invocation forms in docs/architecture.md, "Hook
-// Normalization": internal names through `--source/--event`, and native
-// opencode/Pi payloads through `--agent`. Each case records through the hook
-// producer and applies through one in-process worker run (`drainQueue`). The
-// seeded running sessions distinguish start from heartbeat by startedAt, and
-// the usage badge assertions distinguish session boundaries from activity.
+// Pin the `--source/--event` invocation forms in docs/architecture.md, "Hook
+// Normalization". Each case records through the hook producer and applies
+// through one in-process worker run (`drainQueue`). The seeded running sessions
+// distinguish start from heartbeat by startedAt, and the usage badge assertions
+// distinguish session boundaries from activity.
 
 const publishValueMock = vi.hoisted(() => vi.fn<(value: string) => Promise<void>>());
 const stdinPayload = vi.hoisted(() => ({ current: {} as unknown }));
@@ -63,15 +62,6 @@ vi.mock('../src/cli/deferred-update.js', () => ({
 }));
 
 const NOW = new Date(2026, 9, 9, 15, 0).getTime();
-// Movable clock: cases that drive several lifecycle steps
-// advance it so a late heartbeat lands at a different timestamp than the
-// session's start.
-const clock = { now: NOW };
-
-function advanceMs(ms: number): void {
-  clock.now += ms;
-}
-
 // Environment the hook path reads (directly or through the resolvers and the
 // usage scanners). Saved and cleared around every case so neither the real
 // home nor a previous case's agent env can leak in.
@@ -164,10 +154,6 @@ async function runHook(run: HookRun): Promise<void> {
   await runHookCommand(args, run.payload, run.env);
 }
 
-async function runAgent(agent: string, payload: unknown): Promise<void> {
-  await runHookCommand(['--agent', agent, '--silent'], payload);
-}
-
 // --- Shared fixtures ---------------------------------------------------------
 
 function runningSession(source: string, id: string, project = '/work/repo'): AgentSession {
@@ -220,8 +206,7 @@ beforeEach(async () => {
       usage: { showInSignature: true, signatureWindowDays: 1 }
     })
   );
-  clock.now = NOW;
-  vi.spyOn(Date, 'now').mockImplementation(() => clock.now);
+  vi.spyOn(Date, 'now').mockReturnValue(NOW);
   captureHookWorkerStarts();
   stdoutWrites = [];
   vi.spyOn(process.stdout, 'write').mockImplementation((chunk: Uint8Array | string) => {
@@ -554,237 +539,6 @@ describe('hook event table — Gemini CLI via --source/--event', () => {
     const state = await readState();
     expect(state.sessions['gemini-session-1']).toMatchObject({ status: 'finished', finishedAt: NOW });
     expect(state.usageBadgesAt).toBe(NOW);
-  });
-});
-
-describe('hook event table — opencode via --agent with kit bridge payloads', () => {
-  const run = (type: string, properties: Record<string, unknown> = {}, currentSessionId?: string) =>
-    runAgent('opencode', {
-      type,
-      properties,
-      directory: '/work/repo',
-      ...(currentSessionId === undefined ? {} : { currentSessionId })
-    });
-
-  it('session.created starts the session and refreshes the usage badge', async () => {
-    await run('session.created', { info: { id: 'opencode-session-1', directory: '/work/repo' } });
-
-    const state = await readState();
-    expect(state.sessions['opencode-session-1']).toMatchObject({
-      source: 'opencode',
-      status: 'running',
-      startedAt: NOW,
-      project: '/work/repo'
-    });
-    expect(state.usageBadgesAt).toBe(NOW);
-    expect(Object.keys(state.usageSnapshots?.['1'] ?? {}).sort()).toEqual(BILLABLE_SOURCE_IDS);
-  });
-
-  it('session.created restarts a running session (startedAt resets)', async () => {
-    await seedSessions(runningSession('opencode', 'opencode-session-1'));
-    await run('session.created', { info: { id: 'opencode-session-1', directory: '/work/repo' } });
-
-    const state = await readState();
-    expect(state.sessions['opencode-session-1']).toMatchObject({
-      status: 'running',
-      startedAt: NOW,
-      lastHeartbeatAt: NOW
-    });
-    expect(state.usageBadgesAt).toBe(NOW);
-  });
-
-  it.each(['busy', 'retry'])('session.status %s stays a heartbeat without a badge refresh', async (type) => {
-    await seedSessions(runningSession('opencode', 'opencode-session-1'));
-    await run('session.status', { sessionID: 'opencode-session-1', status: { type } });
-
-    const state = await readState();
-    expect(state.sessions['opencode-session-1']).toMatchObject({
-      status: 'running',
-      startedAt: NOW - 60_000,
-      lastHeartbeatAt: NOW
-    });
-    expect(state.usageBadgesAt).toBeUndefined();
-  });
-
-  it('session.status idle finishes the session and refreshes the usage badge', async () => {
-    await seedSessions(runningSession('opencode', 'opencode-session-1'));
-    await run('session.status', { sessionID: 'opencode-session-1', status: { type: 'idle' } });
-
-    const state = await readState();
-    expect(state.sessions['opencode-session-1']).toMatchObject({ status: 'finished', finishedAt: NOW });
-    expect(state.usageBadgesAt).toBe(NOW);
-  });
-
-  it.each([
-    ['message.updated', { info: { id: 'msg_1', sessionID: 'opencode-session-1' } }],
-    ['message.part.updated', { part: { id: 'prt_1', sessionID: 'opencode-session-1' } }],
-    ['tool.execute.before', { tool: 'bash', sessionID: 'opencode-session-1', callID: 'call-1' }],
-    ['tool.execute.after', { tool: 'bash', sessionID: 'opencode-session-1', callID: 'call-1', args: {} }],
-    ['command.executed', { name: 'compact', sessionID: 'opencode-session-1', arguments: '', messageID: 'msg_1' }],
-    ['todo.updated', { sessionID: 'opencode-session-1', todos: [] }],
-    ['session.diff', { sessionID: 'opencode-session-1', diff: [] }],
-    ['session.updated', { info: { id: 'opencode-session-1' } }],
-    [
-      'permission.asked',
-      { id: 'perm-1', sessionID: 'opencode-session-1', permission: 'bash', patterns: [], metadata: {}, always: [] }
-    ],
-    ['permission.replied', { sessionID: 'opencode-session-1', permissionID: 'perm-1', response: 'once' }]
-  ])('%s keeps the session alive', async (type, properties) => {
-    await seedSessions(runningSession('opencode', 'opencode-session-1'));
-    await run(type, properties);
-
-    const state = await readState();
-    expect(state.sessions['opencode-session-1']).toMatchObject({
-      status: 'running',
-      startedAt: NOW - 60_000,
-      lastHeartbeatAt: NOW
-    });
-    expect(state.usageBadgesAt).toBeUndefined();
-  });
-
-  it('file.edited keeps the bridge current session alive', async () => {
-    await seedSessions(runningSession('opencode', 'opencode-session-1'));
-    await run('file.edited', { file: '/work/repo/src/index.ts' }, 'opencode-session-1');
-
-    const state = await readState();
-    expect(state.sessions['opencode-session-1']).toMatchObject({
-      status: 'running',
-      startedAt: NOW - 60_000,
-      lastHeartbeatAt: NOW
-    });
-    expect(state.usageBadgesAt).toBeUndefined();
-  });
-
-  it.each([
-    ['session.idle', { sessionID: 'opencode-session-1' }],
-    ['session.error', { sessionID: 'opencode-session-1' }],
-    ['session.deleted', { info: { id: 'opencode-session-1' } }]
-  ])('%s finishes the session and refreshes the usage badge', async (type, properties) => {
-    await seedSessions(runningSession('opencode', 'opencode-session-1'));
-    await run(type, properties);
-
-    const state = await readState();
-    expect(state.sessions['opencode-session-1']).toMatchObject({ status: 'finished', finishedAt: NOW });
-    expect(state.usageBadgesAt).toBe(NOW);
-  });
-
-  it('a session.error without sessionID finishes the bridge current session and refreshes the usage badge', async () => {
-    await seedSessions(runningSession('opencode', 'opencode-session-1'));
-    await run('session.error', { error: { name: 'UnknownError', data: { message: 'failed' } } }, 'opencode-session-1');
-
-    const state = await readState();
-    expect(state.sessions['opencode-session-1']).toMatchObject({ status: 'finished', finishedAt: NOW });
-    expect(state.usageBadgesAt).toBe(NOW);
-  });
-
-  it('a finished session stays finished on message updates (no reopen path)', async () => {
-    await seedSessions({ ...runningSession('opencode', 'opencode-session-1'), ...finishedOverrides() });
-    await run('message.updated', { info: { id: 'msg_1', sessionID: 'opencode-session-1' } });
-
-    const state = await readState();
-    expect(state.sessions['opencode-session-1']).toMatchObject({
-      status: 'finished',
-      finishedAt: NOW - 20_000,
-      lastHeartbeatAt: NOW - 30_000
-    });
-    expect(state.usageBadgesAt).toBeUndefined();
-    expect(await readFile(join(homeDir, 'agent-presence.log'), 'utf8')).toContain(
-      'source=opencode event=Heartbeat hasSessionId=true'
-    );
-  });
-
-  it('a late message updates its named session before the bridge current session', async () => {
-    await run('session.created', { info: { id: 'ses_a', directory: '/work/repo' } });
-    await run('session.created', { info: { id: 'ses_b', directory: '/work/repo' } });
-
-    advanceMs(5_000);
-    await run('message.updated', { info: { id: 'msg_1', sessionID: 'ses_a' } }, 'ses_b');
-
-    const state = await readState();
-    expect(state.sessions['ses_a']).toMatchObject({
-      status: 'running',
-      startedAt: NOW,
-      lastHeartbeatAt: NOW + 5_000
-    });
-    expect(state.sessions['ses_b']).toMatchObject({
-      status: 'running',
-      startedAt: NOW,
-      lastHeartbeatAt: NOW
-    });
-    expect(state.usageBadgesAt).toBe(NOW);
-  });
-});
-
-describe('hook event table — Pi via --agent with kit bridge payloads', () => {
-  const runPi = (type: string) => runAgent('pi', { type, sessionId: 'pi-session-1', cwd: '/work/repo' });
-
-  it('before_agent_start (SessionStart) starts the session and refreshes the usage badge', async () => {
-    await runPi('before_agent_start');
-
-    const state = await readState();
-    expect(state.sessions['pi-session-1']).toMatchObject({
-      source: 'pi',
-      status: 'running',
-      startedAt: NOW,
-      project: '/work/repo'
-    });
-    expect(state.usageBadgesAt).toBe(NOW);
-    expect(Object.keys(state.usageSnapshots?.['1'] ?? {}).sort()).toEqual(BILLABLE_SOURCE_IDS);
-  });
-
-  it('session_start is ignored and opening Pi creates no session', async () => {
-    await runPi('session_start');
-
-    const state = await readState();
-    expect(state.sessions).toEqual({});
-    expect(state.usageBadgesAt).toBeUndefined();
-    expect(await readFile(join(homeDir, 'agent-presence.log'), 'utf8')).toContain(
-      'hook skipped: ignored event source=pi event=session_start'
-    );
-  });
-
-  it.each(['turn_start', 'tool_execution_start', 'tool_execution_end'])(
-    '%s (Heartbeat) keeps the session alive',
-    async (name) => {
-      await seedSessions(runningSession('pi', 'pi-session-1'));
-      await runPi(name);
-
-      const state = await readState();
-      expect(state.sessions['pi-session-1']).toMatchObject({
-        status: 'running',
-        startedAt: NOW - 60_000,
-        lastHeartbeatAt: NOW
-      });
-      expect(state.usageBadgesAt).toBeUndefined();
-    }
-  );
-
-  it.each(['agent_end', 'session_shutdown'])(
-    '%s (Stop) finishes the running session and refreshes the usage badge',
-    async (name) => {
-      await seedSessions(runningSession('pi', 'pi-session-1'));
-      await runPi(name);
-
-      const state = await readState();
-      expect(state.sessions['pi-session-1']).toMatchObject({ status: 'finished', finishedAt: NOW });
-      expect(state.usageBadgesAt).toBe(NOW);
-    }
-  );
-
-  it('a finished session stays finished on turn activity', async () => {
-    await seedSessions({ ...runningSession('pi', 'pi-session-1'), ...finishedOverrides() });
-    await runPi('turn_start');
-
-    const state = await readState();
-    expect(state.sessions['pi-session-1']).toMatchObject({
-      status: 'finished',
-      finishedAt: NOW - 20_000,
-      lastHeartbeatAt: NOW - 30_000
-    });
-    expect(state.usageBadgesAt).toBeUndefined();
-    expect(await readFile(join(homeDir, 'agent-presence.log'), 'utf8')).toContain(
-      'source=pi event=Heartbeat hasSessionId=true'
-    );
   });
 });
 

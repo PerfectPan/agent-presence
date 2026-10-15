@@ -337,17 +337,20 @@ describe('opencode hook context', () => {
   });
 
   it.each([
-    { event: { type: 'session.created', sessionID: 'ses_wrapped', cwd: '/work/repo' } },
-    { session_id: 'ses_root', cwd: '/work/repo' },
-    { cwd: '/work/repo' }
-  ])('ignores old bridge event and session fields for %j', (payload) => {
+    {
+      payload: { event: { type: 'session.created', sessionID: 'ses_wrapped', cwd: '/work/repo' } },
+      project: undefined
+    },
+    { payload: { session_id: 'ses_root', cwd: '/work/repo' }, project: '/work/repo' },
+    { payload: { cwd: '/work/repo' }, project: '/work/repo' }
+  ])('ignores old bridge event and session fields for $payload', ({ payload, project }) => {
     expect(
       resolveOpenCodeHookContext(payload, {
         OPENCODE_HOOK_EVENT: 'SessionStart',
         OPENCODE_SESSION_ID: 'ses_remembered'
       })
     ).toEqual({
-      project: '/work/repo',
+      project,
       sessionId: undefined
     });
   });
