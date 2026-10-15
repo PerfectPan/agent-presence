@@ -6,6 +6,7 @@ import { Effect, Layer } from 'effect';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 import * as z from 'zod/mini';
 import { uninstall } from '../src/cli/commands/uninstall.js';
+import * as ui from '../src/cli/ui.js';
 import { createPresenceBundle, PRESENCE_AGENTS } from '../src/harness/bundle.js';
 import { queuePaths } from '../src/queue/files.js';
 import { AGENT_HOME_VARIABLES, createHarnessFixture, type HarnessFixture } from './harness-support.js';
@@ -220,7 +221,9 @@ describe('ledger-backed uninstall', () => {
     await uninstall([], {}, fixture.layer);
 
     expect(await readFile(join(target, 'SKILL.md'), 'utf8')).toBe('# Shared skill\n');
-    expect(lines).toContain(`uninstall kept: ${target} (still used by other owners or agents)`);
+    expect(lines.filter((line) => line.includes(target))).toEqual([
+      `uninstall kept: ${target} (still used by other owners or agents)`
+    ]);
   });
 
   it.each(['user-modified', 'dotfiles-managed', 'symlinked-target'] as const)(
@@ -247,13 +250,31 @@ describe('ledger-backed uninstall', () => {
 
       await uninstall([], {}, fixture.layer);
 
-      expect(lines).toContain(`uninstall kept: ${target} (${reason})`);
+      expect(lines.filter((line) => line.includes(target))).toEqual([`uninstall kept: ${target} (${reason})`]);
       expect(await readFile(target, 'utf8')).toContain(reason === 'user-modified' ? '// user change' : 'COMMAND');
       expect(lines).toContain('uninstall: ok');
     }
   );
 
   it('continues shim, own scripts, credentials and queue removal after a kit failure without claiming success', async () => {
+    let spinnerActive = false;
+    const stderrWhileSpinning: boolean[] = [];
+    vi.spyOn(ui, 'createSpinner').mockReturnValue({
+      start: () => {
+        spinnerActive = true;
+      },
+      stop: () => {
+        spinnerActive = false;
+      },
+      error: () => {
+        spinnerActive = false;
+      },
+      clear: () => undefined
+    });
+    vi.spyOn(console, 'error').mockImplementation((...parts: unknown[]) => {
+      stderrWhileSpinning.push(spinnerActive);
+      errors.push(parts.join(' '));
+    });
     await fixture.writeShim();
     const statePath = join(fixture.presenceHome, 'state.json');
     await writeFile(statePath, '{"sessions":{}}');
@@ -267,6 +288,8 @@ describe('ledger-backed uninstall', () => {
     await uninstall(['--all'], { startWorker: () => undefined }, failureLayer);
 
     expect(errors.join('\n')).toContain('simulated kit failure');
+    expect(stderrWhileSpinning).not.toContain(true);
+    expect(spinnerActive).toBe(false);
     expect(removals.scripts.mock.calls.flatMap(([options]) => options?.scriptNames ?? [])).toContain(
       'uninstall-dsh-plugin.js'
     );
