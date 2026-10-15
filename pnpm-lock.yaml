@@ -170,11 +170,14 @@ importers:
         specifier: 1.8.1
         version: 1.8.1
       '@rivus/agent-kit':
-        specifier: 0.15.0
-        version: 0.15.0
+        specifier: 0.17.0
+        version: 0.17.0(effect@4.0.3)
       '@rivus/agent-kit-collab':
-        specifier: 0.15.0
-        version: 0.15.0(@rivus/agent-kit@0.15.0)
+        specifier: 0.17.0
+        version: 0.17.0(@rivus/agent-kit@0.17.0(effect@4.0.3))(effect@4.0.3)
+      effect:
+        specifier: 4.0.3
+        version: 4.0.3
       zod:
         specifier: ^4.6.5
         version: 4.6.5
@@ -212,8 +215,8 @@ importers:
 
 packages:
 
-  '@agentclientprotocol/sdk@1.7.0':
-    resolution: {integrity: sha512-ZORuxsuEnLjRly7t6Ad7zAsWitjWsyprswyPUHz/yycPb+tTm3DGa8XheaHhRXqX8LS9snuxaYavXSRA50TlHw==}
+  '@agentclientprotocol/sdk@1.8.0':
+    resolution: {integrity: sha512-fbP7qHZsFyTJVT0/RPrcWJ8An26qLXHEuGCHHEKDyxD1xpXV+Ejyh2LAE6vBAFePkpVjZeeohnbgvuEhZ7wLMg==}
     peerDependencies:
       zod: ^3.25.0 || ^4.0.0
 
@@ -1633,21 +1636,21 @@ packages:
   '@polka/url@1.0.0-next.29':
     resolution: {integrity: sha512-wwQAWhWSuHaag8c4q/KN/vCoeOJYshAIvMQwD4GpSb3OiZklFfvAgmj0VCBBImRpuF/aFgIRzllXlVX93Jevww==}
 
-  '@rivus/agent-kit-collab@0.15.0':
-    resolution: {integrity: sha512-G/BrmAsvtf2cv5c+/kjQVhR3tI2yUEDOkMCCH/x1kddgJlvFMo/I8EDv0eRuz7wOWc9lt28YYaU43cFIhe7zoA==}
+  '@rivus/agent-kit-collab@0.17.0':
+    resolution: {integrity: sha512-624YdQqHIGXb47ivISZ8R3Ng/sMr+ePbisq9ejVS8PEZP/bFwPsoPl3zUWsnKP4gAz+/ImDeDwBLYQCVrPjgBQ==}
     engines: {node: '>=22.13'}
     peerDependencies:
-      '@rivus/agent-kit': ^0.15.0
-      effect: 4.0.1
+      '@rivus/agent-kit': ^0.17.0
+      effect: 4.0.3
     peerDependenciesMeta:
       effect:
         optional: true
 
-  '@rivus/agent-kit@0.15.0':
-    resolution: {integrity: sha512-psCvgSh4egkm2t4EakivS1Ol5AoV4CvIQM6BXxytTRNuFILFFGe9+w/BIkAx0tRbd4+BOgRcIA2WJBztpko3Sw==}
+  '@rivus/agent-kit@0.17.0':
+    resolution: {integrity: sha512-5JDMb72e23z6r2YPK0R1wTLci5qQKw9vXpCfdQSKclAeJl/pbHB+BEjY0mW+QLY6PKQ/4Fhbk1C9CYkzcWU49Q==}
     engines: {node: '>=22.13'}
     peerDependencies:
-      effect: 4.0.1
+      effect: 4.0.3
     peerDependenciesMeta:
       effect:
         optional: true
@@ -2499,6 +2502,9 @@ packages:
   dset@3.1.4:
     resolution: {integrity: sha512-2QF/g9/zTaPDc3BjNcVTGoBbXBgYfMTTceLaYcFJ/W9kggFUkhxD/hMEeuLKbugyef9SqAx8cpgwlIP/jinUTA==}
     engines: {node: '>=4'}
+
+  effect@4.0.3:
+    resolution: {integrity: sha512-LoWn/Uwwx0JjHSDmBAAahx8sB+klzM6vsZovnbYowBNw6B4QScJLRLBByO61plvNiycx7HPN8FnsWUCu0eXW5w==}
 
   entities@4.5.0:
     resolution: {integrity: sha512-V0hjH4dGPh9Ao5p0MoRY6BVqtwCjhz6vI5LT8AJ55H+4g9/4vbHx1I54fS0XuclLhDHArPQCiMjDxjaL8fPxhw==}
@@ -3538,7 +3544,7 @@ packages:
 
 snapshots:
 
-  '@agentclientprotocol/sdk@1.7.0(zod@4.6.5)':
+  '@agentclientprotocol/sdk@1.8.0(zod@4.6.5)':
     dependencies:
       zod: 4.6.5
 
@@ -4517,18 +4523,22 @@ snapshots:
 
   '@polka/url@1.0.0-next.29': {}
 
-  '@rivus/agent-kit-collab@0.15.0(@rivus/agent-kit@0.15.0)':
+  '@rivus/agent-kit-collab@0.17.0(@rivus/agent-kit@0.17.0(effect@4.0.3))(effect@4.0.3)':
     dependencies:
-      '@rivus/agent-kit': 0.15.0
+      '@rivus/agent-kit': 0.17.0(effect@4.0.3)
       zod: 4.6.5
+    optionalDependencies:
+      effect: 4.0.3
 
-  '@rivus/agent-kit@0.15.0':
+  '@rivus/agent-kit@0.17.0(effect@4.0.3)':
     dependencies:
-      '@agentclientprotocol/sdk': 1.7.0(zod@4.6.5)
+      '@agentclientprotocol/sdk': 1.8.0(zod@4.6.5)
       '@decimalturn/toml-patch': 3.3.0
       es-toolkit: 1.52.0
       jsonc-parser: 3.3.1
       zod: 4.6.5
+    optionalDependencies:
+      effect: 4.0.3
 
   '@rolldown/binding-android-arm-eabi@1.2.12':
     optional: true
@@ -5192,6 +5202,8 @@ snapshots:
       domhandler: 5.0.3
 
   dset@3.1.4: {}
+
+  effect@4.0.3: {}
 
   entities@4.5.0: {}
 

@@ -22,6 +22,11 @@ agent-presence usage                 # today + last 7 days
 agent-presence usage --days 7
 agent-presence usage --json
 
+agent-presence doctor                # check harness hooks and ledger
+agent-presence doctor --json
+agent-presence inventory             # ledger revision, entries and pending operations
+agent-presence inventory --json
+
 agent-presence config show
 agent-presence config render --zero "..." --one "..." --many "..."
 
@@ -35,3 +40,7 @@ agent-presence uninstall --all
 ```
 
 Hook commands are installed automatically by `setup` and never block the agent. See [Sources](/guide/sources/) for adding, overriding, or disabling the counted agents.
+
+`doctor` prints each harness check with its status and exits non-zero for any warning or error. It checks Claude Code, Codex, Gemini CLI, Grok, opencode and Pi. Duplicate detection covers command-hook files, not opencode and Pi bridge files, and recognizes the current harness command; detection of commands from previous releases is not yet included. It does not repair agent configuration, though checking the ledger lock may create lock files in the harness state directory. A presence home path containing spaces can currently cause a false missing-program warning.
+
+`inventory` prints the harness ledger revision, installed entries and pending operations. Both commands accept `--json`. The current `setup` still uses the existing installers, so its installations do not appear in the harness ledger; an empty inventory does not mean no presence hooks are installed.

@@ -13,6 +13,8 @@ Usage:
   agent-presence source add <npm-package> [--id <id>] [--registry <url>] [--yes]
   agent-presence source remove <id> [--keep-package]
   agent-presence status [--provider <magic-builder|feishu-signature>] [--remote]
+  agent-presence doctor [--json]
+  agent-presence inventory [--json]
   agent-presence usage [--days <n>] [--json]
   agent-presence update [--provider <magic-builder|feishu-signature>] [--force] [--value <text>] [--silent]
   agent-presence reset [--provider <magic-builder|feishu-signature>] [--force] [--silent]
