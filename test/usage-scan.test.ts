@@ -5,9 +5,9 @@ import { afterEach, beforeEach, describe, expect, it } from 'vite-plus/test';
 
 import { collectWindowUsage, type BillableSource, type UsageRecord } from '../src/usage/index.js';
 
-// Use real "now" so the calendar-window math below is relative and stable
-// regardless of the host time zone.
-const NOW = Date.now();
+// A fixed point inside a calendar day: the window math below is asserted
+// relative to it, so no assertion depends on the real clock.
+const NOW = new Date(2026, 6, 14, 12, 0, 0, 0).getTime();
 const DAY = 24 * 60 * 60 * 1000;
 
 let dir: string;
@@ -91,8 +91,9 @@ describe('collectWindowUsage', () => {
     });
 
     const group = window.bySource[0]!;
-    // Kit input adds the cache counts back; the total is the kit's two-bucket sum.
-    expect(group.inputTokens).toBe(155);
+    // The reported input stays without the cache; the total is the kit's
+    // two-bucket sum (cache-inclusive input plus output).
+    expect(group.inputTokens).toBe(100);
     expect(group.outputTokens).toBe(20);
     expect(group.cacheWriteTokens).toBe(5);
     expect(group.cacheReadTokens).toBe(50);

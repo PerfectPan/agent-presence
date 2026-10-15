@@ -68,16 +68,20 @@ function summarise(source: UsageSource, records: KitUsageRecord[], pricing: Pric
   const total = summarize(records, pricing, { groupBy: [] }).total;
   const inputTokens = total.usage.inputTokens ?? 0;
   const outputTokens = total.usage.outputTokens ?? 0;
+  const cacheWriteTokens = total.usage.cacheWriteTokens ?? 0;
+  const cacheReadTokens = total.usage.cacheReadTokens ?? 0;
 
   return {
     source,
     entries: total.entries,
-    inputTokens,
+    // The kit's input includes the cache counts reported below; the reported
+    // field keeps input without the cache, floored at 0.
+    inputTokens: Math.max(0, inputTokens - cacheReadTokens - cacheWriteTokens),
     outputTokens,
-    cacheWriteTokens: total.usage.cacheWriteTokens ?? 0,
-    cacheReadTokens: total.usage.cacheReadTokens ?? 0,
-    // Kit convention: the cache counts are subsets of the input, so the badge
-    // total is the kit's two-bucket sum, identical to the old four-bucket one.
+    cacheWriteTokens,
+    cacheReadTokens,
+    // The badge total is the kit's two-bucket sum: the cache counts are
+    // subsets of the kit's input, never additions.
     totalTokens: inputTokens + outputTokens,
     costUsd: total.costUsd ?? null
   };
@@ -125,9 +129,12 @@ async function scanKitAgents(
   for await (const item of scan) {
     // A decode failure skips only the source that failed: the records it
     // yielded before the failure stay valid, and its agent's other sources
-    // still count — the same file-level tolerance the old scanners had.
+    // still count. Every failure but a missing root writes one log line with
+    // the agent and the failure kind.
     if (isUsageRecord(item)) {
       byAgent.get(item.agent)?.push(item);
+    } else if (item.error._tag !== 'RootMissing') {
+      await writeLog(`usage scan failed agent=${item.agent} error=${item.error._tag}`).catch(() => {});
     }
   }
   return byAgent;

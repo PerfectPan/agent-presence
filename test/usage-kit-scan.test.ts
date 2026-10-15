@@ -1,6 +1,6 @@
 import { DatabaseSync } from 'node:sqlite';
-import { mkdirSync } from 'node:fs';
-import { mkdir, mkdtemp, rm, utimes, writeFile } from 'node:fs/promises';
+import { existsSync, mkdirSync } from 'node:fs';
+import { mkdir, mkdtemp, readFile, rm, utimes, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vite-plus/test';
@@ -8,13 +8,14 @@ import { afterEach, beforeEach, describe, expect, it } from 'vite-plus/test';
 import { collectWindowUsage, type BillableSource, type PricingOverrides } from '../src/usage/index.js';
 import type { ScanEnvironment, WindowUsage } from '../src/usage/types.js';
 
-// Noon of the current local day: fixture timestamps and mtimes are placed
-// relative to it, so every scan runs inside one calendar window (days: 1) and
-// the quiet rule (mtime before now - 30 minutes) is controlled explicitly.
-const NOW = new Date();
-NOW.setHours(12, 0, 0, 0);
+// A fixed local calendar date at noon: fixture timestamps and mtimes are built
+// from it, so every scan runs inside one calendar window (days: 1), the quiet
+// rule (mtime before now - 30 minutes) is controlled explicitly through the
+// mtimes each fixture sets, and no assertion depends on the real clock.
+const NOW = new Date(2026, 6, 14, 12, 0, 0, 0);
 const NOW_MS = NOW.getTime();
 const MINUTE = 60_000;
+const DAY_MS = 24 * 60 * 60 * 1000;
 const QUIET_MS = NOW_MS - 31 * MINUTE;
 const iso = (ms: number) => new Date(ms).toISOString();
 
@@ -122,10 +123,11 @@ describe('kit scan: claude-code', () => {
     const window = await collect([{ id: 'claude', kitAgent: 'claude-code' }], homeEnv('CLAUDE_CONFIG_DIR'), NOW_MS, {
       'mystery-model': { input: 2, output: 8, cacheWrite: 2.5, cacheWrite1h: 10, cacheRead: 0.2 }
     });
-    // Kit input adds the cache counts back; the total stays the old four-bucket sum.
+    // The reported input stays without the cache (10); the badge total is the
+    // kit's cache-inclusive input (115) plus output.
     expect(sourceRow(window, 'claude')).toMatchObject({
       entries: 1,
-      inputTokens: 115,
+      inputTokens: 10,
       outputTokens: 20,
       cacheWriteTokens: 5,
       cacheReadTokens: 100,
@@ -309,10 +311,11 @@ describe('kit scan: gemini-cli', () => {
     await utimes(legacy, new Date(QUIET_MS), new Date(QUIET_MS));
 
     const window = await collect([{ id: 'gemini', kitAgent: 'gemini-cli' }], homeEnv('GEMINI_CLI_HOME'));
-    // Only the .jsonl file is a source: kit input = input + tool = 107, output = 20 + 5 thoughts.
+    // Only the .jsonl file is a source: reported input = input + tool - cached
+    // (100 + 7 - 30), output = 20 + 5 thoughts.
     expect(sourceRow(window, 'gemini')).toMatchObject({
       entries: 1,
-      inputTokens: 107,
+      inputTokens: 77,
       outputTokens: 25,
       cacheReadTokens: 30,
       totalTokens: 132
@@ -417,9 +420,11 @@ function opencodeData(message: OpenCodeMessage): string {
   });
 }
 
-function writeOpencodeDb(rows: Array<{ id: string; createdMs: number; data: string }>): void {
-  mkdirSync(dirname(join(dir, 'opencode', 'opencode.db')), { recursive: true });
-  const db = new DatabaseSync(join(dir, 'opencode', 'opencode.db'), { readOnly: false });
+/** The database is written active (mtime at the scan's now); a test quiets it explicitly. */
+async function writeOpencodeDb(rows: Array<{ id: string; createdMs: number; data: string }>): Promise<string> {
+  const dbPath = join(dir, 'opencode', 'opencode.db');
+  mkdirSync(dirname(dbPath), { recursive: true });
+  const db = new DatabaseSync(dbPath, { readOnly: false });
   db.exec('CREATE TABLE message (id TEXT, session_id TEXT, time_created INTEGER, time_updated INTEGER, data TEXT)');
   const insert = db.prepare(
     'INSERT INTO message (id, session_id, time_created, time_updated, data) VALUES (?, ?, ?, ?, ?)'
@@ -428,11 +433,14 @@ function writeOpencodeDb(rows: Array<{ id: string; createdMs: number; data: stri
     insert.run(row.id, 'ses_1', row.createdMs, row.createdMs, row.data);
   }
   db.close();
+  const at = new Date(NOW_MS);
+  await utimes(dbPath, at, at);
+  return dbPath;
 }
 
 describe('kit scan: opencode', () => {
   it('counts completed database messages, folds reasoning into output, and keeps the logged cost', async () => {
-    writeOpencodeDb([
+    await writeOpencodeDb([
       {
         id: 'msg_1',
         createdMs: NOW_MS - 2000,
@@ -459,8 +467,7 @@ describe('kit scan: opencode', () => {
   });
 
   it('withholds a running message until the database goes quiet, then counts it at its creation', async () => {
-    const dbPath = join(dir, 'opencode', 'opencode.db');
-    writeOpencodeDb([
+    const dbPath = await writeOpencodeDb([
       { id: 'msg_run', createdMs: NOW_MS - 2000, data: opencodeData({ createdMs: NOW_MS - 2000, input: 5 }) }
     ]);
     const env = homeEnv('XDG_DATA_HOME');
@@ -472,7 +479,7 @@ describe('kit scan: opencode', () => {
     expect(sourceRow(await collect([opencode], env), 'opencode')).toMatchObject({ entries: 1, totalTokens: 5 });
   });
 
-  it('reports nothing for an unreadable database instead of falling back to the legacy JSON store', async () => {
+  it('reports nothing for an unreadable database instead of falling back to the legacy JSON store, and logs the failure', async () => {
     // A database exists but is not readable as one; a legacy JSON store sits next to it.
     await mkdir(join(dir, 'opencode', 'storage', 'message', 'ses_legacy'), { recursive: true });
     await writeFile(join(dir, 'opencode', 'opencode.db'), 'this is not a database', 'utf8');
@@ -481,10 +488,31 @@ describe('kit scan: opencode', () => {
       opencodeData({ createdMs: NOW_MS - 1000, completedMs: NOW_MS - 1000, input: 100, cost: 0.01 }),
       'utf8'
     );
+    const logFile = join(dir, 'presence.log');
+    process.env.AGENT_PRESENCE_LOG_FILE = logFile;
+    try {
+      const window = await collect([{ id: 'opencode', kitAgent: 'opencode' }], homeEnv('XDG_DATA_HOME'));
+      // The old scanner fell back to the legacy store; the kit reports a source failure.
+      expect(sourceRow(window, 'opencode')).toMatchObject({ entries: 0, totalTokens: 0, costUsd: null });
+      const log = await readFile(logFile, 'utf8');
+      expect(log).toContain('usage scan failed agent=opencode error=ReadFailed');
+    } finally {
+      delete process.env.AGENT_PRESENCE_LOG_FILE;
+    }
+  });
 
-    const window = await collect([{ id: 'opencode', kitAgent: 'opencode' }], homeEnv('XDG_DATA_HOME'));
-    // The old scanner fell back to the legacy store; the kit reports a source failure.
-    expect(sourceRow(window, 'opencode')).toMatchObject({ entries: 0, totalTokens: 0, costUsd: null });
+  it('stays silent when an agent has no data at all (a missing root is not a failure)', async () => {
+    const logFile = join(dir, 'presence.log');
+    process.env.AGENT_PRESENCE_LOG_FILE = logFile;
+    try {
+      // GROK_HOME points at a directory that holds no sessions root.
+      const window = await collect([{ id: 'grok', kitAgent: 'grok' }], homeEnv('GROK_HOME'));
+      expect(sourceRow(window, 'grok')).toMatchObject({ entries: 0, totalTokens: 0 });
+      // No log line was written for the missing root.
+      expect(existsSync(logFile)).toBe(false);
+    } finally {
+      delete process.env.AGENT_PRESENCE_LOG_FILE;
+    }
   });
 });
 
@@ -521,7 +549,7 @@ describe('kit scan: grok', () => {
     const window = await collect([{ id: 'grok', kitAgent: 'grok' }], homeEnv('GROK_HOME'));
     expect(sourceRow(window, 'grok')).toMatchObject({
       entries: 1,
-      inputTokens: 100,
+      inputTokens: 70,
       outputTokens: 20,
       cacheReadTokens: 30,
       totalTokens: 120,
@@ -547,6 +575,132 @@ describe('kit scan source mapping', () => {
     );
     const window = await collect([claude], homeEnv('CLAUDE_CONFIG_DIR'));
     expect(sourceRow(window, 'claude')).toMatchObject({ entries: 1, totalTokens: 12 });
+  });
+});
+
+// --- re-pinned scanner regressions on the kit path --------------------------
+
+/** A Codex `token_count` whose `info` carries only cumulative totals (older logs). */
+function codexCumulativeCount(
+  ts: number,
+  totals: { input: number; cached: number; output: number; all: number }
+): unknown {
+  return codexTokenCount(ts, { input: totals.input, cached: totals.cached, output: totals.output, all: totals.all });
+}
+
+function codexRollout(name: string, lines: unknown[]): Promise<void> {
+  return writeTranscript(['sessions', name], lines).then(() => {});
+}
+
+describe('re-pinned scanner regressions on the kit path', () => {
+  it("skips a Codex forked rollout's replayed parent prefix and counts the child's own usage", async () => {
+    const replayMs = NOW_MS - 5000;
+    await codexRollout('rollout-forked.jsonl', [
+      {
+        timestamp: iso(replayMs - 1),
+        type: 'session_meta',
+        payload: { forked_from_id: 'parent', source: { subagent: { thread_spawn: { depth: 1 } } } }
+      },
+      { timestamp: iso(replayMs - 1), type: 'turn_context', payload: { model: 'gpt-5.5' } },
+      codexTokenCount(
+        replayMs,
+        { input: 100, cached: 20, output: 10, all: 110 },
+        { input: 100, cached: 20, output: 10, all: 110 }
+      ),
+      codexTokenCount(
+        replayMs + 1,
+        { input: 250, cached: 50, output: 25, all: 275 },
+        { input: 150, cached: 30, output: 15, all: 165 }
+      ),
+      codexTokenCount(
+        replayMs + 1000,
+        { input: 290, cached: 60, output: 35, all: 325 },
+        { input: 40, cached: 10, output: 10, all: 50 }
+      )
+    ]);
+
+    const window = await collect([{ id: 'codex', kitAgent: 'codex' }], homeEnv('CODEX_HOME'));
+    expect(sourceRow(window, 'codex')).toMatchObject({ entries: 1, totalTokens: 50 });
+  });
+
+  it('diffs cumulative Codex totals instead of summing them', async () => {
+    await codexRollout('rollout-diff.jsonl', [
+      { timestamp: iso(NOW_MS - 6000), type: 'turn_context', payload: { model: 'gpt-5.5' } },
+      codexCumulativeCount(NOW_MS - 5000, { input: 1000, cached: 200, output: 50, all: 1050 }),
+      codexCumulativeCount(NOW_MS - 4000, { input: 2000, cached: 400, output: 120, all: 2120 })
+    ]);
+
+    const window = await collect([{ id: 'codex', kitAgent: 'codex' }], homeEnv('CODEX_HOME'));
+    expect(sourceRow(window, 'codex')).toMatchObject({ entries: 2, totalTokens: 2120 });
+  });
+
+  it('falls back to last_token_usage when a cumulative total resets', async () => {
+    await codexRollout('rollout-reset.jsonl', [
+      { timestamp: iso(NOW_MS - 6000), type: 'turn_context', payload: { model: 'gpt-5.5' } },
+      codexCumulativeCount(NOW_MS - 5000, { input: 5000, cached: 0, output: 100, all: 5100 }),
+      codexTokenCount(
+        NOW_MS - 4000,
+        { input: 800, cached: 0, output: 30, all: 830 },
+        { input: 800, cached: 0, output: 30, all: 830 }
+      )
+    ]);
+
+    const window = await collect([{ id: 'codex', kitAgent: 'codex' }], homeEnv('CODEX_HOME'));
+    expect(sourceRow(window, 'codex')).toMatchObject({ entries: 2, totalTokens: 5930 });
+  });
+
+  it('keeps the cumulative baseline across the window boundary', async () => {
+    await codexRollout('rollout-edge.jsonl', [
+      { timestamp: iso(NOW_MS - 2 * DAY_MS - 1000), type: 'turn_context', payload: { model: 'gpt-5.5' } },
+      // Before the window: establishes the baseline 1000 but is not emitted.
+      codexCumulativeCount(NOW_MS - 2 * DAY_MS, { input: 1000, cached: 0, output: 0, all: 1000 }),
+      // In the window: the increment is 500, not 1500.
+      codexCumulativeCount(NOW_MS - 1000, { input: 1500, cached: 0, output: 0, all: 1500 })
+    ]);
+
+    const window = await collect([{ id: 'codex', kitAgent: 'codex' }], homeEnv('CODEX_HOME'));
+    expect(sourceRow(window, 'codex')).toMatchObject({ entries: 1, inputTokens: 500 });
+  });
+
+  it('reads an opencode legacy JSON store when no database exists', async () => {
+    const sessionDir = join(dir, 'opencode', 'storage', 'message', 'ses_legacy');
+    await mkdir(join(sessionDir), { recursive: true });
+    await writeFile(
+      join(sessionDir, 'msg_a.json'),
+      opencodeData({
+        createdMs: NOW_MS - 1000,
+        completedMs: NOW_MS - 1000,
+        input: 100,
+        output: 20,
+        reasoning: 5,
+        cacheRead: 50,
+        cost: 0.01
+      }),
+      'utf8'
+    );
+    await writeFile(join(sessionDir, 'msg_b.json'), JSON.stringify({ role: 'user' }), 'utf8');
+
+    const window = await collect([{ id: 'opencode', kitAgent: 'opencode' }], homeEnv('XDG_DATA_HOME'));
+    expect(sourceRow(window, 'opencode')).toMatchObject({ entries: 1, totalTokens: 175, costUsd: 0.01 });
+  });
+
+  it('reads a Gemini legacy .json chat when it is the only source', async () => {
+    const chatsDir = join(dir, '.gemini', 'tmp', 'proj', 'chats');
+    await mkdir(chatsDir, { recursive: true });
+    await writeFile(
+      join(chatsDir, 'legacy.json'),
+      JSON.stringify({
+        sessionId: 's-legacy',
+        messages: [
+          { id: 'u', timestamp: iso(NOW_MS - 2000), type: 'user', content: 'hi' },
+          geminiMessage('g_legacy', NOW_MS - 1000, { input: 400, output: 60, cached: 100 })
+        ]
+      }),
+      'utf8'
+    );
+
+    const window = await collect([{ id: 'gemini', kitAgent: 'gemini-cli' }], homeEnv('GEMINI_CLI_HOME'));
+    expect(sourceRow(window, 'gemini')).toMatchObject({ entries: 1, inputTokens: 300, totalTokens: 460 });
   });
 });
 
@@ -612,9 +766,8 @@ describe('kit scan window', () => {
   });
 
   it("rolls over at midnight: each local day's window reads only its own range", async () => {
-    const todayNoon = NOW_MS;
-    const yesterdayEvening = todayNoon - 13 * 60 * 60 * 1000; // ~23:00 yesterday
-    const todayEarly = todayNoon - 11 * 60 * 60 * 1000; // ~01:00 today
+    const yesterdayEvening = new Date(2026, 6, 13, 23, 0, 0, 0).getTime();
+    const todayEarly = new Date(2026, 6, 14, 0, 30, 0, 0).getTime();
     await writeTranscript(
       ['.gemini', 'tmp', 'proj', 'chats', 'session.jsonl'],
       [
@@ -628,7 +781,7 @@ describe('kit scan window', () => {
     const beforeMidnight = await collect(sources, env, yesterdayEvening + 30 * MINUTE);
     expect(sourceRow(beforeMidnight, 'gemini')).toMatchObject({ entries: 1, totalTokens: 11 });
 
-    const afterMidnight = await collect(sources, env, todayNoon);
+    const afterMidnight = await collect(sources, env, NOW_MS);
     expect(sourceRow(afterMidnight, 'gemini')).toMatchObject({ entries: 1, totalTokens: 22 });
   });
 

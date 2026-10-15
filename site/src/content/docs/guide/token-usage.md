@@ -17,19 +17,21 @@ Windows are **calendar-day aligned** (since local midnight, inclusive of today).
 
 ## Sources
 
-Usage is a capability of the same source table that drives presence: a source that implements `scanUsage` is billable. Every built-in except `grok` is, and a third-party source plugin can be too.
+Usage is a capability of the same source table that drives presence: every built-in except `dsh` is decoded from its local transcripts by `@rivus/agent-kit`, and a third-party source plugin can scan its own.
 
-| Source      | Token tracking                                                                                   |
-| ----------- | ------------------------------------------------------------------------------------------------ |
-| Claude Code | yes — priced from the table, deduped, `<synthetic>` excluded                                     |
-| Codex       | yes — diffs the cumulative session total                                                         |
-| Pi          | yes — uses the cost Pi records                                                                   |
-| opencode    | yes — reads the local SQLite store; uses the cost opencode records                               |
-| Gemini CLI  | yes — reads the local chat transcripts; priced from the table                                    |
-| Grok        | no — presence only for now; no transcript scanner yet                                            |
-| dsh         | yes — the managed dsh plugin reports each model call's usage in real time; priced from the table |
+| Source      | Token tracking                                                                                                      |
+| ----------- | ------------------------------------------------------------------------------------------------------------------- |
+| Claude Code | yes — decoded per model request, deduped by request id, `<synthetic>` excluded; priced from the table               |
+| Codex       | yes — decoded per model call, each record priced with its rollout's own service tier                                |
+| Pi          | yes — uses the cost Pi records                                                                                      |
+| opencode    | yes — reads the local SQLite store (legacy JSON store only when no database exists); uses the cost opencode records |
+| Gemini CLI  | yes — reads the local chat transcripts under `$GEMINI_CLI_HOME/.gemini/tmp`; priced from the table                  |
+| Grok        | yes — decoded per completed turn, with the cost Grok logged                                                         |
+| dsh         | yes — the managed dsh plugin reports each model call's usage in real time; priced from the table                    |
 
-Cost shows `n/a` for models with no pricing entry; token counts are always exact. Pi and opencode log a real cost, so those are used as-is. Other sources are priced from the bundled LiteLLM snapshot for supported models (for example `gpt-5.5`, `claude-fable-5`, `deepseek-v4-pro`, and `gemini-3-flash-preview`), with a small fallback table for older aliases. Override pricing per model in `~/.agent-presence/config.json` when your deployment uses a private or unlisted model.
+Transcripts are decoded when they are no longer being written, and each decoder decides when a record is complete: Claude Code reports a request once four newer requests have been written in its conversation lane or the session has been quiet for 30 minutes, and opencode counts a database message once it completes (a quiet database settles its last running messages). Gemini CLI, Pi, and Codex count a request as soon as its record is complete. A just-finished turn can therefore take a few minutes to reach the badge.
+
+Cost shows `n/a` for models with no pricing entry; token counts are always exact. Pi, opencode, and Grok log a real cost, so those are used as-is. Other sources are priced from the bundled LiteLLM snapshot for supported models (for example `gpt-5.5`, `claude-fable-5`, `deepseek-v4-pro`, and `gemini-3-flash-preview`), with a small fallback table for older aliases. Override pricing per model in `~/.agent-presence/config.json` when your deployment uses a private or unlisted model.
 
 dsh is the one source that does not scrape transcripts: `agent-presence setup` prompts to install a small Cordis plugin into `~/.dsh/plugins/` (registered in the home-level `~/.dsh/cordis.patch.yml`, which applies to every profile). The plugin reports each model call's token usage alongside the presence heartbeat, and `agent-presence` appends it to a local usage log that the `usage` command and signature badge read back. Install or remove it any time with `pnpm run install:dsh-plugin` / `pnpm run uninstall:dsh-plugin` (or `node dist/scripts/install-dsh-plugin.js`).
 
