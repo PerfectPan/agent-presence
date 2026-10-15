@@ -19,6 +19,7 @@ import { LINUX_WATCHER_SKIP_MESSAGE, runSetupScripts } from '../../setup.js';
 import { hasFlag, optionValue } from '../args.js';
 import { hasCredential } from '../credential.js';
 import { runHarness } from '../harness.js';
+import { checkPreviousRelease, warnPreviousReleaseOverrides } from '../setup-legacy.js';
 import { planSetupInstall } from '../setup-plan.js';
 import { MAGIC_TOKEN_HELP, publishMagicBuilderFaas } from '../magic-builder-setup.js';
 import {
@@ -153,35 +154,36 @@ export async function setup(
     }
   }
 
-  // The previous-release check belongs here, before queue recovery and login.
+  warnPreviousReleaseOverrides();
 
-  // An uninstall or `worker --stop` left the tombstone (Plan 0003 3.8): drop the records it kept from applying, raise
-  // the epoch so a record a producer still writes with the old epoch is deleted unapplied, and let hooks record again.
-  const statePath = getStatePath();
-  if (await isDisabled(statePath)) {
-    await takeOver(
-      statePath,
-      async () => {
-        // `.tmp-` files and `failed/` stay: the worker removes expired `.tmp-` files, and a late rename lands with the
-        // old epoch and is deleted unapplied.
-        for (const file of (await listQueue(statePath)).records) {
-          await deleteQueueFile(file);
-        }
-        await increaseEpoch(statePath);
-        await removeTombstone(statePath);
-      },
-      takeover
-    );
-  }
+  async function prepareSetup() {
+    // A stopped worker left the tombstone: invalidate queued records before hooks can record again.
+    const statePath = getStatePath();
+    if (await isDisabled(statePath)) {
+      await takeOver(
+        statePath,
+        async () => {
+          // Temporary and failed records stay; a late rename's old epoch makes it inapplicable.
+          for (const file of (await listQueue(statePath)).records) {
+            await deleteQueueFile(file);
+          }
+          await increaseEpoch(statePath);
+          await removeTombstone(statePath);
+        },
+        takeover
+      );
+    }
 
-  const { config } = await loadValidatedConfig();
-  const activeProvider = defaultCommandProviderId(config, optionValue(args, '--provider'));
-
-  if (!skipLogin && (forceLogin || !(await hasCredential()))) {
-    await login(['--provider', activeProvider]);
+    const { config } = await loadValidatedConfig();
+    const activeProvider = defaultCommandProviderId(config, optionValue(args, '--provider'));
+    if (!skipLogin && (forceLogin || !(await hasCredential()))) {
+      await login(['--provider', activeProvider]);
+    }
+    return { config, activeProvider };
   }
 
   if (skipHooks) {
+    const { config, activeProvider } = await prepareSetup();
     await publishProvider(config, activeProvider);
     finishOutro('setup: ok');
     return;
@@ -190,6 +192,10 @@ export async function setup(
   const bundle = createPresenceBundle();
   const completed = await runHarness(
     Effect.gen(function* () {
+      if (!(yield* checkPreviousRelease())) {
+        return false;
+      }
+      const { config, activeProvider } = yield* Effect.tryPromise(prepareSetup);
       const plan = yield* planSetupInstall(bundle);
       if (!plan) {
         return false;

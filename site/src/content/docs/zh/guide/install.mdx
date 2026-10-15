@@ -7,6 +7,8 @@ import { Tabs, TabItem } from '@astrojs/starlight/components';
 
 `agent-presence` 运行于 **macOS 和 Linux**(不支持 Windows),需要 Node.js 22.13 或更高版本。凭据保存在 macOS 的 Keychain、Linux 的 libsecret 中。
 
+已使用 0.9.0 或更早版本的用户，请先按[升级指引](#从-090-或更早版本升级)操作，再替换安装的包。
+
 ## 全局安装
 
 <Tabs syncKey="pm">
@@ -74,6 +76,39 @@ agent-presence setup --hook-command absolute
 
 默认 provider 是 `magic-builder`,所以首次 `setup` 会先跑扫码登录(保存 slot 凭据),再提示粘贴一个 Magic-Builder token。无需 token 的备选见 [Provider](/zh/guide/providers)。
 
+## 从 0.9.0 或更早版本升级
+
+如果 setup 列出先前保留的文件，请先将它们移出旧安装位置，不再需要时也可删除。即使同时列出了需要替换的项目，也必须先处理保留文件，再运行任何旧卸载器。其余旧安装在升级前运行旧版本自己的卸载命令，不加 `--credentials` 或 `--all`，以保留凭据、配置和状态：
+
+```bash
+npx --yes @rivus/agent-presence@<previous-version> uninstall
+```
+
+使用旧 hook 命令固定的版本；有多个不同版本时分别运行。匹配到的 hook 命令没有固定版本时，使用迁移到 harness 前的最后一个版本 `0.9.0`。从 checkout 安装的用户可在更新 checkout 前运行 `node <checkout>/dist/src/cli.js uninstall`。然后安装本版本，再运行 `agent-presence setup`。不要使用未固定版本的卸载命令：本版本只移除 harness 安装记录中的智能体产物，不处理记录之外的旧版本项目。后续升级由 setup 原地更新安装记录，无需先卸载。
+
+setup 检测到旧版本项目时，会列出智能体、路径和类型，hook 还会列出事件和命令，然后在队列恢复、登录和安装确认前以非零状态退出。智能体目标和队列文件保持不变；此前可能已经执行获准的旧目录迁移。`--no-hooks` 跳过此检查。
+
+- 标为需要替换的项目使用上面的旧版本卸载命令。卸载后仍留下的改名插件副本或手改项目，按列出的路径手动移除。
+- 标为先前保留的文件属于用户，请手动移动或删除；不要为这些文件运行旧卸载器，它会删除用户保留的文件。
+
+本版本忽略以下旧安装目标覆盖变量。setup 会逐一列出已设置的变量，包括拒绝继续安装时。运行旧版本卸载时，须保持它们原来的值，否则这些目标中的旧产物会留下，也不在本版本的检查范围内：
+
+```text
+CLAUDE_SETTINGS_FILE
+GEMINI_SETTINGS_FILE
+CODEX_HOOKS_FILE
+OPENCODE_CONFIG
+OPENCODE_AGENT_PRESENCE_PLUGIN_FILE
+OPENCODE_AGENT_SIGNATURE_PLUGIN_FILE
+PI_SETTINGS_FILE
+PI_AGENT_PRESENCE_EXTENSION_FILE
+PI_AGENT_PRESENCE_EXTENSION_DIR
+```
+
+checkout 路径不含 presence 标记的旧绝对路径 hook 命令无法被检查识别。旧卸载器通常能移除不带引号的形式；带空格等需要引号的 checkout 路径也可能逃过旧卸载器。请检查智能体配置，手动移除残留的旧命令，否则它会与新 hook 一起执行；`doctor` 也无法识别这种重复。旧卸载器还会移除 Claude、Codex 或 Gemini 中所有包含 `dist/src/cli.js hook` 的 hook，包括其他工具的 hook；必要时先保存再恢复这些无关项目。
+
+旧卸载器还会移除 dsh 插件和 macOS watcher；setup 会再次询问 dsh，并重新安装 watcher。Codex 切换到稳定 shim 的 `hook --agent` 命令预计需要重新信任一次 hook。后续仅替换 shim 的升级保持已安装 hook 的定义稳定。
+
 ## 安装位置
 
 以下是默认的用户目录位置；覆盖智能体 home 时，计划会显示解析后的实际路径。
@@ -103,6 +138,6 @@ agent-presence inventory
 agent-presence uninstall
 ```
 
-`doctor` 检查 hook 和 harness 安装记录的健康状态；警告或错误会导致非零退出码。重复检查覆盖命令式 hook 文件，不覆盖 opencode/Pi 桥接文件，目前识别新安装命令，尚未加入旧版本标记。它也会检查其他工具的 hook，因此其他工具的警告也可能导致退出码 1。`inventory` 展示共享的 kit 安装记录，包含其他应用的条目。两个命令都支持 `--json`，完整限制见[命令](/zh/reference/commands/)。
+`doctor` 检查 hook 和 harness 安装记录的健康状态；警告或错误会导致非零退出码。重复检查同时使用 presence 专属的旧版本标记和已安装命令，覆盖命令式 hook 文件，不覆盖 opencode/Pi 桥接文件。它也会检查其他工具的 hook，因此其他工具的警告也可能导致退出码 1。`inventory` 展示共享的 kit 安装记录，包含其他应用的条目。两个命令都支持 `--json`，完整限制见[命令](/zh/reference/commands/)。
 
-`uninstall` 报告移除的产物及每个保留位置和原因，再独立移除 shim、dsh 插件和 macOS watcher。默认保留凭据、配置和 session 状态。智能体产物只按 harness 记录移除；旧版本 hook 不会自动加入该记录。旧版本检查和升级指引由 [Plan 0002](https://github.com/PerfectPan/agent-presence/blob/main/docs/plans/0002-agent-kit-adoption.md#35-setup-through-harness) 单独跟进。
+`uninstall` 报告移除的产物及每个保留位置和原因，再独立移除 shim、dsh 插件和 macOS watcher。默认保留凭据、配置和 session 状态。智能体产物只按 harness 记录移除；旧版本 hook 不会自动加入该记录，应按上面的升级步骤用对应版本移除。

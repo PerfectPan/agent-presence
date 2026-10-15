@@ -1,18 +1,24 @@
-import { doctor as checkHarness } from '@rivus/agent-kit/harness';
+import { doctor as checkHarness, type HarnessServices } from '@rivus/agent-kit/harness';
+import type { Layer } from 'effect';
 import { createPresenceBundle, PRESENCE_AGENTS } from '../../harness/bundle.js';
 import { hasFlag } from '../args.js';
 import { runHarness } from '../harness.js';
+import { PREVIOUS_RELEASE_MARKERS } from '../setup-legacy.js';
 
 function doctorProgram() {
   const bundle = createPresenceBundle();
   const installedCommands = bundle.artifacts.flatMap((artifact) =>
     artifact.type === 'hooks' ? PRESENCE_AGENTS.map((agent) => artifact.command.replaceAll('{agent}', agent)) : []
   );
-  return checkHarness({ owner: bundle.owner, agents: PRESENCE_AGENTS, markers: installedCommands });
+  return checkHarness({
+    owner: bundle.owner,
+    agents: PRESENCE_AGENTS,
+    markers: [...PREVIOUS_RELEASE_MARKERS, ...installedCommands]
+  });
 }
 
-export async function doctor(args: string[]): Promise<void> {
-  const checks = await runHarness(doctorProgram());
+export async function doctor(args: string[], layer?: Layer.Layer<HarnessServices>): Promise<void> {
+  const checks = await runHarness(doctorProgram(), layer);
   if (checks === undefined) {
     return;
   }
