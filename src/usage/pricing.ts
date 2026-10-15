@@ -1,5 +1,8 @@
 import { readFileSync } from 'node:fs';
 
+import { createPricing, type Pricing } from '@rivus/agent-kit/cost';
+import * as z from 'zod/mini';
+
 import type { UsageRecord } from './types.js';
 
 /** Per-million-token rates in USD. */
@@ -36,25 +39,30 @@ export const DEFAULT_PRICING: Record<string, ModelPricing> = {
 
 export type PricingOverrides = Record<string, Partial<ModelPricing>>;
 
-interface LiteLLMSnapshot {
-  prices?: Record<string, ModelPricing>;
-}
+/** One snapshot entry: the five per-million rates `update-pricing` writes. */
+const snapshotPrice = z.object({
+  input: z.number(),
+  output: z.number(),
+  cacheWrite: z.number(),
+  cacheWrite1h: z.optional(z.number()),
+  cacheRead: z.number()
+});
 
-function bestPricingKey(model: string, table: Record<string, Partial<ModelPricing>>): string | undefined {
-  let bestKey: string | undefined;
-  for (const key of Object.keys(table)) {
-    if (model.includes(key.toLowerCase()) && (bestKey === undefined || key.length > bestKey.length)) {
-      bestKey = key;
-    }
-  }
-  return bestKey;
+/**
+ * Parse a pricing snapshot: `{ prices: { [model]: ModelPricing } }`. A
+ * snapshot that does not parse — a non-object root, a missing `prices`, an
+ * entry with a wrong-typed or missing rate — yields `{}`, so the fallback
+ * table serves every lookup instead of half a price list.
+ */
+export function parsePricingSnapshot(raw: unknown): Record<string, ModelPricing> {
+  const parsed = z.object({ prices: z.record(z.string(), snapshotPrice) }).safeParse(raw);
+  return parsed.success ? parsed.data.prices : {};
 }
 
 function loadLiteLLMPricing(): Record<string, ModelPricing> {
   try {
     const path = new URL('./litellm-pricing.json', import.meta.url);
-    const parsed = JSON.parse(readFileSync(path, 'utf8')) as LiteLLMSnapshot;
-    return parsed.prices ?? {};
+    return parsePricingSnapshot(JSON.parse(readFileSync(path, 'utf8')));
   } catch {
     // Source checkouts before `pnpm run update-pricing` and broken package
     // installs should degrade to the small fallback table, not crash `usage`.
@@ -64,54 +72,43 @@ function loadLiteLLMPricing(): Record<string, ModelPricing> {
 
 const LITELLM_PRICING: Record<string, ModelPricing> = loadLiteLLMPricing();
 
-function mergeOverrides(overrides: PricingOverrides): Record<string, Partial<ModelPricing>> {
-  const merged: Record<string, Partial<ModelPricing>> = {};
-  for (const [key, value] of Object.entries(overrides)) {
-    const normalized = key.toLowerCase();
-    const base = LITELLM_PRICING[normalized] ?? DEFAULT_PRICING[normalized] ?? {};
-    merged[normalized] = { ...base, ...value };
+// `createPricing` caches its model lookups per instance and the tables never
+// change, so one instance per overrides value serves every record of a run;
+// keyed weakly so a per-command config load does not pin the previous one.
+// The key is the overrides object's identity: a caller that mutates an
+// overrides object in place would keep reading the pricing built from its old
+// content, so pass a fresh object instead.
+const pricingByOverrides = new WeakMap<PricingOverrides, Pricing>();
+
+// The shared no-override key, so the common `resolvePricing(model)` shape
+// reuses one pricing instance instead of building one per call.
+const NO_OVERRIDES: PricingOverrides = {};
+
+function pricingFor(overrides: PricingOverrides): Pricing {
+  let pricing = pricingByOverrides.get(overrides);
+  if (pricing === undefined) {
+    pricing = createPricing(LITELLM_PRICING, { overrides, fallback: DEFAULT_PRICING });
+    pricingByOverrides.set(overrides, pricing);
   }
-  return merged;
+  return pricing;
 }
 
 /**
- * Resolve pricing for a model id. Matches the longest pricing key that is a
- * substring of the lowercased model id. Resolution order:
+ * Resolve pricing for a model id (the kit's substring lookup: keys match
+ * regardless of case, the model's own id wins, then the longest key its id
+ * contains). Resolution order:
  *
  * 1. `config.usage.pricing` overrides
  * 2. the committed LiteLLM snapshot for supported models
  * 3. the small fallback `DEFAULT_PRICING` table
  *
- * Partial overrides are merged over the snapshot/fallback entry for the same
+ * Partial overrides are merged over the snapshot/fallback entry with the same
  * key. Returns `null` when nothing matches, signalling "cost unknown".
  */
-export function resolvePricing(model: string, overrides: PricingOverrides = {}): ModelPricing | null {
-  const id = model.toLowerCase();
-  const normalizedOverrides = mergeOverrides(overrides);
-  const overrideKey = bestPricingKey(id, normalizedOverrides);
-  const table: Record<string, Partial<ModelPricing>> = { ...DEFAULT_PRICING, ...LITELLM_PRICING };
-  const bestKey = overrideKey ?? bestPricingKey(id, table);
-  if (!bestKey) {
-    return null;
-  }
-
-  const merged = overrideKey ? normalizedOverrides[bestKey] : table[bestKey];
-  if (
-    merged === undefined ||
-    merged.input === undefined ||
-    merged.output === undefined ||
-    merged.cacheWrite === undefined ||
-    merged.cacheRead === undefined
-  ) {
-    return null;
-  }
-  return {
-    input: merged.input,
-    output: merged.output,
-    cacheWrite: merged.cacheWrite,
-    ...(merged.cacheWrite1h === undefined ? {} : { cacheWrite1h: merged.cacheWrite1h }),
-    cacheRead: merged.cacheRead
-  };
+export function resolvePricing(model: string, overrides: PricingOverrides = NO_OVERRIDES): ModelPricing | null {
+  const price = pricingFor(overrides).priceOf(model);
+  // A fresh object per call: the kit hands out its shared table entries.
+  return price === undefined ? null : { ...price };
 }
 
 /**
@@ -119,12 +116,12 @@ export function resolvePricing(model: string, overrides: PricingOverrides = {}):
  * cost (Pi), that is authoritative. Otherwise the cost is derived from the
  * pricing table; an unknown model yields `null` (token counts stay intact).
  */
-export function resolveRecordCost(record: UsageRecord, overrides: PricingOverrides = {}): number | null {
+export function resolveRecordCost(record: UsageRecord, overrides: PricingOverrides = NO_OVERRIDES): number | null {
   if (record.costUsd !== null) {
     return record.costUsd;
   }
-  const pricing = resolvePricing(record.model, overrides);
-  if (pricing === null) {
+  const pricing = pricingFor(overrides).priceOf(record.model);
+  if (pricing === undefined) {
     return null;
   }
   const cacheWrite1hTokens = Math.min(record.cacheWriteTokens, Math.max(0, record.cacheWrite1hTokens ?? 0));
