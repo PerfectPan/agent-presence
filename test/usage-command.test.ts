@@ -114,10 +114,6 @@ describe('printUsage --json', () => {
       'XDG_DATA_HOME',
       'PI_CODING_AGENT_DIR'
     ];
-    for (const name of names) {
-      saved[name] = process.env[name];
-      process.env[name] = home;
-    }
 
     // One completed opencode message with cache reads and writes and a logged
     // cost, timed at the faked date's local midnight from calendar fields —
@@ -158,6 +154,10 @@ describe('printUsage --json', () => {
     try {
       vi.useFakeTimers({ toFake: ['Date'] });
       vi.setSystemTime(new Date(2026, 6, 14, 0, 0, 0, 500));
+      for (const name of names) {
+        saved[name] = process.env[name];
+        process.env[name] = home;
+      }
       await printUsage(['--json', '--days', '1']);
     } finally {
       log.mockRestore();

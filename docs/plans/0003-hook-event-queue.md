@@ -356,8 +356,10 @@ stop (3.7):
   hand-written `asUsageEvent` (`src/usage-events.ts:75-92`) in a module the hook graph does not reach (3.2), and skips a
   repeated id. The item leaves `queueOwed` only after the append wrote.
 - Usage refresh: through the existing refresh for that source, with its `scanEnv` and boundary time so the day rule
-  (`usage-badge.ts:71-79`) holds; an entry whose source is not in the merged source table is skipped and stays owed
-  (above). The scanners read their transcript roots from the worker's environment with every agent-home variable in
+  (`usage-badge.ts:71-79`) holds; when that refresh is promoted to the other built-ins, it fills only what the day
+  lacks — its own source plus every source with no snapshot from this day and no owed refresh entry bounded on this
+  day — and never overwrites a snapshot it did not scan; an entry whose source is not in the merged source table is
+  skipped and stays owed (above). The scanners read their transcript roots from the worker's environment with every agent-home variable in
   `SCAN_ENV` set to the value the entry recorded, or unset when it recorded none — for every source the refresh
   scans, so a promoted first-boundary refresh reads no home variable the producer did not copy; a source whose
   variable was not recorded reads its default root under the worker's home until its own boundary records one. The

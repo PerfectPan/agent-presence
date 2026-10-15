@@ -47,11 +47,6 @@ export interface UsageBadgeCacheRefresh {
   /** A hook refresh owns only this source. Omit for an explicit full refresh. */
   source?: string;
   /**
-   * Sources a promoted full scan leaves out: each has its own refresh coming,
-   * which scans it with its own recorded environment and time.
-   */
-  excludeSources?: readonly string[];
-  /**
    * Stops the refresh before or while its scans run; scans already running finish in the background, as they only read
    * transcripts. Once the scans have finished, an abort no longer stops it: it waits for the state lock and saves.
    */
@@ -131,9 +126,30 @@ export async function refreshUsageBadgeCache(options: UsageBadgeCacheRefresh): P
     (cachedState.usageBadgesAt === undefined || calendarDaysBetween(cachedState.usageBadgesAt, options.now) > 0)
       ? undefined
       : options.source;
+  // A boundary refresh whose day rolled over, or whose aggregate is missing,
+  // is promoted to the other built-in sources — but it fills only what the day
+  // lacks: it scans its own source plus every source that has no snapshot from
+  // this day and no owed refresh entry bounded on this day (that entry scans
+  // the source with its own recorded environment and time). A snapshot this
+  // refresh did not scan is never overwritten.
+  const promoted = options.source !== undefined && refreshSource === undefined;
+  const hasDaySnapshot = (id: string): boolean =>
+    options.windows.every((days) => {
+      const snapshot = cachedState.usageSnapshots?.[String(days)]?.[id];
+      return snapshot !== undefined && calendarDaysBetween(snapshot.scannedAt, options.now) === 0;
+    });
+  const owesOwnRefreshToday = (id: string): boolean =>
+    (cachedState.queueOwed?.usageRefresh ?? []).some(
+      (entry) => entry.source === id && calendarDaysBetween(entry.boundaryAt, options.now) === 0
+    );
   const selectedSources = refreshSource
     ? options.sources.filter((candidate) => candidate.id === refreshSource)
-    : options.sources.filter((candidate) => !options.excludeSources?.includes(candidate.id));
+    : promoted
+      ? options.sources.filter(
+          (candidate) =>
+            candidate.id === options.source || (!hasDaySnapshot(candidate.id) && !owesOwnRefreshToday(candidate.id))
+        )
+      : options.sources;
   if (refreshSource && selectedSources.length === 0) {
     return { completed: true };
   }
@@ -240,7 +256,7 @@ export async function refreshSignatureUsageBadges(
   statePath: string,
   now: number,
   source?: string,
-  options: Pick<UsageBadgeCacheRefresh, 'signal' | 'env' | 'onSave' | 'excludeSources'> = {}
+  options: Pick<UsageBadgeCacheRefresh, 'signal' | 'env' | 'onSave'> = {}
 ): Promise<UsageRefreshOutcome> {
   const plan = usageRenderPlan(config);
   if (!plan.enabled) {
@@ -261,7 +277,6 @@ export async function refreshSignatureUsageBadges(
     source,
     signal: options.signal,
     env: options.env,
-    excludeSources: options.excludeSources,
     onSave: options.onSave
   });
 }

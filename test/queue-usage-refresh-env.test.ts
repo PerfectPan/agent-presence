@@ -31,12 +31,12 @@ const AGENTS: Array<{ source: string; variable: string }> = [
 ];
 
 /** One transcript worth `tokens` (100 by default) under `root`, laid out as the agent keeps it. */
-async function writeFixture(root: string, agent: string, tokens = 100): Promise<void> {
-  const write = async (segments: string[], content: string, quiet: boolean): Promise<void> => {
+async function writeFixture(root: string, agent: string, tokens = 100, atMs = T0 - 1000): Promise<void> {
+  const write = async (segments: string[], content: string, quiet: boolean, mtimeMs = atMs): Promise<void> => {
     const file = join(root, ...segments);
     await mkdir(dirname(file), { recursive: true });
     await writeFile(file, content, 'utf8');
-    const at = new Date(quiet ? QUIET : T0 - 1000);
+    const at = new Date(quiet ? Math.min(QUIET, mtimeMs) : mtimeMs);
     await utimes(file, at, at);
   };
 
@@ -128,7 +128,7 @@ async function writeFixture(root: string, agent: string, tokens = 100): Promise<
       })
     );
     db.close();
-    const at = new Date(T0 - 1000);
+    const at = new Date(atMs);
     await utimes(dbPath, at, at);
   } else {
     await write(
@@ -193,6 +193,28 @@ afterEach(async () => {
   await home.dispose();
 });
 
+/** Work off every owed usage refresh entry, in queue order, with the real chain. */
+async function workOffAllRefreshes(): Promise<void> {
+  const config = await loadConfig();
+  for (;;) {
+    const state = await readState(home.statePath);
+    const item = doableOwedItems(state.queueOwed, knownSources(config)).find(
+      (candidate) => candidate.kind === 'usageRefresh'
+    );
+    if (!item) {
+      return;
+    }
+    const outcome = await workOffOwedItem(item, {
+      statePath: home.statePath,
+      config,
+      clock: { now: () => T0 + 9_000 },
+      effects: defaultOwedWorkEffects,
+      signal: new AbortController().signal
+    });
+    expect(outcome).toBe('done');
+  }
+}
+
 async function refreshWithRecorded(scanEnv: Record<string, string>, source: string): Promise<void> {
   await recordAt(home.statePath, T0, eventBody('SessionStart', 's_env', { source, scanEnv }));
   await applyQueueBatch(home.statePath, {
@@ -233,10 +255,10 @@ describe('the worker refresh scans with the recorded agent-home variables', () =
   }
 
   it('reads no worker-only agent-home variable when the first boundary records none', async () => {
-    // The day's first boundary is promoted to every built-in source. The worker
-    // environment points each agent at a worker-home holding 100 tokens; none
-    // of it is recorded, so every source reads its default root under the
-    // refresh's home instead — empty, so every snapshot is 0.
+    // The day's first boundary is promoted to every built-in source. Nothing
+    // is recorded, so every source reads its default root under the refresh's
+    // home instead of the worker's CODEX_HOME and friends — the defaults are
+    // empty, so every snapshot counts 0.
     await refreshWithRecorded({}, 'claude');
     const state = await readState(home.statePath);
     for (const { source } of AGENTS) {
@@ -291,10 +313,161 @@ describe('the worker refresh scans with the recorded agent-home variables', () =
     }
   });
 
+  it('lets a promoted refresh fill the day without overwriting a snapshot it did not scan', async () => {
+    // The day's first two boundaries: claude records CLAUDE_CONFIG_DIR, codex
+    // records CODEX_HOME. Claude's promoted refresh fills codex? No — codex has
+    // its own owed entry bounded today, so claude's scan leaves codex to it;
+    // codex's own refresh is then promoted (the badge is still missing) and
+    // scans codex plus the sources the day still lacks — claude already has a
+    // snapshot from claude's own scan and is not overwritten.
+    const hookClaude = await mkdtemp(join(tmpdir(), 'env-hook-claude-'));
+    const hookCodex = await mkdtemp(join(tmpdir(), 'env-hook-codex-'));
+    await writeFixture(hookClaude, 'claude', 100);
+    await writeFixture(hookCodex, 'codex', 100);
+    try {
+      await recordAt(
+        home.statePath,
+        T0,
+        eventBody('SessionStart', 's_claude_1', {
+          source: 'claude',
+          scanEnv: { CLAUDE_CONFIG_DIR: hookClaude }
+        })
+      );
+      await recordAt(
+        home.statePath,
+        T0 + 1_000,
+        eventBody('SessionStart', 's_codex_1', {
+          source: 'codex',
+          scanEnv: { CODEX_HOME: hookCodex }
+        })
+      );
+      await applyQueueBatch(home.statePath, {
+        version: 1,
+        config: await loadConfig(),
+        clock: { now: () => T0 + 2_000 }
+      });
+      await workOffAllRefreshes();
+
+      const state = await readState(home.statePath);
+      expect(state.usageSnapshots?.['1']?.claude).toMatchObject({ totalTokens: 100 });
+      expect(state.usageSnapshots?.['1']?.codex).toMatchObject({ totalTokens: 100 });
+      expect(state.usageBadges?.['1']).toBe('200');
+      expect(state.usageBadgesAt).toBe(T0 + 1_000);
+    } finally {
+      await rm(hookClaude, { recursive: true, force: true });
+      await rm(hookCodex, { recursive: true, force: true });
+    }
+  });
+
+  it('scans a source with its own owed entry from that entry in a shared batch', async () => {
+    // One batch: claude(T1), codex(T2 recording CODEX_HOME), claude(T3).
+    // Claude's promoted refresh leaves codex to codex's own entry, which scans
+    // it with the recorded environment; a scan stamp from claude's environment
+    // must not survive.
+    const hookCodex = await mkdtemp(join(tmpdir(), 'env-hook-codex-'));
+    await writeFixture(hookCodex, 'codex', 100);
+    try {
+      for (const [at, source, scanEnv] of [
+        [T0, 'claude', {}],
+        [T0 + 1_000, 'codex', { CODEX_HOME: hookCodex }],
+        [T0 + 2_000, 'claude', {}]
+      ] as const) {
+        await recordAt(home.statePath, at, eventBody('SessionStart', `s_${source}_${at}`, { source, scanEnv }));
+      }
+      await applyQueueBatch(home.statePath, {
+        version: 1,
+        config: await loadConfig(),
+        clock: { now: () => T0 + 3_000 }
+      });
+      await workOffAllRefreshes();
+
+      const state = await readState(home.statePath);
+      expect(state.usageSnapshots?.['1']?.codex).toMatchObject({ totalTokens: 100 });
+      expect(state.usageSnapshots?.['1']?.claude).toMatchObject({ totalTokens: 0 });
+    } finally {
+      await rm(hookCodex, { recursive: true, force: true });
+    }
+  });
+
+  it('rebuilds the badge for the new day when a batch crosses midnight', async () => {
+    // codex(D1 23:58), claude(D1 23:59), codex(D2 00:01): the codex entry's
+    // boundary moves to D2, claude's stays on D1. Codex's own refresh runs on
+    // D2 and fills the day for every source; claude's later work-off stamps
+    // only claude's D1 snapshot, which is older than the D2 one and loses.
+    const hookCodex = await mkdtemp(join(tmpdir(), 'env-hook-codex-'));
+    const d1Evening = new Date(2025, 9, 5, 20, 0, 0, 0).getTime();
+    const d2Early = new Date(2025, 9, 6, 0, 0, 30, 0).getTime();
+    await writeFixture(hookCodex, 'codex', 100, d1Evening);
+    try {
+      // A second codex call just after midnight, so the D2 window counts 30.
+      const rollout = join(hookCodex, 'sessions', 'rollout-poison-d2.jsonl');
+      const iso2 = new Date(d2Early).toISOString();
+      await writeFile(
+        rollout,
+        `${JSON.stringify({
+          timestamp: iso2,
+          type: 'event_msg',
+          payload: {
+            type: 'token_count',
+            info: {
+              total_token_usage: { input_tokens: 10, cached_input_tokens: 0, output_tokens: 20, total_tokens: 30 },
+              last_token_usage: { input_tokens: 10, cached_input_tokens: 0, output_tokens: 20, total_tokens: 30 }
+            }
+          }
+        })}\n`,
+        'utf8'
+      );
+      await utimes(rollout, new Date(d2Early), new Date(d2Early));
+
+      const codexScanEnv = { CODEX_HOME: hookCodex };
+      await recordAt(
+        home.statePath,
+        new Date(2025, 9, 5, 23, 58).getTime(),
+        eventBody('SessionStart', 's_codex_d1', {
+          source: 'codex',
+          scanEnv: codexScanEnv
+        })
+      );
+      await recordAt(
+        home.statePath,
+        new Date(2025, 9, 5, 23, 59).getTime(),
+        eventBody('SessionStart', 's_claude_d1', {
+          source: 'claude',
+          scanEnv: {}
+        })
+      );
+      await recordAt(
+        home.statePath,
+        new Date(2025, 9, 6, 0, 1).getTime(),
+        eventBody('SessionStart', 's_codex_d2', {
+          source: 'codex',
+          scanEnv: codexScanEnv
+        })
+      );
+      await applyQueueBatch(home.statePath, {
+        version: 1,
+        config: await loadConfig(),
+        clock: { now: () => new Date(2025, 9, 6, 0, 2).getTime() }
+      });
+      await workOffAllRefreshes();
+
+      const state = await readState(home.statePath);
+      // The D2 badge: codex's 30-token call after midnight, every other source's
+      // zero for the new day.
+      expect(state.usageBadges?.['1']).toBe('30');
+      expect(state.usageBadgesAt).toBe(new Date(2025, 9, 6, 0, 1).getTime());
+      expect(state.usageSnapshots?.['1']?.codex).toMatchObject({ totalTokens: 30 });
+      expect(state.usageSnapshots?.['1']?.claude).toMatchObject({ totalTokens: 0 });
+    } finally {
+      await rm(hookCodex, { recursive: true, force: true });
+    }
+  });
+
   it('reads the default root under the refresh home for an agent whose variable was not recorded', async () => {
     // The codex default root ($HOME/.codex) holds 25 tokens; the worker-only
-    // CODEX_HOME holds 100. The Claude first boundary records no variable, so
-    // codex counts the default root's 25, not the worker's 100.
+    // CODEX_HOME holds 40. The Claude first boundary records no variable, so
+    // the promoted scan reads the default root and counts its 25 — not the
+    // worker's 40.
     await writeFixture(join(defaultHome, '.codex'), 'codex', 25);
 
     await refreshWithRecorded({}, 'claude');

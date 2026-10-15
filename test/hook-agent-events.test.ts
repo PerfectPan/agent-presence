@@ -345,6 +345,11 @@ describe('hook --agent claude-code', () => {
     const state = await readState();
     expect(startedView(state, 'claude-session-1')).toEqual(startedExpected('claude'));
     expect(Object.keys(state.usageSnapshots?.['1'] ?? {}).sort()).toEqual(BILLABLE_SOURCE_IDS);
+    // No agent home from the surrounding shell reaches the refresh: the fixture
+    // roots are empty, so every contribution scans to zero.
+    expect(Object.values(state.usageSnapshots?.['1'] ?? {})).toEqual(
+      Array.from({ length: BILLABLE_SOURCE_IDS.length }, () => expect.objectContaining({ totalTokens: 0 }))
+    );
   });
 
   it('SessionStart restarts a running session, including a compact payload', async () => {

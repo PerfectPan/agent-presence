@@ -184,7 +184,7 @@ describe('refreshUsageBadgeCache', () => {
     });
   });
 
-  it('builds a complete cache when the aggregate timestamp is missing', async () => {
+  it('fills the day from the snapshots it has and scans only the sources the day lacks', async () => {
     dir = await mkdtemp(join(tmpdir(), 'agent-presence-usage-badge-'));
     const statePath = join(dir, 'state.json');
     await saveState(
@@ -214,15 +214,17 @@ describe('refreshUsageBadgeCache', () => {
       source: 'codex'
     });
 
+    // The promoted refresh scans its own source; claude already has a snapshot
+    // from this day and is not rescanned or overwritten.
     expect(codexScan).toHaveBeenCalledTimes(1);
-    expect(claudeScan).toHaveBeenCalledTimes(1);
+    expect(claudeScan).not.toHaveBeenCalled();
     expect(await loadState(statePath)).toMatchObject({
-      usageBadges: { '1': '50 · $0.50' },
+      usageBadges: { '1': '220 · $2.20' },
       usageBadgesAt: NOW,
       usageSnapshots: {
         '1': {
           codex: { totalTokens: 20, costUsd: 0.2, scannedAt: NOW },
-          claude: { totalTokens: 30, costUsd: 0.3, scannedAt: NOW }
+          claude: { totalTokens: 200, costUsd: 2, scannedAt: NOW - 1000 }
         }
       }
     });

@@ -31,8 +31,6 @@ export interface UsageRefreshRequest {
   readonly boundaryAt: number;
   /** The environment the scanners read transcript roots from: the worker's, with the values the boundary recorded. */
   readonly env: ScanEnvironment;
-  /** Sources this refresh leaves to their own owed refresh entries. */
-  readonly excludeSources: readonly string[];
   readonly signal: AbortSignal;
   /** Runs inside the refresh's locked save. */
   readonly onSave: (state: PresenceState) => void;
@@ -53,7 +51,6 @@ export const defaultOwedWorkEffects: OwedWorkEffects = {
     refreshSignatureUsageBadges(request.config, request.statePath, request.boundaryAt, request.source, {
       signal: request.signal,
       env: request.env,
-      excludeSources: request.excludeSources,
       onSave: request.onSave
     }),
   publish: async (value, config, signal) => {
@@ -86,18 +83,6 @@ export function scanEnvironmentFor(entry: UsageRefreshEntry): ScanEnvironment {
 }
 
 export type OwedOutcome = 'done' | 'aborted' | 'failed';
-
-/**
- * The sources of the owed refresh entries other than `source`, read without the
- * state lock: a missed exclusion only means the shared refresh scans that
- * source as well, and the source's own refresh still lands after it.
- */
-async function otherOwedRefreshSources(statePath: string, source: string): Promise<string[]> {
-  const state = await loadState(statePath);
-  return (state.queueOwed?.usageRefresh ?? [])
-    .map((candidate) => candidate.source)
-    .filter((candidate) => candidate !== source);
-}
 
 export interface OwedWorkContext {
   readonly statePath: string;
@@ -145,10 +130,6 @@ async function refreshOwedUsage(
     source: entry.source,
     boundaryAt: entry.boundaryAt,
     env: scanEnvironmentFor(entry),
-    // A source with its own owed refresh entry scans there, with its own
-    // recorded environment and time — the shared refresh skips it so its
-    // result cannot be stamped over by this one.
-    excludeSources: await otherOwedRefreshSources(context.statePath, entry.source),
     signal: context.signal,
     onSave: (state) => {
       refresh.saved = true;
