@@ -325,7 +325,7 @@ only adds to these fields, and every release keeps what it does not know:
   as done, the refresh of a built-in source that a later release added: the refresh returns at once for a source it
   has no scanner for (`src/cli/usage-badge.ts:79-81`), which reads as completed. The source table decides, not the
   scanner table, because a source without a scanner (`grok`, a source configured with a handler) still owes its refresh: on the first
-  boundary of a day it refreshes every built-in (`usage-badge.ts:71-79`). An entry for a source since removed from the
+  boundary of a day its promotion fills the day (`usage-badge.ts:71-79`). An entry for a source since removed from the
   configuration file stays owed in every release; it changes nothing but the state's size (inferred). A later release
   that gives a scanner to a source an earlier queue release has without one owes that source's refreshes under a new
   kind of owed work, since the earlier release would work them off without scanning.
@@ -714,7 +714,7 @@ queue (3.12).
   worker that holds the lock with only that work owed exits when idle. A `usageRefresh` entry for a source the older
   release does not know, as a later release that added a built-in source would owe it, is treated the same way: the
   older worker leaves it owed and does not count it, while an entry for a source it knows without a scanner (`grok`) is
-  worked off and removed, refreshing every built-in on the first boundary of a day. A newer worker killed after its
+  worked off and removed, its promotion filling the day on the first boundary of a day. A newer worker killed after its
   save and before deleting the applied files, then an older command: no record whose id is in `queueApplied` is
   applied again.
 - Older commands, as section 7 describes them (the owner picked option (a), 2026-10-14): an older command that holds
