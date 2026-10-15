@@ -1,6 +1,6 @@
 import { isAbsolute } from 'node:path';
-import { removePluginSource, saveConfig, setPluginSource } from '../../config.js';
-import { loadValidatedConfig } from '../../config-schema.js';
+import { removePluginSource, saveConfig, type AppConfig } from '../../config.js';
+import { hasPluginSource, loadValidatedConfig, rawConfigMap } from '../../config-schema.js';
 import { installPluginPackage, packageNameFromSpec, uninstallPluginPackage } from '../../plugin-install.js';
 import { describeSources, loadSourcePluginForValidation } from '../../sources.js';
 import { hasFlag, optionValue } from '../args.js';
@@ -70,9 +70,12 @@ async function addSource(args: string[]): Promise<void> {
     return;
   }
 
-  // The write starts from the file's content as read, so entries this command does not change stay in the file.
+  // The added entry is this command's own; the sources map's other entries and every other key at every level stay
+  // as the file holds them.
   const { raw } = await loadValidatedConfig();
-  await saveConfig(setPluginSource(raw, id, { handler: installed.packageName }));
+  const sources = { ...rawConfigMap(raw.plugins?.sources), [id]: { handler: installed.packageName } };
+  const plugins = { ...rawConfigMap(raw.plugins), sources } as AppConfig['plugins'];
+  await saveConfig({ ...raw, plugins });
 
   showSuccess(`added source "${id}" -> ${installed.packageName}@${installed.version}`);
   showInfo('It will be counted on the next hook. Run `agent-presence source list` to confirm.');
@@ -92,11 +95,10 @@ async function removeSource(args: string[]): Promise<void> {
   }
   const keepPackage = hasFlag(args, '--keep-package');
 
-  // Existence is judged on the validated view — a broken entry is not a configured source — while the removal
-  // applies to the file's content as read, so other entries and unknown keys stay (issue #106).
+  // Presence is judged on the file's `plugins.sources` keys, so an entry the loader dropped is still removable;
+  // the removal itself applies to the file's content as read, so other entries and unknown keys stay.
   const { config, raw } = await loadValidatedConfig();
-  const entry = config.plugins?.sources?.[id];
-  if (!entry) {
+  if (!hasPluginSource(raw, id)) {
     showWarning(
       `no configured source "${id}" (built-in defaults cannot be removed; disable with { "enabled": false }).`
     );
@@ -107,8 +109,9 @@ async function removeSource(args: string[]): Promise<void> {
   await saveConfig(removePluginSource(raw, id));
 
   // If the entry pointed at an installed package (a bare specifier, not an
-  // absolute path or builtin:), uninstall it too unless asked to keep it.
-  const handler = entry.handler;
+  // absolute path or builtin:), uninstall it too unless asked to keep it. A
+  // broken entry has no validated form, so there is no handler to uninstall.
+  const handler = config.plugins?.sources?.[id]?.handler;
   if (!keepPackage && handler && !handler.startsWith('builtin:') && !isAbsolute(handler)) {
     await uninstallPluginPackage(packageNameFromSpec(handler), {}).catch((error) => {
       showWarning(`removed config entry, but package uninstall failed: ${errorMessage(error)}`);

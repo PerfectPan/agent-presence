@@ -6,7 +6,7 @@ import {
   type AppConfig,
   type FeishuSignatureProviderConfig
 } from '../../config.js';
-import { loadValidatedConfig } from '../../config-schema.js';
+import { loadValidatedConfig, rawConfigMap } from '../../config-schema.js';
 import { hasAnyOption, hasFlag, optionValue } from '../args.js';
 import { isInteractiveTerminal, promptText } from '../ui.js';
 
@@ -50,17 +50,21 @@ async function promptProviderConfig(
 }
 
 export async function configureProvider(args: string[]): Promise<void> {
-  // The change applies to the file's content as read, so entries this command does not touch — unknown keys and
-  // values the schema drops — stay in the file (issue #106).
   const { config, raw } = await loadValidatedConfig();
   const explicitProvider = args[0]?.startsWith('--')
     ? optionValue(args, '--provider')
     : (args[0] ?? optionValue(args, '--provider'));
   const targetProvider = providerId(config, explicitProvider);
   const reset = hasFlag(args, '--reset');
-  const providers = { ...raw.providers };
+  const nextProviderConfig = reset ? {} : { ...config.providers?.[targetProvider] };
+  // The entry whose fields this command sets comes from the validated view; the provider map's other entries and
+  // every other top-level key stay as the file holds them. The map's values are the file's raw values — the
+  // AppConfig field types describe what the CLI reads, not what the file may hold.
+  const providers = {
+    ...rawConfigMap(raw.providers),
+    [targetProvider]: nextProviderConfig
+  } as NonNullable<AppConfig['providers']>;
   const nextConfig: AppConfig = { ...raw, provider: targetProvider, providers };
-  const nextProviderConfig = reset ? {} : { ...raw.providers?.[targetProvider] };
 
   if (!reset && isInteractiveTerminal() && !hasAnyOption(args, PROVIDER_OPTIONS)) {
     await promptProviderConfig(nextProviderConfig, feishuSignatureConfig(config));

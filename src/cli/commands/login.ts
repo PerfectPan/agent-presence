@@ -8,7 +8,6 @@ import { sleep } from '../sleep.js';
 import { createSpinner, finishOutro, showNote, startIntro } from '../ui.js';
 
 export async function login(args: string[] = []): Promise<void> {
-  // The write starts from the file's content as read, so entries this command does not change stay in the file.
   const { config, raw } = await loadValidatedConfig();
   const activeProvider = providerId(config, optionValue(args, '--provider'));
   const provider = createProvider(activeProvider, { config });

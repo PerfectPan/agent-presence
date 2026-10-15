@@ -482,8 +482,10 @@ describe('a worker whose iterations fail', () => {
     const pool = workers({ idleMs: 1_000 });
     const run = pool.start();
     await until(async () => sessionIds(await readState(home.statePath)).includes('s1'), 'the record applied');
-    // A state file that cannot be parsed makes every iteration throw in the batch's state load — a broken config
-    // entry no longer can, because the worker's loader drops it (issue #106).
+    // A state file that cannot be parsed makes every iteration throw in the follow-up lane's state load, which
+    // `hasWork` reads after an empty batch returns — a broken config entry no longer can, because the worker's
+    // loader drops it. The applied event is pinned by the wait above: the file read at the end is this test's own
+    // restore, so it asserts nothing about the worker and is left out.
     const applied = readFileSync(home.statePath, 'utf8');
     writeFileSync(home.statePath, '{"sessions": ');
 
@@ -494,7 +496,6 @@ describe('a worker whose iterations fail', () => {
     expect(await lockHeld()).toBe(false);
     expect(await readWorkerVersion(home.statePath)).toBe(0);
     expect(pool.startedByLeavers()).toBe(0);
-    expect(sessionIds(await readState(home.statePath))).toEqual(['s1']);
   }, 15_000);
 
   it('does not leave with failing when the failures stop within the interval', async () => {
