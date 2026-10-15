@@ -1,11 +1,11 @@
 import { createHash } from 'node:crypto';
-import { join } from 'node:path';
 import type { Bundle, HookSpec, JsonValue } from '@rivus/agent-kit/harness';
 import { builtinHookDialects } from '@rivus/agent-kit/harness/events';
 import * as z from 'zod/mini';
 import { getHomeDir } from '../config.js';
 import { packageVersion } from '../package-version.js';
 import { shellQuote } from '../shell-quote.js';
+import { presenceShimPath } from './shim-path.js';
 
 const CLAUDE_EVENTS = [
   'SessionStart',
@@ -49,7 +49,7 @@ function canonicalJson(value: JsonValue): string {
 export function createPresenceBundle(home = getHomeDir()): Bundle {
   const hook: HookSpec = {
     type: 'hooks',
-    command: `${shellQuote(join(home, 'bin', 'agent-presence'))} hook --agent {agent} 2>/dev/null || echo '{}'`,
+    command: `${shellQuote(presenceShimPath(home))} hook --agent {agent} 2>/dev/null || echo '{}'`,
     events: PRESENCE_EVENTS,
     timeoutSeconds: 5
   };

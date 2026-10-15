@@ -223,20 +223,6 @@ export async function setup(
             `setup ${step.action}: ${step.locator.path}${step.locator.pointer ? `#${step.locator.pointer}` : ''}`
           );
         }
-        yield* Effect.tryPromise(async () => {
-          await maybeInstallDshPlugin();
-          const setupSpinner = createSpinner();
-          setupSpinner.start('Installing power watcher');
-          const results = await runSetupScripts();
-          setupSpinner.stop('Installers completed');
-          for (const result of results) {
-            showInfo(`setup installed: ${result.scriptName}`);
-          }
-          if (!isMacOS()) {
-            showInfo(LINUX_WATCHER_SKIP_MESSAGE);
-          }
-          await publishProvider(config, activeProvider);
-        });
         const verified = yield* verify('agent-presence', { bundle, agents: PRESENCE_AGENTS });
         for (const artifact of verified.artifacts) {
           showInfo(
@@ -259,7 +245,20 @@ export async function setup(
     }),
     layer
   );
-  if (completed) {
-    finishOutro('setup: ok');
+  if (!completed) {
+    return;
   }
+  await maybeInstallDshPlugin();
+  const setupSpinner = createSpinner();
+  setupSpinner.start('Installing power watcher');
+  const results = await runSetupScripts();
+  setupSpinner.stop('Installers completed');
+  for (const result of results) {
+    showInfo(`setup installed: ${result.scriptName}`);
+  }
+  if (!isMacOS()) {
+    showInfo(LINUX_WATCHER_SKIP_MESSAGE);
+  }
+  await publishProvider(config, activeProvider);
+  finishOutro('setup: ok');
 }
