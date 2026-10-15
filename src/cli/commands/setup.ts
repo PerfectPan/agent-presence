@@ -248,7 +248,6 @@ export async function setup(
   if (!completed) {
     return;
   }
-  await maybeInstallDshPlugin();
   const setupSpinner = createSpinner();
   setupSpinner.start('Installing power watcher');
   const results = await runSetupScripts();
@@ -259,6 +258,7 @@ export async function setup(
   if (!isMacOS()) {
     showInfo(LINUX_WATCHER_SKIP_MESSAGE);
   }
+  await maybeInstallDshPlugin();
   await publishProvider(config, activeProvider);
   finishOutro('setup: ok');
 }
