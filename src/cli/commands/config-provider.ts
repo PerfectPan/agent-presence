@@ -50,17 +50,17 @@ async function promptProviderConfig(
 }
 
 export async function configureProvider(args: string[]): Promise<void> {
-  // The change applies to the file's content as read, so entries this command does not touch — unknown keys and
-  // values the schema drops — stay in the file (issue #106).
   const { config, raw } = await loadValidatedConfig();
   const explicitProvider = args[0]?.startsWith('--')
     ? optionValue(args, '--provider')
     : (args[0] ?? optionValue(args, '--provider'));
   const targetProvider = providerId(config, explicitProvider);
   const reset = hasFlag(args, '--reset');
-  const providers = { ...raw.providers };
+  // The rewritten subtree comes from the validated view (unknown keys kept, broken values dropped); every other
+  // top-level key stays as the file holds it.
+  const providers = { ...config.providers };
   const nextConfig: AppConfig = { ...raw, provider: targetProvider, providers };
-  const nextProviderConfig = reset ? {} : { ...raw.providers?.[targetProvider] };
+  const nextProviderConfig = reset ? {} : { ...config.providers?.[targetProvider] };
 
   if (!reset && isInteractiveTerminal() && !hasAnyOption(args, PROVIDER_OPTIONS)) {
     await promptProviderConfig(nextProviderConfig, feishuSignatureConfig(config));

@@ -673,7 +673,8 @@ describe('source resolution outside the hook still writes its lines', () => {
 });
 
 // A broken config entry of another source must not fail the hook's lookup, while a broken entry of the hook's own
-// source — or a non-object root — keeps failing open as one `hook failed` record and exit 0 (issue #106).
+// source — or a null root — keeps failing open as one `hook failed` record and exit 0. Any other non-object root
+// reads as no user entries, and the hook records with the shipped default source.
 describe('hook producer — broken config entries', () => {
   it('records the event when another source has a broken entry', async () => {
     await writeConfig({ plugins: { sources: { x: null } } } as unknown as AppConfig);
@@ -684,6 +685,16 @@ describe('hook producer — broken config entries', () => {
     expect(records).toHaveLength(1);
     expect(records[0]).toMatchObject({ kind: 'event', source: 'claude', sessionId: 's1' });
     expect(hookWorkerStarts.requested).toBe(1);
+  });
+
+  it('records with the shipped default source when the root is an array', async () => {
+    await writeFile(join(homeDir, 'config.json'), '["not", "a", "table"]');
+
+    await runHook(['--source', 'codex', '--event', 'SessionStart'], { session_id: 's1' });
+
+    const records = await writtenRecords();
+    expect(records).toHaveLength(1);
+    expect(records[0]).toMatchObject({ kind: 'event', source: 'codex', sessionId: 's1' });
   });
 
   it("fails open on its own source's broken entry with one hook failed record and exit 0", async () => {

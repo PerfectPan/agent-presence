@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 
+import type { AppConfig } from '../src/config.js';
 import type { MagicBuilderProvider } from '../src/providers/magic-builder.js';
 
 type AcquireToken = () => Promise<string | undefined>;
@@ -121,6 +122,22 @@ describe('publishMagicBuilderFaas', () => {
 
     expect(publishFaas).toHaveBeenCalledWith(expect.objectContaining({ recordId: 'rec_existing' }));
     expect(result.isUpdate).toBe(true);
+  });
+
+  it('saves the published record id over a config file whose root is not an object', async () => {
+    readMagicToken.mockResolvedValue({ token: 'tok', source: 'env' });
+    loadConfig.mockResolvedValue(null as unknown as AppConfig);
+
+    await publishMagicBuilderFaas();
+
+    expect(publishFaas).toHaveBeenCalledTimes(1);
+    expect(saveConfig).toHaveBeenCalledWith(
+      expect.objectContaining({
+        provider: 'magic-builder',
+        providers: { 'magic-builder': expect.objectContaining({ faasId: 'rec_new' }) }
+      }),
+      '/tmp/config.json'
+    );
   });
 
   it('fails clearly when the l.garyyang credential is missing', async () => {

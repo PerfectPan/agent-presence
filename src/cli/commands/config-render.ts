@@ -27,12 +27,12 @@ function setOptionalTemplate(target: Record<string, string>, key: string, value:
 }
 
 export async function configureRender(args: string[]): Promise<void> {
-  // The change applies to the file's content as read, so entries this command does not touch — unknown keys and
-  // values the schema drops — stay in the file (issue #106).
   const { config, raw } = await loadValidatedConfig();
   const reset = hasFlag(args, '--reset');
+  // The rewritten subtree comes from the validated view (unknown keys kept, broken values dropped — never a broken
+  // raw value's index keys); every other top-level key stays as the file holds it.
   const nextConfig = { ...raw };
-  const nextRender = reset ? {} : { ...raw.render };
+  const nextRender = reset ? {} : { ...config.render };
 
   if (!reset && isInteractiveTerminal() && !hasAnyOption(args, RENDER_OPTIONS)) {
     const current = renderTemplates(config);

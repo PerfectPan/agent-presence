@@ -58,8 +58,6 @@ export interface PublishMagicBuilderFaasResult extends MagicBuilderPublishResult
 export async function publishMagicBuilderFaas(
   options: PublishMagicBuilderFaasOptions = {}
 ): Promise<PublishMagicBuilderFaasResult> {
-  // The persisted record id is written over the file's content as read, so entries this function does not change
-  // stay in the file (issue #106).
   const { config, raw } = await loadValidatedConfig();
   let tokenInfo = await readMagicToken();
   if ((!tokenInfo.token || !tokenInfo.source) && options.acquireToken) {
@@ -100,12 +98,16 @@ export async function publishMagicBuilderFaas(
 
   const persist = options.persist ?? true;
   if (persist) {
-    const existingProviderConfig = magicBuilderConfig(raw);
-    const updated = setMagicBuilderConfig(raw, {
-      faasId: result.id,
-      faasName: name,
-      baseUrl: existingProviderConfig.baseUrl ?? (baseUrl === 'https://magic.solutionsuite.cn' ? undefined : baseUrl)
-    });
+    // The rewritten subtree comes from the validated view; every other top-level key stays as the file holds it.
+    const existingProviderConfig = magicBuilderConfig(config);
+    const updated = setMagicBuilderConfig(
+      { ...raw, providers: config.providers },
+      {
+        faasId: result.id,
+        faasName: name,
+        baseUrl: existingProviderConfig.baseUrl ?? (baseUrl === 'https://magic.solutionsuite.cn' ? undefined : baseUrl)
+      }
+    );
     if (!updated.provider) {
       updated.provider = 'magic-builder';
     }

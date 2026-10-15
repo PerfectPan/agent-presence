@@ -27,9 +27,9 @@ import {
 } from '../src/config.js';
 import { loadValidatedConfig, parseConfigFile } from '../src/config-schema.js';
 
-// The config loader (issue #106): a value that does not parse loads as missing with a warning naming its path, the
-// rest of the file loads, unknown keys are kept, and a non-object root loads as {}. The hook path keeps the
-// schema-free read (test/hook-graph.test.ts), so the hook never reaches this module.
+// The config loader: a value that does not parse loads as missing with a warning naming its path, the rest of the
+// file loads, unknown keys are kept, and a non-object root loads as {}. The hook path keeps the schema-free read
+// (test/hook-graph.test.ts), so the hook never reaches this module.
 
 describe('parseConfigFile — lenient parse', () => {
   it('drops a value that does not parse with its path and keeps its siblings', () => {
@@ -228,6 +228,16 @@ describe('loadValidatedConfig', () => {
     expect(raw).toEqual(config);
   });
 
+  it('hands writes an empty object as the file base when the root is dropped', async () => {
+    await writeConfigFile('null');
+
+    const { config, raw, issues } = await loadValidatedConfig();
+
+    expect(config).toEqual({});
+    expect(raw).toEqual({});
+    expect(issues).toEqual([{ path: 'config', reason: 'expected an object' }]);
+  });
+
   it('returns the file as read, and reports each dropped value once per run', async () => {
     await writeConfigFile(JSON.stringify({ render: { one: 5 }, unknownTop: 1 }));
     const consoleErrors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
@@ -249,5 +259,46 @@ describe('loadValidatedConfig', () => {
     } finally {
       consoleErrors.mockRestore();
     }
+  });
+});
+
+describe('parseConfigFile — types the readers accept today', () => {
+  const raw = {
+    ttlMs: '300000',
+    debounceMs: '60000',
+    slot_id: 123,
+    slotId: 456,
+    usage: { showInSignature: 'true', signatureWindowDays: '7', pricing: { m: { input: '2', output: '8.5' } } }
+  };
+  const { config, issues } = parseConfigFile(raw);
+
+  it('loads durations, window days and prices as the numbers the readers compare and multiply', () => {
+    expect(issues).toEqual([]);
+    // `expireStaleSessions` compares, `syncSlot` debounces, `collectWindowUsage` subtracts days, and
+    // `resolveRecordCost` multiplies prices: every reader gets the same number the raw value coerces to.
+    expect(ttlMs(config)).toBe(300_000);
+    expect(debounceMs(config)).toBe(60_000);
+    expect(usageSignatureWindowDays(config)).toBe(7);
+    expect(usagePricingOverrides(config)).toEqual({ m: { input: 2, output: 8.5 } });
+  });
+
+  it('loads numeric slot ids as the strings the credential store writes', () => {
+    expect(configSlotId(config)).toBe('456');
+    expect(config.slot_id).toBe('123');
+  });
+
+  it("loads showInSignature strings by the accessor's own 1/true rule", () => {
+    expect(usageShowInSignature(config)).toBe(true);
+    expect(usageShowInSignature(parseConfigFile({ usage: { showInSignature: '0' } }).config)).toBe(false);
+    // A value the rule does not name is dropped, not guessed at.
+    expect(parseConfigFile({ usage: { showInSignature: 'yes' } }).issues).toEqual([
+      { path: 'usage.showInSignature', reason: 'expected a boolean' }
+    ]);
+  });
+
+  it("drops durations and flags the accessor's env rule does not accept", () => {
+    const dropped = parseConfigFile({ ttlMs: 'fast', usage: { showInSignature: 'yes' } });
+    expect(dropped.config.ttlMs).toBeUndefined();
+    expect(dropped.issues.map((issue) => issue.path)).toEqual(['ttlMs', 'usage.showInSignature']);
   });
 });

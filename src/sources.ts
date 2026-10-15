@@ -130,8 +130,9 @@ export interface ResolvedSource {
 /**
  * The entry of one source id, the way the merged table resolves it: the user's `plugins.sources[id]` when set, else
  * the shipped default of that id, with `enabled: false` disabling it. Reading only this id keeps a broken entry of
- * *another* source from failing the hook's lookup (issue #106); the hook passes the schema-free config, so a broken
- * entry or root of the hook's own source still throws here and fails open as before.
+ * *another* source from failing the hook's lookup; the hook passes the schema-free config, so a broken entry of the
+ * hook's own source still throws here and fails open as before, and a null root throws at the `plugins` read — any
+ * other non-object root reads as no user entries, so the hook resolves the shipped default.
  */
 function hookSourceEntry(source: string, config: AppConfig): SourcePluginConfig | undefined {
   const userEntry = pluginSourcesConfig(config)[source];
@@ -435,7 +436,7 @@ export async function resolveSourcePlugin(
  * Resolve a source id to its hook context. The entry is the source's own
  * (user entry, else the shipped default — see `hookSourceEntry`), not the whole
  * merged table: the hook passes the schema-free config, and one lookup per run
- * must not trip over another source's broken entry (issue #106). A `builtin:`
+ * must not trip over another source's broken entry. A `builtin:`
  * entry reuses a trusted shipped resolver (raw environment); a user
  * `handler`/`match` entry is guarded and receives a credential-stripped
  * environment. A disabled or unknown source returns `{}` (the unchanged

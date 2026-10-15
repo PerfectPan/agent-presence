@@ -2,9 +2,9 @@ import * as z from 'zod/mini';
 import { loadConfig, type AppConfig } from './config.js';
 
 // Commands, the queue worker and the takeover parse the config here, so one broken entry is ignored with a warning
-// that names it instead of breaking them (issue #106). The hook path keeps the schema-free read in `src/config.ts`:
-// loading zod costs a hook about 22 ms (Plan 0003 3.2, test/hook-graph.test.ts), and the hook reads only its own
-// source's entry and fails open on that entry and on a non-object root, as before.
+// that names it instead of breaking them. The hook path keeps the schema-free read in `src/config.ts`: loading zod
+// costs a hook about 22 ms (Plan 0003 3.2, test/hook-graph.test.ts), and the hook reads only its own source's entry
+// and fails open on that entry and on a null root, as before.
 
 /** A config value the loader dropped, named by its path in the config file. */
 export interface ConfigIssue {
@@ -14,18 +14,53 @@ export interface ConfigIssue {
   reason: string;
 }
 
-/** The reason of the first issue zod raised, in the wording of the loader's warnings. */
-function droppedValueReason(error: z.core.$ZodError): string {
-  const issue = error.issues[0];
-  if (!issue) {
-    return 'invalid';
-  }
+/** The reason one zod issue names, in the wording of the loader's warnings; a union names its first branch. */
+function reasonForIssue(issue: z.core.$ZodIssue): string {
   if (issue.code === 'invalid_type' && typeof issue.expected === 'string') {
     const expected = issue.expected === 'record' ? 'object' : issue.expected;
     return `expected ${/^[aeiou]/.test(expected) ? 'an' : 'a'} ${expected}`;
   }
+  if (issue.code === 'invalid_union') {
+    const branch = issue.errors[0]?.[0];
+    if (branch) {
+      return reasonForIssue(branch);
+    }
+  }
   return issue.message || issue.code;
 }
+
+/** The reason of the first issue zod raised, in the wording of the loader's warnings. */
+function droppedValueReason(error: z.core.$ZodError): string {
+  const issue = error.issues[0];
+  return issue ? reasonForIssue(issue) : 'invalid';
+}
+
+/**
+ * A number, or the decimal numeric strings the readers accept today through arithmetic coercion (`ttlMs: "300000"`
+ * in `expireStaleSessions`, prices in `resolveRecordCost`); loads as the number.
+ */
+const numberLike = z.union([
+  z.number(),
+  z.pipe(
+    z.string().check(z.regex(/^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/)),
+    z.transform((text) => Number(text))
+  )
+]);
+
+/**
+ * A boolean, or the `1`/`true` (or `0`/`false`) strings the accessor's own env override has always accepted for
+ * `usage.showInSignature`; loads as the boolean.
+ */
+const booleanLike = z.union([
+  z.boolean(),
+  z.pipe(
+    z.string().check(z.regex(/^(?:1|true|0|false)$/i)),
+    z.transform((text) => text === '1' || text.toLowerCase() === 'true')
+  )
+]);
+
+/** A string, or a number the credential store stringifies (`slot_id: 123` names slot `"123"`); loads as the string. */
+const stringLike = z.union([z.string(), z.pipe(z.number(), z.transform(String))]);
 
 /**
  * A known config field: parses, or loads as missing with its path reported. `z.optional` wraps the pipe, so an
@@ -116,11 +151,11 @@ function configSchema(issues: ConfigIssue[]) {
 
   const priceEntry = (prefix: string) =>
     z.looseObject({
-      input: configField(`${prefix}.input`, z.number(), issues),
-      output: configField(`${prefix}.output`, z.number(), issues),
-      cacheWrite: configField(`${prefix}.cacheWrite`, z.number(), issues),
-      cacheWrite1h: configField(`${prefix}.cacheWrite1h`, z.number(), issues),
-      cacheRead: configField(`${prefix}.cacheRead`, z.number(), issues)
+      input: configField(`${prefix}.input`, numberLike, issues),
+      output: configField(`${prefix}.output`, numberLike, issues),
+      cacheWrite: configField(`${prefix}.cacheWrite`, numberLike, issues),
+      cacheWrite1h: configField(`${prefix}.cacheWrite1h`, numberLike, issues),
+      cacheRead: configField(`${prefix}.cacheRead`, numberLike, issues)
     });
 
   return z.looseObject({
@@ -159,10 +194,10 @@ function configSchema(issues: ConfigIssue[]) {
       }),
       issues
     ),
-    slot_id: configField('slot_id', z.string(), issues),
-    slotId: configField('slotId', z.string(), issues),
-    ttlMs: configField('ttlMs', z.number(), issues),
-    debounceMs: configField('debounceMs', z.number(), issues),
+    slot_id: configField('slot_id', stringLike, issues),
+    slotId: configField('slotId', stringLike, issues),
+    ttlMs: configField('ttlMs', numberLike, issues),
+    debounceMs: configField('debounceMs', numberLike, issues),
     render: configField(
       'render',
       z.looseObject({
@@ -175,8 +210,8 @@ function configSchema(issues: ConfigIssue[]) {
     usage: configField(
       'usage',
       z.looseObject({
-        showInSignature: configField('usage.showInSignature', z.boolean(), issues),
-        signatureWindowDays: configField('usage.signatureWindowDays', z.number(), issues),
+        showInSignature: configField('usage.showInSignature', booleanLike, issues),
+        signatureWindowDays: configField('usage.signatureWindowDays', numberLike, issues),
         pricing: configField(
           'usage.pricing',
           entriesThatParse('usage.pricing', (model) => priceEntry(`usage.pricing.${model}`), issues),
@@ -231,7 +266,11 @@ export function parseConfigFile(raw: unknown): { config: AppConfig; issues: Conf
 export interface ValidatedConfigLoad {
   /** The config as it loads: a value that does not parse loads as missing, unknown keys are kept. */
   readonly config: AppConfig;
-  /** The file's content as read without the schema; the base a write command changes and saves back (issue #106). */
+  /**
+   * The file's content as read without the schema, and the base every write command changes and saves back: a
+   * command keeps the keys and entries it does not touch. A dropped root (not an object) leaves nothing to keep, so
+   * this is `{}` there — always an object, never the bare file value.
+   */
   readonly raw: AppConfig;
   /** Each dropped value, with its path and reason, in schema order. */
   readonly issues: ConfigIssue[];
@@ -261,10 +300,24 @@ function reportDroppedValues(issues: ConfigIssue[]): void {
 
 /** Load the config for commands, the worker and the takeover: the validated view plus, for writes, the raw file. */
 export async function loadValidatedConfig(options: LoadValidatedConfigOptions = {}): Promise<ValidatedConfigLoad> {
-  const raw = await loadConfig(options.configPath);
-  const { config, issues } = parseConfigFile(raw);
+  const file = await loadConfig(options.configPath);
+  const { config, issues } = parseConfigFile(file);
   if (options.report !== false) {
     reportDroppedValues(issues);
   }
+  // Only a dropped root has no file content to write over; its issue is the one named `config`.
+  const raw = issues.some((issue) => issue.path === 'config') ? {} : file;
   return { config, raw, issues };
+}
+
+/** The `plugins.sources` table as the file holds it, however broken its entries are. */
+const rawSourcesTable = z.record(z.string(), z.unknown());
+
+/**
+ * Whether the file's `plugins.sources` table holds the key `id` at all — the presence test for `source remove`,
+ * which must also remove an entry the loader dropped. A table that is not a map holds no keys.
+ */
+export function hasPluginSource(config: AppConfig, id: string): boolean {
+  const parsed = rawSourcesTable.safeParse(config.plugins?.sources);
+  return parsed.success && id in parsed.data;
 }
