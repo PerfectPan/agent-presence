@@ -294,19 +294,24 @@ describe('setup through the harness', () => {
 
   it('keeps every target unchanged through the full preview, applies the exact confirmed handle, then verifies before publishing', async () => {
     await seedSettings();
+    await mkdir(join(fixture.home, '.dsh'));
     const before = await snapshotTargets();
     let targetsAtConfirmation: Record<string, string> | undefined;
     let shimExistedAtConfirmation: boolean | undefined;
     let watcherCallsAtConfirmation: number | undefined;
     let noteTitlesAtConfirmation: (string | undefined)[] | undefined;
     let shimModeAtApply: number | undefined;
-    ui.promptConfirm.mockImplementation(async () => {
+    ui.promptConfirm.mockImplementationOnce(async () => {
       targetsAtConfirmation = await snapshotTargets();
       shimExistedAtConfirmation = existsSync(join(fixture.presenceHome, 'bin/agent-presence'));
       watcherCallsAtConfirmation = dependencies.runScripts.mock.calls.length;
       noteTitlesAtConfirmation = ui.showNote.mock.calls.map(([, title]) => title);
       timeline.push('confirm');
       return true;
+    });
+    ui.promptConfirm.mockImplementationOnce(async () => {
+      timeline.push('dsh');
+      return false;
     });
     hooks.applyInstall.mockImplementation((plan) =>
       Effect.promise(async () => {
@@ -334,6 +339,7 @@ describe('setup through the harness', () => {
       ])
     );
     expect(fixture.processCalls).toEqual([]);
+    expect(ui.promptConfirm).toHaveBeenNthCalledWith(2, 'Install the dsh plugin for presence + token usage reporting?');
     expect(dependencies.installDsh).not.toHaveBeenCalled();
     expect(hooks.applyInstall).toHaveBeenCalledExactlyOnceWith(plans[0]);
     expect(hooks.verify).toHaveBeenCalledExactlyOnceWith('agent-presence', {
@@ -341,8 +347,8 @@ describe('setup through the harness', () => {
       agents: PRESENCE_AGENTS
     });
     expect(
-      timeline.filter((entry) => ['planned', 'confirm', 'apply', 'watcher', 'publish', 'verify'].includes(entry))
-    ).toEqual(['planned', 'confirm', 'apply', 'verify', 'watcher', 'publish']);
+      timeline.filter((entry) => ['planned', 'confirm', 'apply', 'watcher', 'dsh', 'publish', 'verify'].includes(entry))
+    ).toEqual(['planned', 'confirm', 'apply', 'verify', 'watcher', 'dsh', 'publish']);
     expect(output()).toContain('setup create:');
     expect(output()).toMatch(/verif/i);
     expect(await snapshotTargets()).not.toEqual(before);
@@ -641,10 +647,13 @@ describe('setup through the harness', () => {
     expect(ui.finishOutro).not.toHaveBeenCalled();
   });
 
-  it('keeps dsh prompt cancellation outside the harness after reporting verification', async () => {
+  it('keeps dsh prompt cancellation outside the harness after verification and watcher installation', async () => {
     await mkdir(join(fixture.home, '.dsh'));
     const cancellation = new Error('operation cancelled');
-    ui.promptConfirm.mockResolvedValueOnce(true).mockRejectedValueOnce(cancellation);
+    ui.promptConfirm.mockResolvedValueOnce(true).mockImplementationOnce(async () => {
+      timeline.push('dsh');
+      throw cancellation;
+    });
 
     await expect(setup(argumentsForSetup, {}, fixture.layer)).rejects.toBe(cancellation);
 
@@ -653,7 +662,13 @@ describe('setup through the harness', () => {
     expect(hooks.verify).toHaveBeenCalledOnce();
     expect(output()).toContain('verify in-sync:');
     expect(dependencies.installDsh).not.toHaveBeenCalled();
-    expect(dependencies.runScripts).not.toHaveBeenCalled();
+    expect(dependencies.runScripts).toHaveBeenCalledOnce();
+    expect(timeline.filter((entry) => ['apply', 'verify', 'watcher', 'dsh', 'publish'].includes(entry))).toEqual([
+      'apply',
+      'verify',
+      'watcher',
+      'dsh'
+    ]);
     expect(dependencies.publish).not.toHaveBeenCalled();
     expect(ui.finishOutro).not.toHaveBeenCalled();
   });

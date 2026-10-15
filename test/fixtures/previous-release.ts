@@ -13,12 +13,14 @@ export interface HookCommand {
 
 export interface HookGroup {
   matcher?: unknown;
-  hooks?: HookCommand[];
+  hooks?: HookCommand[] | null;
 }
 
 export interface HookSettings {
   hooks: Record<string, HookGroup[]>;
 }
+
+type HookSettingsInput = { hooks?: HookSettings['hooks'] | null };
 
 const CLAUDE_EVENTS = [
   'SessionStart',
@@ -60,7 +62,7 @@ export function withoutAgentSignatureHookGroups(groups: HookGroup[]): HookGroup[
   });
 }
 
-export function withoutAgentSignatureHooks(input: Partial<HookSettings>): HookSettings {
+export function withoutAgentSignatureHooks(input: HookSettingsInput): HookSettings {
   const settings: HookSettings = {
     ...input,
     hooks: {}
@@ -492,7 +494,7 @@ export async function installPiExtension(paths: PiExtensionPaths): Promise<PiIns
   };
 }
 
-export function withClaudeAgentSignatureHooks(input: Partial<HookSettings>): HookSettings {
+export function withClaudeAgentSignatureHooks(input: HookSettingsInput): HookSettings {
   const settings: HookSettings = {
     ...input,
     hooks: { ...input.hooks }
@@ -517,7 +519,7 @@ export function withClaudeAgentSignatureHooks(input: Partial<HookSettings>): Hoo
 
 const GEMINI_EVENTS = ['SessionStart', 'UserPromptSubmit', 'PreToolUse', 'PostToolUse', 'Stop', 'SessionEnd'];
 
-export function withGeminiAgentSignatureHooks(input: Partial<HookSettings>): HookSettings {
+export function withGeminiAgentSignatureHooks(input: HookSettingsInput): HookSettings {
   const settings: HookSettings = {
     ...input,
     hooks: { ...input.hooks }
@@ -563,12 +565,12 @@ export function previousReleasePaths(homeDir: string) {
 }
 
 const hookSettingsSchema = z.looseObject({
-  hooks: z.optional(
+  hooks: z.nullish(
     z.record(
       z.string(),
       z.array(
         z.looseObject({
-          hooks: z.optional(
+          hooks: z.nullish(
             z.array(
               z.looseObject({
                 command: z.string()
@@ -581,11 +583,11 @@ const hookSettingsSchema = z.looseObject({
   )
 });
 
-const preservingHookSettingsSchema = z.custom<Partial<HookSettings>>(
+const preservingHookSettingsSchema = z.custom<HookSettingsInput>(
   (input) => z.safeParse(hookSettingsSchema, input).success
 );
 
-async function readHookSettings(path: string): Promise<Partial<HookSettings>> {
+async function readHookSettings(path: string): Promise<HookSettingsInput> {
   return z.parse(preservingHookSettingsSchema, await readJsonFile<unknown>(path, { hooks: {} }));
 }
 
@@ -597,7 +599,7 @@ async function installCodexHooks(hooksPath: string): Promise<void> {
   const EVENTS = ['SessionStart', 'UserPromptSubmit', 'PreToolUse', 'Stop'];
 
   interface HooksFile {
-    hooks?: Record<string, HookGroup[]>;
+    hooks?: Record<string, HookGroup[]> | null;
   }
 
   function withoutAgentSignatureHooks(groups: HookGroup[]): HookGroup[] {

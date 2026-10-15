@@ -38,6 +38,31 @@ describe.each(['npx', 'absolute'] as const)('previous-release fixture (%s)', (co
     }
   });
 
+  it.each(['top-level', 'group'] as const)(
+    'treats null %s hooks as empty in old install and uninstall',
+    async (position) => {
+      const paths = previousReleasePaths(homeDir);
+      const hookPaths = [paths.claudeSettings, paths.codexHooks, paths.geminiSettings];
+      const input = { theme: 'dark', hooks: position === 'top-level' ? null : { Stop: [{ hooks: null }] } };
+      for (const path of hookPaths) {
+        await writeJsonAtomic(path, input);
+      }
+
+      await installPreviousRelease({ homeDir, commandMode });
+
+      for (const path of hookPaths) {
+        expect(await readFile(path, 'utf8')).toContain('"command":');
+        await writeJsonAtomic(path, input);
+      }
+
+      await uninstallPreviousRelease({ homeDir });
+
+      for (const path of hookPaths) {
+        expect(await readFile(path, 'utf8')).toBe(`${JSON.stringify({ theme: 'dark', hooks: {} }, null, 2)}\n`);
+      }
+    }
+  );
+
   it('preserves foreign hook types and config values through old install and uninstall matchers', async () => {
     await installPreviousRelease({ homeDir, commandMode });
     const paths = previousReleasePaths(homeDir);
