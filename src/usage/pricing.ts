@@ -75,6 +75,9 @@ const LITELLM_PRICING: Record<string, ModelPricing> = loadLiteLLMPricing();
 // `createPricing` caches its model lookups per instance and the tables never
 // change, so one instance per overrides value serves every record of a run;
 // keyed weakly so a per-command config load does not pin the previous one.
+// The key is the overrides object's identity: a caller that mutates an
+// overrides object in place would keep reading the pricing built from its old
+// content, so pass a fresh object instead.
 const pricingByOverrides = new WeakMap<PricingOverrides, Pricing>();
 
 // The shared no-override key, so the common `resolvePricing(model)` shape

@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vite-plus/test';
+import { parseConfigFile } from '../src/config-schema.js';
 import { parsePricingSnapshot } from '../src/usage/pricing.js';
 import { resolvePricing, resolveRecordCost } from '../src/usage/index.js';
-import type { UsageRecord } from '../src/usage/index.js';
+import type { PricingOverrides, UsageRecord } from '../src/usage/index.js';
 
 function record(partial: Partial<UsageRecord>): UsageRecord {
   return {
@@ -48,6 +49,20 @@ describe('resolvePricing', () => {
     // its unset fields come from the same key's snapshot entry, not the alias
     expect(pricing?.output).toBe(25);
     expect(pricing?.cacheWrite1h).toBe(10);
+  });
+
+  it('lets an empty-string override key price every model ahead of the snapshot', () => {
+    // Deliberate kit-lookup behavior, kept: the empty key is a substring of
+    // every id and overrides win over the tables, so it acts as a catch-all.
+    // The old walk's falsy-key check made the same config price nothing.
+    const every: PricingOverrides = { '': { input: 2, output: 4, cacheWrite: 1, cacheRead: 0.5 } };
+    expect(resolvePricing('totally-unknown-model', every)).toEqual({
+      input: 2,
+      output: 4,
+      cacheWrite: 1,
+      cacheRead: 0.5
+    });
+    expect(resolvePricing('gpt-5.5', every)).toEqual({ input: 2, output: 4, cacheWrite: 1, cacheRead: 0.5 });
   });
 
   it('gives an incomplete override of an untabulated key no price instead of guessing', () => {
@@ -134,6 +149,33 @@ describe('parsePricingSnapshot', () => {
     expect(parsePricingSnapshot({ _comment: 'generated' })).toEqual({});
     expect(parsePricingSnapshot({ prices: { 'gpt-5': 'cheap' } })).toEqual({});
     expect(parsePricingSnapshot({ prices: { 'gpt-5': null } })).toEqual({});
+  });
+});
+
+describe('pricing overrides through the config loader', () => {
+  it('prices a snapshot model from the snapshot when its override field is dropped', () => {
+    // `input: "x"` is reported and dropped to absent; the empty override
+    // entry completes from the snapshot's same-key entry instead of pricing
+    // nothing (a kept `undefined` field would).
+    const { config, issues } = parseConfigFile({ usage: { pricing: { 'gpt-5.5': { input: 'x' } } } });
+    expect(issues).toEqual([{ path: 'usage.pricing.gpt-5.5.input', reason: 'expected a number' }]);
+    expect(resolvePricing('gpt-5.5', config.usage?.pricing)).toEqual({
+      input: 5,
+      output: 30,
+      cacheWrite: 5,
+      cacheRead: 0.5
+    });
+  });
+
+  it('prices an override field written as a numeric string at its number', () => {
+    const { config, issues } = parseConfigFile({ usage: { pricing: { 'gpt-5.5': { input: '7' } } } });
+    expect(issues).toEqual([]);
+    expect(resolvePricing('gpt-5.5', config.usage?.pricing)).toEqual({
+      input: 7,
+      output: 30,
+      cacheWrite: 5,
+      cacheRead: 0.5
+    });
   });
 });
 
