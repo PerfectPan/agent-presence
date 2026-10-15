@@ -29,7 +29,9 @@ Usage is a capability of the same source table that drives presence: every built
 | Grok        | yes — decoded per completed turn, with the cost Grok logged                                                         |
 | dsh         | yes — the managed dsh plugin reports each model call's usage in real time; priced from the table                    |
 
-Transcripts are decoded when they are no longer being written, and each decoder decides when a record is complete: Claude Code reports a request once four newer requests have been written in its conversation lane or the session has been quiet for 30 minutes, and opencode counts a database message once it completes (a quiet database settles its last running messages). Gemini CLI, Pi, and Codex count a request as soon as its record is complete. A just-finished turn can therefore take a few minutes to reach the badge.
+Each decoder decides when a record is complete: Claude Code reports a request once four newer requests have been written in its conversation lane or the session has been quiet for 30 minutes, and opencode counts a database message once it completes (a quiet database settles its last running messages). Gemini CLI, Pi, and Codex count a request as soon as its record is complete.
+
+The badge adds its own rule on top: it refreshes at a session boundary's time and, within a day, only that boundary's source. Requests Claude Code still held at the day's last Claude boundary therefore count only at the next Claude boundary more than 30 quiet minutes later — when there is none, they stay out of the badge for the rest of the day. `agent-presence usage` scans to the current time and reports them sooner.
 
 Cost shows `n/a` for models with no pricing entry; token counts are always exact. Pi, opencode, and Grok log a real cost, so those are used as-is. Other sources are priced from the bundled LiteLLM snapshot for supported models (for example `gpt-5.5`, `claude-fable-5`, `deepseek-v4-pro`, and `gemini-3-flash-preview`), with a small fallback table for older aliases. Override pricing per model in `~/.agent-presence/config.json` when your deployment uses a private or unlisted model.
 

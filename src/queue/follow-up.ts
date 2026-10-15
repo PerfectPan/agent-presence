@@ -1,5 +1,5 @@
 import { configSlotId, debounceMs, providerId, renderTemplates, ttlMs, type AppConfig } from '../config.js';
-import { BUILTIN_SOURCE_PLUGINS, SCAN_ENV } from '../cli/hook-context.js';
+import { SCAN_ENV } from '../cli/hook-context.js';
 import { syncRenderedSlotWithDeferredFlush } from '../cli/rendered-slot-sync.js';
 import { refreshSignatureUsageBadges, usageRenderPlan, type UsageRefreshOutcome } from '../cli/usage-badge.js';
 import { createProvider } from '../providers/registry.js';
@@ -68,16 +68,16 @@ export function knownSources(config: AppConfig): ReadonlySet<string> {
 }
 
 /**
- * The environment a refresh of `entry` scans with: the worker's own, with every transcript-root variable that the
- * entry's built-in source reads, or that the entry recorded, set to the recorded value or unset when it recorded none.
+ * The environment a refresh of `entry` scans with: the worker's own, except that every agent-home variable the kit can
+ * read is set to the value the boundary recorded, or unset when it recorded none — for every source the refresh scans,
+ * so a promoted first-boundary refresh reads no home variable the producer did not copy. A source whose variable was
+ * not recorded reads its default root under the worker's home until its own boundary records one. The worker's other
+ * variables stay.
  */
 export function scanEnvironmentFor(entry: UsageRefreshEntry): ScanEnvironment {
   const env: Record<string, string | undefined> = { ...process.env };
-  const sourceNames = BUILTIN_SOURCE_PLUGINS[entry.source]?.scanEnv ?? [];
   for (const name of Object.values(SCAN_ENV)) {
-    if (sourceNames.includes(name) || Object.hasOwn(entry.scanEnv, name)) {
-      env[name] = entry.scanEnv[name];
-    }
+    env[name] = entry.scanEnv[name];
   }
   return env;
 }

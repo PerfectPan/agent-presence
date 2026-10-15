@@ -13,41 +13,25 @@ import { createQueueHome, eventBody, recordAt, readState, T0, type QueueHome } f
 // The worker's usage refresh scans with the recorded agent-home variables: a
 // value the hook's environment carried reaches the scan through the entry's
 // `scanEnv` and decides where it reads; a value only the worker's environment
-// has is not read. Real fixtures and the real scan; no module mocks.
+// has is not read — an agent whose variable was not recorded reads its default
+// root under the refresh's home instead. Real fixtures and the real scan; no
+// module mocks.
 
 const MINUTE = 60_000;
 const QUIET = T0 - 31 * MINUTE;
 const iso = (ms: number) => new Date(ms).toISOString();
 
-beforeEach(() => {
-  // The worker's environment points every agent at its worker-home; only a
-  // recorded variable may lead the scan elsewhere.
-  process.env.CLAUDE_CONFIG_DIR = '/worker-env/claude';
-  process.env.CODEX_HOME = '/worker-env/codex';
-  process.env.GEMINI_CLI_HOME = '/worker-env/gemini';
-  process.env.GROK_HOME = '/worker-env/grok';
-  process.env.XDG_DATA_HOME = '/worker-env/xdg';
-  process.env.PI_CODING_AGENT_DIR = '/worker-env/pi';
-});
+const AGENTS: Array<{ source: string; variable: string }> = [
+  { source: 'claude', variable: 'CLAUDE_CONFIG_DIR' },
+  { source: 'codex', variable: 'CODEX_HOME' },
+  { source: 'gemini', variable: 'GEMINI_CLI_HOME' },
+  { source: 'grok', variable: 'GROK_HOME' },
+  { source: 'opencode', variable: 'XDG_DATA_HOME' },
+  { source: 'pi', variable: 'PI_CODING_AGENT_DIR' }
+];
 
-const savedEnv = new Map<string, string | undefined>(
-  ['CLAUDE_CONFIG_DIR', 'CODEX_HOME', 'GEMINI_CLI_HOME', 'GROK_HOME', 'XDG_DATA_HOME', 'PI_CODING_AGENT_DIR'].map(
-    (name) => [name, process.env[name]]
-  )
-);
-
-afterEach(() => {
-  for (const [name, value] of savedEnv) {
-    if (value === undefined) {
-      delete process.env[name];
-    } else {
-      process.env[name] = value;
-    }
-  }
-});
-
-/** One transcript worth 100 tokens under `root`, laid out as the agent keeps it. */
-async function writeFixture(root: string, agent: string): Promise<void> {
+/** One transcript worth `tokens` (100 by default) under `root`, laid out as the agent keeps it. */
+async function writeFixture(root: string, agent: string, tokens = 100): Promise<void> {
   const write = async (segments: string[], content: string, quiet: boolean): Promise<void> => {
     const file = join(root, ...segments);
     await mkdir(dirname(file), { recursive: true });
@@ -63,7 +47,11 @@ async function writeFixture(root: string, agent: string): Promise<void> {
         type: 'assistant',
         timestamp: iso(T0 - 1000),
         requestId: 'req_env',
-        message: { id: 'msg_env', model: 'mystery-model', usage: { input_tokens: 90, output_tokens: 10 } }
+        message: {
+          id: 'msg_env',
+          model: 'mystery-model',
+          usage: { input_tokens: tokens - 10, output_tokens: 10 }
+        }
       })}\n`,
       true
     );
@@ -76,8 +64,18 @@ async function writeFixture(root: string, agent: string): Promise<void> {
         payload: {
           type: 'token_count',
           info: {
-            total_token_usage: { input_tokens: 80, cached_input_tokens: 0, output_tokens: 20, total_tokens: 100 },
-            last_token_usage: { input_tokens: 80, cached_input_tokens: 0, output_tokens: 20, total_tokens: 100 }
+            total_token_usage: {
+              input_tokens: tokens - 20,
+              cached_input_tokens: 0,
+              output_tokens: 20,
+              total_tokens: tokens
+            },
+            last_token_usage: {
+              input_tokens: tokens - 20,
+              cached_input_tokens: 0,
+              output_tokens: 20,
+              total_tokens: tokens
+            }
           }
         }
       })}\n`,
@@ -91,7 +89,7 @@ async function writeFixture(root: string, agent: string): Promise<void> {
         timestamp: iso(T0 - 1000),
         type: 'gemini',
         model: 'mystery-model',
-        tokens: { input: 60, output: 40 }
+        tokens: { input: tokens - 40, output: 40 }
       })}\n`,
       false
     );
@@ -105,7 +103,7 @@ async function writeFixture(root: string, agent: string): Promise<void> {
             sessionUpdate: 'turn_completed',
             prompt_id: 'p_env',
             schema_version: 1,
-            usage: { inputTokens: 70, outputTokens: 30, totalTokens: 100 }
+            usage: { inputTokens: tokens - 30, outputTokens: 30, totalTokens: tokens }
           }
         }
       })}\n`,
@@ -142,7 +140,7 @@ async function writeFixture(root: string, agent: string): Promise<void> {
         message: {
           role: 'assistant',
           model: 'mystery-model',
-          usage: { input: 70, output: 30, cacheRead: 0, cacheWrite: 0, cost: { total: 0 } }
+          usage: { input: tokens - 30, output: 30, cacheRead: 0, cacheWrite: 0, cost: { total: 0 } }
         }
       })}\n`,
       false
@@ -150,22 +148,47 @@ async function writeFixture(root: string, agent: string): Promise<void> {
   }
 }
 
-const AGENTS: Array<{ source: string; variable: string }> = [
-  { source: 'claude', variable: 'CLAUDE_CONFIG_DIR' },
-  { source: 'codex', variable: 'CODEX_HOME' },
-  { source: 'gemini', variable: 'GEMINI_CLI_HOME' },
-  { source: 'grok', variable: 'GROK_HOME' },
-  { source: 'opencode', variable: 'XDG_DATA_HOME' },
-  { source: 'pi', variable: 'PI_CODING_AGENT_DIR' }
-];
-
 let home: QueueHome;
+// The refresh's own home: the kit's default roots (`os.homedir()/.claude`, ...)
+// resolve here, so no scan of this file walks the developer's real home,
+// whatever HOME the outer run has.
+let defaultHome: string;
+
+const savedEnv = new Map<string, string | undefined>(
+  [
+    'HOME',
+    'CLAUDE_CONFIG_DIR',
+    'CODEX_HOME',
+    'GEMINI_CLI_HOME',
+    'GROK_HOME',
+    'XDG_DATA_HOME',
+    'PI_CODING_AGENT_DIR'
+  ].map((name) => [name, process.env[name]])
+);
 
 beforeEach(async () => {
   home = await createQueueHome();
+  defaultHome = await mkdtemp(join(tmpdir(), 'env-default-home-'));
+  process.env.HOME = defaultHome;
+  // The worker's environment points every agent at its worker-home, each
+  // holding a real 100-token fixture; only a recorded variable may lead the
+  // scan there.
+  for (const agent of AGENTS) {
+    const workerDir = join(defaultHome, 'worker-env', agent.source);
+    await writeFixture(workerDir, agent.source);
+    process.env[agent.variable] = workerDir;
+  }
 });
 
 afterEach(async () => {
+  for (const [name, value] of savedEnv) {
+    if (value === undefined) {
+      delete process.env[name];
+    } else {
+      process.env[name] = value;
+    }
+  }
+  await rm(defaultHome, { recursive: true, force: true });
   await home.dispose();
 });
 
@@ -208,14 +231,26 @@ describe('the worker refresh scans with the recorded agent-home variables', () =
     });
   }
 
-  it('reads none of the worker environment value the entry did not record', async () => {
-    // The worker env names /worker-env/* (set above); no fixture exists there,
-    // and the entry records no variable, so the scan reads the default roots
-    // under the platform home instead — all empty.
+  it('reads no worker-only agent-home variable when the first boundary records none', async () => {
+    // The day's first boundary is promoted to every built-in source. The worker
+    // environment points each agent at a worker-home holding 100 tokens; none
+    // of it is recorded, so every source reads its default root under the
+    // refresh's home instead — empty, so every snapshot is 0.
+    await refreshWithRecorded({}, 'claude');
+    const state = await readState(home.statePath);
     for (const { source } of AGENTS) {
-      await refreshWithRecorded({}, source);
-      const state = await readState(home.statePath);
       expect(state.usageSnapshots?.['1']?.[source]?.totalTokens ?? 0).toBe(0);
     }
+  });
+
+  it('reads the default root under the refresh home for an agent whose variable was not recorded', async () => {
+    // The codex default root ($HOME/.codex) holds 25 tokens; the worker-only
+    // CODEX_HOME holds 100. The Claude first boundary records no variable, so
+    // codex counts the default root's 25, not the worker's 100.
+    await writeFixture(join(defaultHome, '.codex'), 'codex', 25);
+
+    await refreshWithRecorded({}, 'claude');
+    const state = await readState(home.statePath);
+    expect(state.usageSnapshots?.['1']?.codex).toMatchObject({ totalTokens: 25 });
   });
 });

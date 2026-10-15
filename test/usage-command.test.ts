@@ -98,6 +98,11 @@ describe('renderUsageTable', () => {
 
 describe('printUsage --json', () => {
   it('reports inputTokens without the cache and totalTokens as the cache-inclusive input plus output', async () => {
+    // The command reads the wall clock for its window; the clock is faked to
+    // half a second past local midnight, where a record timed relative to the
+    // real now would fall on the previous day.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(2026, 6, 14, 0, 0, 0, 500));
     const home = await mkdtemp(join(tmpdir(), 'agent-presence-usage-json-'));
     const saved: Record<string, string | undefined> = {};
     const names = [
@@ -116,12 +121,14 @@ describe('printUsage --json', () => {
     }
 
     // One completed opencode message with cache reads and writes and a logged
-    // cost; the assertions pin field meanings, not times or prices.
+    // cost, timed at the faked date's local midnight from calendar fields —
+    // the only moment inside a window that ends half a second past midnight;
+    // the assertions pin field meanings, not times or prices.
+    const justNow = new Date(2026, 6, 14, 0, 0, 0, 0).getTime();
     const dbPath = join(home, 'opencode', 'opencode.db');
     mkdirSync(dirname(dbPath), { recursive: true });
     const db = new DatabaseSync(dbPath);
     db.exec('CREATE TABLE message (id TEXT, session_id TEXT, time_created INTEGER, time_updated INTEGER, data TEXT)');
-    const justNow = Date.now() - 1000;
     db.prepare('INSERT INTO message (id, session_id, time_created, time_updated, data) VALUES (?, ?, ?, ?, ?)').run(
       'msg_1',
       'ses_1',
@@ -153,6 +160,7 @@ describe('printUsage --json', () => {
       await printUsage(['--json', '--days', '1']);
     } finally {
       log.mockRestore();
+      vi.useRealTimers();
       for (const name of names) {
         if (saved[name] === undefined) {
           delete process.env[name];

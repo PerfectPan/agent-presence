@@ -357,9 +357,11 @@ stop (3.7):
   repeated id. The item leaves `queueOwed` only after the append wrote.
 - Usage refresh: through the existing refresh for that source, with its `scanEnv` and boundary time so the day rule
   (`usage-badge.ts:71-79`) holds; an entry whose source is not in the merged source table is skipped and stays owed
-  (above). The scanners read their transcript roots from the worker's environment with every variable that the
-  entry's built-in source reads, or that the entry recorded, set to the recorded value, or unset when none was
-  recorded. The refresh gains an abort signal and returns whether it completed. In the refresh's own locked save, the
+  (above). The scanners read their transcript roots from the worker's environment with every agent-home variable in
+  `SCAN_ENV` set to the value the entry recorded, or unset when it recorded none — for every source the refresh
+  scans, so a promoted first-boundary refresh reads no home variable the producer did not copy; a source whose
+  variable was not recorded reads its default root under the worker's home until its own boundary records one. The
+  worker's other variables stay. The refresh gains an abort signal and returns whether it completed. In the refresh's own locked save, the
   entry is removed only if its generation is still the one the refresh started with; a boundary that arrived during
   the scan keeps it owed. A refresh that completes without saving (nothing to scan, or a failed scan that keeps the
   cache) removes the entry the same way in a save of its own.

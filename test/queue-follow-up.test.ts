@@ -288,9 +288,10 @@ describe('scanEnvironmentFor', () => {
     process.env = { ...saved };
   });
 
-  it('takes the transcript roots of the entry source from the entry and keeps the rest of the worker environment', () => {
+  it('takes every agent-home variable from the entry and keeps the worker environment otherwise', () => {
     process.env.CLAUDE_CONFIG_DIR = '/fake-home/worker-claude';
     process.env.GEMINI_CLI_HOME = '/fake-home/worker-gemini';
+    process.env.AGENT_PRESENCE_TOKEN = 'token_worker';
     const entry = (scanEnv: UsageRefreshEntry['scanEnv']): UsageRefreshEntry => ({
       source: 'claude',
       scanEnv,
@@ -300,14 +301,13 @@ describe('scanEnvironmentFor', () => {
 
     expect(scanEnvironmentFor(entry({ CLAUDE_CONFIG_DIR: '/fake-home/hook-claude' }))).toMatchObject({
       CLAUDE_CONFIG_DIR: '/fake-home/hook-claude',
-      GEMINI_CLI_HOME: '/fake-home/worker-gemini'
+      AGENT_PRESENCE_TOKEN: 'token_worker'
     });
-    // The hook ran without the variable, so its agent uses the default root, whatever the worker has.
+    // Every agent-home variable the scan could read comes from the entry, so a
+    // promoted first-boundary refresh reads no home the hook did not copy.
+    expect(scanEnvironmentFor(entry({ CLAUDE_CONFIG_DIR: '/fake-home/hook-claude' })).GEMINI_CLI_HOME).toBeUndefined();
+    // The hook ran without the variable, so the agent reads its default root, whatever the worker has.
     expect(scanEnvironmentFor(entry({})).CLAUDE_CONFIG_DIR).toBeUndefined();
-    // A variable another source reads, recorded with the entry, is taken from the entry too.
-    expect(scanEnvironmentFor(entry({ GEMINI_CLI_HOME: '/fake-home/hook-gemini' })).GEMINI_CLI_HOME).toBe(
-      '/fake-home/hook-gemini'
-    );
   });
 });
 

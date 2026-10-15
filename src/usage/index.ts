@@ -1,6 +1,6 @@
 import { summarize, type Pricing } from '@rivus/agent-kit/cost';
 import { createNodePlatform } from '@rivus/agent-kit/node';
-import { isUsageRecord, scanUsage as scanKitUsage } from '@rivus/agent-kit/transcript/usage';
+import { isUsageRecord, noCacheInputTokens, scanUsage as scanKitUsage } from '@rivus/agent-kit/transcript/usage';
 import type { UsageRecord as KitUsageRecord } from '@rivus/agent-kit/transcript/usage';
 
 import { writeLog } from '../log.js';
@@ -75,8 +75,8 @@ function summarise(source: UsageSource, records: KitUsageRecord[], pricing: Pric
     source,
     entries: total.entries,
     // The kit's input includes the cache counts reported below; the reported
-    // field keeps input without the cache, floored at 0.
-    inputTokens: Math.max(0, inputTokens - cacheReadTokens - cacheWriteTokens),
+    // field keeps the input that was neither read from nor written to a cache.
+    inputTokens: noCacheInputTokens(total.usage) ?? 0,
     outputTokens,
     cacheWriteTokens,
     cacheReadTokens,
