@@ -495,6 +495,8 @@ A Linux watcher would be a systemd user unit subscribed to logind's `PrepareForS
 
 Each installer is idempotent. Existing unrelated user configuration is preserved.
 
+`src/harness/shim.ts` provides the shim writer and remover for the harness bundle, independently of these installers. It writes `<presence home>/bin/agent-presence` as an executable shell script through a temporary file in the same directory and an atomic rename. The script forwards arguments to the existing version-pinned npm command or the absolute checkout command. Setup and uninstall do not call this helper yet: harness integration is blocked because a conflicting kit plan exposes only the conflicting steps, without the full preview required before conflict choices and confirmation.
+
 Idempotency is part of the installer contract, not a nice-to-have:
 
 | Area                  | Idempotency rule                                                                                                                                                                                                                                                                                                              |
