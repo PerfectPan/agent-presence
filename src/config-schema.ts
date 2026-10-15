@@ -48,11 +48,16 @@ const numberLike = z.union([
 ]);
 
 /**
- * A boolean, or the `1`/`true` (or `0`/`false`) strings the accessor's own env override has always accepted for
- * `usage.showInSignature`; loads as the boolean.
+ * A boolean; the `1`/`true` (or `0`/`false`) strings the accessor's own env override has always accepted for
+ * `usage.showInSignature`; or the numbers `1` and `0`, which enabled and disabled the badge by truthiness on main.
+ * Loads as the boolean.
  */
 const booleanLike = z.union([
   z.boolean(),
+  z.pipe(
+    z.number().check(z.refine((value) => value === 0 || value === 1)),
+    z.transform((value) => value === 1)
+  ),
   z.pipe(
     z.string().check(z.regex(/^(?:1|true|0|false)$/i)),
     z.transform((text) => text === '1' || text.toLowerCase() === 'true')
@@ -123,12 +128,31 @@ function entriesThatParse<S extends z.ZodMiniType>(prefix: string, entry: (key: 
 }
 
 /**
+ * A loose object whose fields that failed to parse are absent: `configField` loads a dropped field as missing, and
+ * zod's object pass would keep the present key with an `undefined` value — which a later spread of the parsed
+ * object would write over a working default. Unknown keys are kept as they are.
+ */
+function looseWithoutDropped<T extends z.core.$ZodLooseShape>(shape: T) {
+  return z.pipe(
+    z.looseObject(shape),
+    z.transform((value) => {
+      for (const key of Object.keys(value)) {
+        if (value[key] === undefined) {
+          delete value[key];
+        }
+      }
+      return value;
+    })
+  );
+}
+
+/**
  * The whole config file. Every object is loose, so keys the schema does not know are kept: the file is the user's.
  * Objects only reachable through a map build per key, so their fields' issue paths name the entry.
  */
 function configSchema(issues: ConfigIssue[]) {
   const matchField = (prefix: string) =>
-    z.looseObject({
+    looseWithoutDropped({
       envKeys: configField(`${prefix}.envKeys`, z.array(z.string()), issues),
       payloadKeys: configField(`${prefix}.payloadKeys`, z.array(z.string()), issues),
       nestedPayloadKeys: configField(`${prefix}.nestedPayloadKeys`, z.array(z.string()), issues),
@@ -136,21 +160,21 @@ function configSchema(issues: ConfigIssue[]) {
     });
 
   const matchSpec = (prefix: string) =>
-    z.looseObject({
+    looseWithoutDropped({
       sessionId: configField(`${prefix}.sessionId`, matchField(`${prefix}.sessionId`), issues),
       project: configField(`${prefix}.project`, matchField(`${prefix}.project`), issues),
       event: configField(`${prefix}.event`, matchField(`${prefix}.event`), issues)
     });
 
   const sourceEntry = (prefix: string) =>
-    z.looseObject({
+    looseWithoutDropped({
       handler: configField(`${prefix}.handler`, z.string(), issues),
       match: configField(`${prefix}.match`, matchSpec(`${prefix}.match`), issues),
       enabled: configField(`${prefix}.enabled`, z.boolean(), issues)
     });
 
   const priceEntry = (prefix: string) =>
-    z.looseObject({
+    looseWithoutDropped({
       input: configField(`${prefix}.input`, numberLike, issues),
       output: configField(`${prefix}.output`, numberLike, issues),
       cacheWrite: configField(`${prefix}.cacheWrite`, numberLike, issues),
@@ -158,7 +182,7 @@ function configSchema(issues: ConfigIssue[]) {
       cacheRead: configField(`${prefix}.cacheRead`, numberLike, issues)
     });
 
-  return z.looseObject({
+  return looseWithoutDropped({
     provider: configField(
       'provider',
       z.enum(['feishu-signature', 'magic-builder', 'l-garyyang'], { error: 'expected a known provider id' }),
@@ -170,10 +194,10 @@ function configSchema(issues: ConfigIssue[]) {
     previewTargetUrl: configField('previewTargetUrl', z.string(), issues),
     providers: configField(
       'providers',
-      z.looseObject({
+      looseWithoutDropped({
         'feishu-signature': configField(
           'providers.feishu-signature',
-          z.looseObject({
+          looseWithoutDropped({
             baseUrl: configField('providers.feishu-signature.baseUrl', z.string(), issues),
             previewBaseUrl: configField('providers.feishu-signature.previewBaseUrl', z.string(), issues),
             previewImageKey: configField('providers.feishu-signature.previewImageKey', z.string(), issues),
@@ -183,9 +207,9 @@ function configSchema(issues: ConfigIssue[]) {
         ),
         'magic-builder': configField(
           'providers.magic-builder',
-          z.looseObject({
+          looseWithoutDropped({
             baseUrl: configField('providers.magic-builder.baseUrl', z.string(), issues),
-            faasId: configField('providers.magic-builder.faasId', z.string(), issues),
+            faasId: configField('providers.magic-builder.faasId', stringLike, issues),
             faasName: configField('providers.magic-builder.faasName', z.string(), issues),
             fallbackTitle: configField('providers.magic-builder.fallbackTitle', z.string(), issues)
           }),
@@ -200,7 +224,7 @@ function configSchema(issues: ConfigIssue[]) {
     debounceMs: configField('debounceMs', numberLike, issues),
     render: configField(
       'render',
-      z.looseObject({
+      looseWithoutDropped({
         zero: configField('render.zero', z.string(), issues),
         one: configField('render.one', z.string(), issues),
         many: configField('render.many', z.string(), issues)
@@ -209,7 +233,7 @@ function configSchema(issues: ConfigIssue[]) {
     ),
     usage: configField(
       'usage',
-      z.looseObject({
+      looseWithoutDropped({
         showInSignature: configField('usage.showInSignature', booleanLike, issues),
         signatureWindowDays: configField('usage.signatureWindowDays', numberLike, issues),
         pricing: configField(
@@ -222,7 +246,7 @@ function configSchema(issues: ConfigIssue[]) {
     ),
     plugins: configField(
       'plugins',
-      z.looseObject({
+      looseWithoutDropped({
         sources: configField(
           'plugins.sources',
           entriesThatParse('plugins.sources', (id) => sourceEntry(`plugins.sources.${id}`), issues),
@@ -267,9 +291,11 @@ export interface ValidatedConfigLoad {
   /** The config as it loads: a value that does not parse loads as missing, unknown keys are kept. */
   readonly config: AppConfig;
   /**
-   * The file's content as read without the schema, and the base every write command changes and saves back: a
-   * command keeps the keys and entries it does not touch. A dropped root (not an object) leaves nothing to keep, so
-   * this is `{}` there — always an object, never the bare file value.
+   * The file's content as read without the schema, and the base every write command changes and saves back. The
+   * write rule: the object whose fields the command sets is taken from the validated config (its broken values
+   * dropped, unknown keys kept) with the change applied; every other key at every level, ancestors and siblings,
+   * stays as it is in the file. A dropped root (not an object) leaves nothing to keep, so this is `{}` there —
+   * always an object, never the bare file value.
    */
   readonly raw: AppConfig;
   /** Each dropped value, with its path and reason, in schema order. */
@@ -310,14 +336,16 @@ export async function loadValidatedConfig(options: LoadValidatedConfigOptions = 
   return { config, raw, issues };
 }
 
-/** The `plugins.sources` table as the file holds it, however broken its entries are. */
-const rawSourcesTable = z.record(z.string(), z.unknown());
+/** A config level as the file holds it: its raw keys and values, untouched; `{}` when the level is not a map. */
+export function rawConfigMap(value: unknown): Record<string, unknown> {
+  const parsed = z.record(z.string(), z.unknown()).safeParse(value);
+  return parsed.success ? parsed.data : {};
+}
 
 /**
  * Whether the file's `plugins.sources` table holds the key `id` at all — the presence test for `source remove`,
  * which must also remove an entry the loader dropped. A table that is not a map holds no keys.
  */
 export function hasPluginSource(config: AppConfig, id: string): boolean {
-  const parsed = rawSourcesTable.safeParse(config.plugins?.sources);
-  return parsed.success && id in parsed.data;
+  return Object.hasOwn(rawConfigMap(config.plugins?.sources), id);
 }

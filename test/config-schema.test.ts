@@ -296,9 +296,41 @@ describe('parseConfigFile — types the readers accept today', () => {
     ]);
   });
 
+  it('loads the flag numbers 1 and 0, which enabled and disabled by truthiness on main', () => {
+    expect(usageShowInSignature(parseConfigFile({ usage: { showInSignature: 1 } }).config)).toBe(true);
+    expect(usageShowInSignature(parseConfigFile({ usage: { showInSignature: 0 } }).config)).toBe(false);
+    expect(parseConfigFile({ usage: { showInSignature: 2 } }).issues).toEqual([
+      { path: 'usage.showInSignature', reason: 'expected a boolean' }
+    ]);
+  });
+
+  it('loads a numeric faasId as the string encodeURIComponent builds the preview url from', () => {
+    const { config, issues } = parseConfigFile({ providers: { 'magic-builder': { faasId: 456 } } });
+    expect(issues).toEqual([]);
+    expect(config.providers?.['magic-builder']?.faasId).toBe('456');
+  });
+
   it("drops durations and flags the accessor's env rule does not accept", () => {
     const dropped = parseConfigFile({ ttlMs: 'fast', usage: { showInSignature: 'yes' } });
     expect(dropped.config.ttlMs).toBeUndefined();
     expect(dropped.issues.map((issue) => issue.path)).toEqual(['ttlMs', 'usage.showInSignature']);
+  });
+});
+
+describe('parseConfigFile — dropped fields are absent, not undefined-valued keys', () => {
+  it('leaves no undefined-valued key at any level', () => {
+    const { config } = parseConfigFile({
+      ttlMs: 'fast',
+      render: { one: 5, zero: 'z' },
+      usage: { showInSignature: 'maybe', pricing: { 'gpt-5.5': { input: 'x', output: 2 } } }
+    });
+    expect(config).toStrictEqual({ render: { zero: 'z' }, usage: { pricing: { 'gpt-5.5': { output: 2 } } } });
+  });
+
+  it('leaves a partial override empty when all of its fields drop, so it cannot spread over a snapshot price', () => {
+    const { config } = parseConfigFile({ usage: { pricing: { 'gpt-5.5': { input: 'x' } } } });
+    const override = config.usage?.pricing?.['gpt-5.5'];
+    expect(override).toStrictEqual({});
+    expect(override).not.toHaveProperty('input');
   });
 });

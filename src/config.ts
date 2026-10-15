@@ -291,15 +291,6 @@ export function pluginSourcesConfig(config: AppConfig): Record<string, SourcePlu
   return config.plugins?.sources ?? {};
 }
 
-/** Return a copy of `config` with the source `id` set to `entry`. */
-export function setPluginSource(config: AppConfig, id: string, entry: SourcePluginConfig): AppConfig {
-  const next: AppConfig = { ...config };
-  const plugins = { ...next.plugins };
-  plugins.sources = { ...plugins.sources, [id]: entry };
-  next.plugins = plugins;
-  return next;
-}
-
 /** Return a copy of `config` with the source `id` removed from `plugins.sources`. */
 export function removePluginSource(config: AppConfig, id: string): AppConfig {
   const next: AppConfig = { ...config };

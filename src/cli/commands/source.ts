@@ -1,6 +1,6 @@
 import { isAbsolute } from 'node:path';
-import { removePluginSource, saveConfig, setPluginSource } from '../../config.js';
-import { hasPluginSource, loadValidatedConfig } from '../../config-schema.js';
+import { removePluginSource, saveConfig, type AppConfig } from '../../config.js';
+import { hasPluginSource, loadValidatedConfig, rawConfigMap } from '../../config-schema.js';
 import { installPluginPackage, packageNameFromSpec, uninstallPluginPackage } from '../../plugin-install.js';
 import { describeSources, loadSourcePluginForValidation } from '../../sources.js';
 import { hasFlag, optionValue } from '../args.js';
@@ -70,9 +70,12 @@ async function addSource(args: string[]): Promise<void> {
     return;
   }
 
-  // The rewritten subtree comes from the validated view; every other top-level key stays as the file holds it.
-  const { config, raw } = await loadValidatedConfig();
-  await saveConfig(setPluginSource({ ...raw, plugins: config.plugins }, id, { handler: installed.packageName }));
+  // The added entry is this command's own; the sources map's other entries and every other key at every level stay
+  // as the file holds them.
+  const { raw } = await loadValidatedConfig();
+  const sources = { ...rawConfigMap(raw.plugins?.sources), [id]: { handler: installed.packageName } };
+  const plugins = { ...rawConfigMap(raw.plugins), sources } as AppConfig['plugins'];
+  await saveConfig({ ...raw, plugins });
 
   showSuccess(`added source "${id}" -> ${installed.packageName}@${installed.version}`);
   showInfo('It will be counted on the next hook. Run `agent-presence source list` to confirm.');

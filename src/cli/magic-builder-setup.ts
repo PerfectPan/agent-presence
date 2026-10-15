@@ -8,9 +8,10 @@ import {
   magicBuilderFallbackTitle,
   providerBaseUrl,
   saveConfig,
-  setMagicBuilderConfig
+  setMagicBuilderConfig,
+  type AppConfig
 } from '../config.js';
-import { loadValidatedConfig } from '../config-schema.js';
+import { loadValidatedConfig, rawConfigMap } from '../config-schema.js';
 import { readMagicToken, writeMagicToken, type MagicTokenSource } from '../magic-token.js';
 import {
   DEFAULT_MAGIC_BUILDER_FAAS_NAME,
@@ -98,10 +99,17 @@ export async function publishMagicBuilderFaas(
 
   const persist = options.persist ?? true;
   if (persist) {
-    // The rewritten subtree comes from the validated view; every other top-level key stays as the file holds it.
+    // The magic-builder entry comes from the validated view (broken values dropped, unknown keys kept) with the
+    // change applied; the provider map's other entries and every other top-level key stay as the file holds them.
     const existingProviderConfig = magicBuilderConfig(config);
     const updated = setMagicBuilderConfig(
-      { ...raw, providers: config.providers },
+      {
+        ...raw,
+        providers: {
+          ...rawConfigMap(raw.providers),
+          'magic-builder': existingProviderConfig
+        } as AppConfig['providers']
+      },
       {
         faasId: result.id,
         faasName: name,

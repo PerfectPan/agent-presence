@@ -1,10 +1,12 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test';
+import { configureProvider } from '../src/cli/commands/config-provider.js';
 import { configureRender } from '../src/cli/commands/config-render.js';
 import { printConfig } from '../src/cli/commands/config-show.js';
 import { printStatus } from '../src/cli/commands/status.js';
 import { source } from '../src/cli/commands/source.js';
+import { uninstall } from '../src/cli/commands/uninstall.js';
 import type { AppConfig } from '../src/config.js';
 import { owedWorkRemains } from '../src/queue/worker.js';
 import { createCommandHarness, TEMPLATES, type CommandHarness } from './queue-command-harness.js';
@@ -33,7 +35,14 @@ vi.mock('../src/providers/registry.js', () => ({
 vi.mock('../src/secret.js', () => ({
   readCredential: vi
     .fn<typeof import('../src/secret.js').readCredential>()
-    .mockResolvedValue({ token: 'test-token', slotId: 'test-slot' })
+    .mockResolvedValue({ token: 'test-token', slotId: 'test-slot' }),
+  deleteCredential: vi.fn<typeof import('../src/secret.js').deleteCredential>().mockResolvedValue(undefined)
+}));
+
+vi.mock('../src/setup.js', () => ({
+  LINUX_WATCHER_SKIP_MESSAGE: 'linux watcher skipped',
+  runSetupScripts: vi.fn<() => Promise<{ scriptName: string }[]>>().mockResolvedValue([]),
+  runUninstallScripts: vi.fn<() => Promise<{ scriptName: string }[]>>().mockResolvedValue([])
 }));
 
 let h: CommandHarness;
@@ -161,6 +170,73 @@ describe('write commands keep what they did not change', () => {
 
     expect(await readRawConfig()).toEqual({ render: { one: 'ONE TEMPLATE' } });
     expect(consoleErrors).toEqual(['config: ignored config (expected an object)']);
+  });
+
+  it('config provider keeps a sibling provider entry byte-for-byte', async () => {
+    await writeRawConfig({ providers: { 'magic-builder': { faasName: 456, baseUrl: 'https://m' } } });
+
+    await configureProvider(['feishu-signature', '--base-url', 'https://f']);
+
+    expect(await readRawConfig()).toEqual({
+      provider: 'feishu-signature',
+      providers: {
+        'magic-builder': { faasName: 456, baseUrl: 'https://m' },
+        'feishu-signature': { baseUrl: 'https://f' }
+      }
+    });
+    expect(consoleErrors).toEqual(['config: ignored providers.magic-builder.faasName (expected a string)']);
+  });
+
+  it('uninstall --credentials rewrites the slot keys over a config whose root is not an object', async () => {
+    await writeRawConfig(null);
+
+    const printed = captureLog();
+    await uninstall(['--credentials']);
+
+    expect(await readRawConfig()).toEqual({});
+    expect(printed.join(' ')).toContain('credentials cleared');
+  });
+
+  it('source remove reports not configured on a config whose root is not an object', async () => {
+    await writeRawConfig(null);
+
+    const warnings: string[] = [];
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation((...parts: unknown[]) => {
+      warnings.push(parts.map((part) => String(part)).join(' '));
+    });
+    const previousExitCode = process.exitCode;
+    process.exitCode = undefined;
+    try {
+      await source(['remove', 'missing']);
+      expect(process.exitCode).toBe(1);
+    } finally {
+      process.exitCode = previousExitCode;
+      warnSpy.mockRestore();
+    }
+
+    expect(warnings.join(' ')).toContain('no configured source "missing"');
+  });
+
+  it('source remove does not confuse an inherited key with a configured entry', async () => {
+    await writeRawConfig({ plugins: { sources: { here: { handler: 'builtin:codex' } } } });
+    const before = await readRawConfig();
+
+    const warnings: string[] = [];
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation((...parts: unknown[]) => {
+      warnings.push(parts.map((part) => String(part)).join(' '));
+    });
+    const previousExitCode = process.exitCode;
+    process.exitCode = undefined;
+    try {
+      await source(['remove', 'toString']);
+      expect(process.exitCode).toBe(1);
+    } finally {
+      process.exitCode = previousExitCode;
+      warnSpy.mockRestore();
+    }
+
+    expect(warnings.join(' ')).toContain('no configured source "toString"');
+    expect(await readRawConfig()).toEqual(before);
   });
 
   it('source remove drops only its entry over the file as read', async () => {
