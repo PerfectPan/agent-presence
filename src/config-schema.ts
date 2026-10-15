@@ -294,8 +294,9 @@ export interface ValidatedConfigLoad {
    * The file's content as read without the schema, and the base every write command changes and saves back. The
    * write rule: the object whose fields the command sets is taken from the validated config (its broken values
    * dropped, unknown keys kept) with the change applied; every other key at every level, ancestors and siblings,
-   * stays as it is in the file. A dropped root (not an object) leaves nothing to keep, so this is `{}` there —
-   * always an object, never the bare file value.
+   * stays as it is in the file. An ancestor that is not a map is replaced by a map holding the change, and a reset
+   * under a non-map ancestor removes the key. A dropped root (not an object) leaves nothing to keep, so this is
+   * `{}` there — always an object, never the bare file value.
    */
   readonly raw: AppConfig;
   /** Each dropped value, with its path and reason, in schema order. */
