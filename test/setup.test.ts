@@ -10,7 +10,7 @@ import {
 } from '../src/setup.js';
 
 describe('runSetupScripts', () => {
-  it('runs every local installer script in setup order', async () => {
+  it('runs only the local watcher installer', async () => {
     const runner = vi.fn<(scriptPath: string) => Promise<void>>().mockResolvedValue(undefined);
 
     const results = await runSetupScripts({
@@ -19,29 +19,15 @@ describe('runSetupScripts', () => {
       scriptNames: DEFAULT_SETUP_SCRIPT_NAMES
     });
 
-    expect(DEFAULT_SETUP_SCRIPT_NAMES).toEqual([
-      'install-codex-hook.js',
-      'install-claude-hook.js',
-      'install-opencode-plugin.js',
-      'install-gemini-hook.js',
-      'install-pi-extension.js',
-      'install-shutdown-watcher.js'
-    ]);
-    expect(runner).toHaveBeenCalledTimes(6);
-    expect(runner).toHaveBeenNthCalledWith(1, '/dist/scripts/install-codex-hook.js');
-    expect(runner).toHaveBeenNthCalledWith(5, '/dist/scripts/install-pi-extension.js');
-    expect(runner).toHaveBeenNthCalledWith(6, '/dist/scripts/install-shutdown-watcher.js');
+    expect(DEFAULT_SETUP_SCRIPT_NAMES).toEqual(['install-shutdown-watcher.js']);
+    expect(runner).toHaveBeenCalledTimes(1);
+    expect(runner).toHaveBeenNthCalledWith(1, '/dist/scripts/install-shutdown-watcher.js');
     expect(results).toEqual([
-      { scriptName: 'install-codex-hook.js', scriptPath: '/dist/scripts/install-codex-hook.js' },
-      { scriptName: 'install-claude-hook.js', scriptPath: '/dist/scripts/install-claude-hook.js' },
-      { scriptName: 'install-opencode-plugin.js', scriptPath: '/dist/scripts/install-opencode-plugin.js' },
-      { scriptName: 'install-gemini-hook.js', scriptPath: '/dist/scripts/install-gemini-hook.js' },
-      { scriptName: 'install-pi-extension.js', scriptPath: '/dist/scripts/install-pi-extension.js' },
       { scriptName: 'install-shutdown-watcher.js', scriptPath: '/dist/scripts/install-shutdown-watcher.js' }
     ]);
   });
 
-  it('runs every local uninstaller script in uninstall order', async () => {
+  it('runs only the local dsh and watcher uninstallers in order', async () => {
     const runner = vi.fn<(scriptPath: string) => Promise<void>>().mockResolvedValue(undefined);
 
     const results = await runUninstallScripts({
@@ -50,26 +36,11 @@ describe('runSetupScripts', () => {
       scriptNames: DEFAULT_UNINSTALL_SCRIPT_NAMES
     });
 
-    expect(DEFAULT_UNINSTALL_SCRIPT_NAMES).toEqual([
-      'uninstall-codex-hook.js',
-      'uninstall-claude-hook.js',
-      'uninstall-opencode-plugin.js',
-      'uninstall-gemini-hook.js',
-      'uninstall-pi-extension.js',
-      'uninstall-dsh-plugin.js',
-      'uninstall-shutdown-watcher.js'
-    ]);
-    expect(runner).toHaveBeenCalledTimes(7);
-    expect(runner).toHaveBeenNthCalledWith(1, '/dist/scripts/uninstall-codex-hook.js');
-    expect(runner).toHaveBeenNthCalledWith(5, '/dist/scripts/uninstall-pi-extension.js');
-    expect(runner).toHaveBeenNthCalledWith(6, '/dist/scripts/uninstall-dsh-plugin.js');
-    expect(runner).toHaveBeenNthCalledWith(7, '/dist/scripts/uninstall-shutdown-watcher.js');
+    expect(DEFAULT_UNINSTALL_SCRIPT_NAMES).toEqual(['uninstall-dsh-plugin.js', 'uninstall-shutdown-watcher.js']);
+    expect(runner).toHaveBeenCalledTimes(2);
+    expect(runner).toHaveBeenNthCalledWith(1, '/dist/scripts/uninstall-dsh-plugin.js');
+    expect(runner).toHaveBeenNthCalledWith(2, '/dist/scripts/uninstall-shutdown-watcher.js');
     expect(results).toEqual([
-      { scriptName: 'uninstall-codex-hook.js', scriptPath: '/dist/scripts/uninstall-codex-hook.js' },
-      { scriptName: 'uninstall-claude-hook.js', scriptPath: '/dist/scripts/uninstall-claude-hook.js' },
-      { scriptName: 'uninstall-opencode-plugin.js', scriptPath: '/dist/scripts/uninstall-opencode-plugin.js' },
-      { scriptName: 'uninstall-gemini-hook.js', scriptPath: '/dist/scripts/uninstall-gemini-hook.js' },
-      { scriptName: 'uninstall-pi-extension.js', scriptPath: '/dist/scripts/uninstall-pi-extension.js' },
       { scriptName: 'uninstall-dsh-plugin.js', scriptPath: '/dist/scripts/uninstall-dsh-plugin.js' },
       { scriptName: 'uninstall-shutdown-watcher.js', scriptPath: '/dist/scripts/uninstall-shutdown-watcher.js' }
     ]);
@@ -80,51 +51,21 @@ describe('platform-aware script filtering', () => {
   it('includes watcher on macOS', () => {
     const setupNames = platformSetupScriptNames('darwin');
     expect(setupNames).toContain('install-shutdown-watcher.js');
-    expect(setupNames).toEqual([
-      'install-codex-hook.js',
-      'install-claude-hook.js',
-      'install-opencode-plugin.js',
-      'install-gemini-hook.js',
-      'install-pi-extension.js',
-      'install-shutdown-watcher.js'
-    ]);
+    expect(setupNames).toEqual(['install-shutdown-watcher.js']);
 
     const uninstallNames = platformUninstallScriptNames('darwin');
     expect(uninstallNames).toContain('uninstall-shutdown-watcher.js');
-    expect(uninstallNames).toEqual([
-      'uninstall-codex-hook.js',
-      'uninstall-claude-hook.js',
-      'uninstall-opencode-plugin.js',
-      'uninstall-gemini-hook.js',
-      'uninstall-pi-extension.js',
-      'uninstall-dsh-plugin.js',
-      'uninstall-shutdown-watcher.js'
-    ]);
+    expect(uninstallNames).toEqual(['uninstall-dsh-plugin.js', 'uninstall-shutdown-watcher.js']);
   });
 
-  it('excludes watcher on Linux but keeps pi extension', () => {
+  it('has no setup script on Linux and keeps only dsh for uninstall', () => {
     const setupNames = platformSetupScriptNames('linux');
     expect(setupNames).not.toContain('install-shutdown-watcher.js');
-    expect(setupNames).toContain('install-pi-extension.js');
-    expect(setupNames).toEqual([
-      'install-codex-hook.js',
-      'install-claude-hook.js',
-      'install-opencode-plugin.js',
-      'install-gemini-hook.js',
-      'install-pi-extension.js'
-    ]);
+    expect(setupNames).toEqual([]);
 
     const uninstallNames = platformUninstallScriptNames('linux');
     expect(uninstallNames).not.toContain('uninstall-shutdown-watcher.js');
-    expect(uninstallNames).toContain('uninstall-pi-extension.js');
-    expect(uninstallNames).toEqual([
-      'uninstall-codex-hook.js',
-      'uninstall-claude-hook.js',
-      'uninstall-opencode-plugin.js',
-      'uninstall-gemini-hook.js',
-      'uninstall-pi-extension.js',
-      'uninstall-dsh-plugin.js'
-    ]);
+    expect(uninstallNames).toEqual(['uninstall-dsh-plugin.js']);
   });
 
   it('skips watcher when running setup on Linux (via runSetupScripts)', async () => {
@@ -136,9 +77,9 @@ describe('platform-aware script filtering', () => {
       scriptNames: platformSetupScriptNames('linux')
     });
 
-    expect(runner).toHaveBeenCalledTimes(5);
+    expect(runner).not.toHaveBeenCalled();
     expect(results.map((r) => r.scriptName)).not.toContain('install-shutdown-watcher.js');
-    expect(results.map((r) => r.scriptName)).toContain('install-pi-extension.js');
+    expect(results).toEqual([]);
   });
 
   it('provides a skip message for Linux watcher', () => {

@@ -1,4 +1,5 @@
-import { cp, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
+import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -26,15 +27,48 @@ export const AGENT_HOME_VARIABLES = [
   'PI_CODING_AGENT_DIR'
 ] as const;
 
-export async function createHarnessFixture() {
+export async function createHarnessFixture(options: { managedPaths?: ReadonlyMap<string, string> } = {}) {
   const home = await mkdtemp(join(tmpdir(), 'presence-harness-'));
   const presenceHome = join(home, '.agent-presence');
   const node = createNodePlatform({ home, env: { HOME: home, PATH: '' } });
   const cliCalls: AgentCommand[] = [];
   const availableCalls: string[] = [];
   const processCalls: string[] = [];
-  let marketplaceAdded = false;
-  let pluginAdded = false;
+  const managedPaths = new Map(options.managedPaths);
+  const addedTables = new Set<string>();
+  let originalConfigExisted: boolean | undefined;
+
+  async function setCodexRecord(table: string, key: string, present: boolean): Promise<void> {
+    const path = join(home, '.codex/config.toml');
+    const exists = existsSync(path);
+    originalConfigExisted ??= exists;
+    let text = exists ? await readFile(path, 'utf8') : '';
+    const header = `[${table}]\n`;
+    const line = `${key} = true\n`;
+    if (present) {
+      if (text.includes(header)) {
+        text = text.replace(`${key} = false\n`, line);
+        if (!text.includes(line)) {
+          text = text.replace(header, `${header}${line}`);
+        }
+      } else {
+        addedTables.add(table);
+        text = `${header}${line}\n${text}`;
+      }
+    } else {
+      text = text.replace(line, '');
+      if (addedTables.has(table)) {
+        text = text.replace(`${header}\n`, '');
+        addedTables.delete(table);
+      }
+    }
+    if (!text && !originalConfigExisted) {
+      await rm(path, { force: true });
+    } else {
+      await mkdir(join(home, '.codex'), { recursive: true });
+      await writeFile(path, text);
+    }
+  }
 
   // The fake models the two registrations and cached copy Codex owns; it never executes a CLI.
   async function registerCodex(command: AgentCommand): Promise<void> {
@@ -44,25 +78,22 @@ export async function createHarnessFixture() {
       throw new Error(`Unexpected fake agent command: ${command.command}`);
     }
     if (subject === 'marketplace' && action === 'add') {
-      marketplaceAdded = true;
+      await setCodexRecord('marketplaces', 'agent-presence', true);
     } else if (subject === 'add' && action === 'agent-presence@agent-presence') {
-      pluginAdded = true;
+      await setCodexRecord('plugins', '"agent-presence@agent-presence"', true);
       await cp(
         join(home, '.codex/plugins/agent-presence/plugins/agent-presence'),
         join(home, '.codex/plugins/cache/agent-presence/agent-presence/local'),
         { recursive: true }
       );
+    } else if (subject === 'remove' && action === 'agent-presence@agent-presence') {
+      await setCodexRecord('plugins', '"agent-presence@agent-presence"', false);
+      await rm(join(home, '.codex/plugins/cache/agent-presence/agent-presence'), { recursive: true, force: true });
+    } else if (subject === 'marketplace' && action === 'remove') {
+      await setCodexRecord('marketplaces', 'agent-presence', false);
     } else {
       throw new Error(`Unexpected fake Codex arguments: ${command.args.join(' ')}`);
     }
-    await mkdir(join(home, '.codex'), { recursive: true });
-    await writeFile(
-      join(home, '.codex/config.toml'),
-      [
-        marketplaceAdded ? '[marketplaces]\nagent-presence = true\n' : '',
-        pluginAdded ? '[plugins]\n"agent-presence@agent-presence" = true\n' : ''
-      ].join('\n')
-    );
   }
 
   const platform = {
@@ -104,7 +135,7 @@ export async function createHarnessFixture() {
         });
       }
     }),
-    Layer.succeed(ExternalOwner, { managedPaths: () => Effect.succeed(new Map<string, string>()) })
+    Layer.succeed(ExternalOwner, { managedPaths: () => Effect.succeed(managedPaths) })
   ).pipe(Layer.provideMerge(Layer.succeed(PlatformService, platform)));
 
   return {
@@ -114,6 +145,7 @@ export async function createHarnessFixture() {
     cliCalls,
     availableCalls,
     processCalls,
+    managedPaths,
     run<A, E>(program: Effect.Effect<A, E, HarnessServices>): Promise<A> {
       return Effect.runPromise(program.pipe(Effect.provide(layer)));
     },

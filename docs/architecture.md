@@ -30,7 +30,7 @@ The interactive path can use prompts and rich output. The hook path must be fast
 - Make hooks safe to run inside coding-agent lifecycles.
 - Recover from abnormal exits with TTL and power-event reset hooks.
 - Support the macOS local-agent environment first, with Linux as a supported platform.
-- Let `npx @rivus/agent-presence setup` be the easy install entrypoint without making installed hooks depend on an ephemeral `npx` cache.
+- Let `npx @rivus/agent-presence setup` be the easy install entrypoint, with installed hooks calling a stable shim under the presence home.
 - Make setup and uninstall repeatable: rerunning either command should not duplicate hooks, lose user configuration, or leave half-written managed files.
 
 ## Non-Goals
@@ -51,15 +51,14 @@ The interactive path can use prompts and rich output. The hook path must be fast
 ~/.agent-presence
 ```
 
-The home directory contains local state, config, and logs. It is intentionally outside the package install directory so `npx`, global installs, local checkouts, and future managed runtimes all share the same durable state.
+The home directory contains local state, config, logs, and the hook shim. It is intentionally outside the package install directory so `npx`, global installs, and local checkouts share the same durable state.
 
 ```text
 ~/.agent-presence/
   state.json               local JSON state
   config.json              provider/render configuration
   agent-presence.log       hook and command diagnostics
-  runtime/                 managed hook runtime, when setup materializes one
-  bin/                     stable hook shims, when setup materializes them
+  bin/agent-presence       stable executable hook shim, written by setup
 ```
 
 Credentials are not stored in this directory. They live in Keychain (macOS), libsecret (Linux), or environment variables.
@@ -76,7 +75,7 @@ Human-facing commands use `@clack/prompts` for interaction:
 
 ```text
 login   -> intro, QR note, authorization spinner, outro
-setup   -> intro, installer spinner, signature URL note, outro
+setup   -> conflicts, install plan, confirmation, apply results, signature URL, verification
 config  -> text prompts when provider/render values are omitted in a TTY
 ```
 
@@ -91,9 +90,9 @@ url                 -> raw URL only
 
 This keeps the pretty CLI layer out of hook and automation protocols.
 
-`doctor` and `inventory` load the harness lazily. `src/cli/harness.ts` is the sole Effect execution root, providing `HarnessLive` with `NodePlatformLive` and reporting failed programs on stderr with a non-zero exit code. The hook, status, render and usage paths do not load this root. `doctor` reports every check and fails on warnings or errors; `inventory` reads the ledger revision, entries and pending operations. Both support `--json`. Doctor's duplicate check covers command-hook files, not opencode and Pi bridge files.
+`setup`, `uninstall`, `doctor` and `inventory` load the harness lazily. `src/cli/harness.ts` is the sole Effect execution root, providing `HarnessLive` with `NodePlatformLive` and reporting failed programs on stderr with a non-zero exit code. Every harness call during one setup run, including planning across prompts, apply and verification, shares one Effect program. The hook, status, render and usage paths do not load this root. `doctor` reports every check and fails on warnings or errors; `inventory` reads the ledger revision, entries and pending operations. Both support `--json`. Doctor's duplicate check covers command-hook files, not opencode and Pi bridge files.
 
-`src/harness/bundle.ts` defines the `agent-presence` bundle for Claude Code, Codex, Gemini CLI, Grok, opencode and Pi: one observer hook spec with the package version, a stable artifact digest and a five-second timeout. Its command names `<presence home>/bin/agent-presence`, with `{agent}` expanded by the kit. Gemini uses its own event names and receives the timeout in milliseconds. The bundle has no legacy markers, skills or MCP servers. Doctor uses the expanded commands as duplicate markers. Setup and uninstall still use the existing installers; they do not yet write the shim or manage this bundle, so their installations are absent from the harness ledger.
+`src/harness/bundle.ts` defines the `agent-presence` bundle for Claude Code, Codex, Gemini CLI, Grok, opencode and Pi: one observer hook spec with the package version, a stable artifact digest and a five-second timeout. Its command names `<presence home>/bin/agent-presence`, with `{agent}` expanded by the kit. Gemini uses its own event names and receives the timeout in milliseconds. The bundle has no legacy markers, skills or MCP servers. Doctor uses the expanded commands as duplicate markers. Setup installs the bundle through the harness and records its artifacts in the harness ledger; uninstall uses that ledger to remove them.
 
 The CLI files are split by responsibility:
 
@@ -124,34 +123,13 @@ agent-presence   primary CLI
 agent-signature  compatibility alias for older hooks
 ```
 
-### Managed Hook Runtime
+### Stable Hook Shim
 
-`npx` is a convenient installer but a poor hook target. Some agent runtimes launch hooks with a minimal `PATH`, and `npx` may resolve through a temporary cache that can move or be pruned. The setup architecture therefore treats `npx` as a bootstrapper, not as the durable runtime.
+Setup writes `<presence home>/bin/agent-presence` after install confirmation and before applying the harness plan. `src/harness/shim.ts` writes a temporary file in the same directory, sets mode `0755`, and atomically renames it over the shim on every setup that installs hooks.
 
-The target shape is:
+The `/bin/sh` script `exec`s the current package's pinned command and forwards `"$@"`. By default that command is `npx --yes --registry=https://registry.npmjs.org @rivus/agent-presence@<version>`. With `--hook-command absolute` or `AGENT_PRESENCE_HOOK_COMMAND=absolute`, it uses the resolved Node executable and checkout CLI path instead. Each command part is shell-quoted. Setup does not copy a runtime into the presence home; the default mode still relies on `npx`, its cache, and an available npm package, while absolute mode requires the checkout to remain available.
 
-```text
-npx @rivus/agent-presence@<version> setup
--> install or update a managed runtime under ~/.agent-presence/runtime
--> write stable shims under ~/.agent-presence/bin
--> install Codex / Claude Code / Gemini CLI / opencode hooks that call those shims by absolute path
--> prompt the user to approve updated Codex hooks when Codex requires trust
-```
-
-The hook command should point to a stable file owned by Agent Presence, for example:
-
-```text
-/Users/<user>/.agent-presence/bin/agent-presence-hook --source codex --event SessionStart
-```
-
-It should not point to:
-
-```text
-npx @rivus/agent-presence@latest ...
-<npm-cache>/_npx/.../node_modules/@rivus/agent-presence/...
-```
-
-Versioned setup can still preserve reproducibility by materializing the exact package version that invoked setup. Future setup runs replace the managed runtime atomically and then rewrite hooks to the new stable shim.
+The installed hook command is `<shim> hook --agent {agent} 2>/dev/null || echo '{}'`, with the shim path shell-quoted. Its text is identical in both modes and stays stable across package upgrades; setup rewrites the shim's contents to select the package version or checkout. Uninstall removes the shim after the harness removal step.
 
 ### Configuration
 
@@ -234,9 +212,9 @@ Grok        session_start, user_prompt_submit, pre_tool_use, post_tool_use, stop
 dsh         agent/session-start, agent/pre-step, tools/pre-execute, tools/result, agent/turn-stopping (via managed dsh plugin)
 ```
 
-Codex hooks always print `{}` so they remain valid pass-through hooks. Claude Code, Gemini CLI, opencode, and Pi hooks run with `--silent`.
+Hooks print `{}` unless invoked with `--silent`, including Codex hooks that require valid pass-through output. Earlier installations may carry `--silent` for Claude Code, Gemini CLI, opencode and Pi.
 
-`hook --agent <kit agent id>` is the form later setup will install. It reads the payload with `readHookEvent` from `@rivus/agent-kit/harness/events`, attributes the event to the presence source of the sniffed agent (`claude-code` → `claude`, `gemini-cli` → `gemini`, and `codex`, `grok`, `opencode`, and `pi` unchanged), and maps `nativeEvent` onto the internal names this state machine already uses, by the signal rule below. An agent with no presence source, such as Cursor running a Claude Code hook, logs one `hook skipped:` line and ends on the same skip path as a missing session id. For `hook --agent opencode` the session id is the one the kit's opencode dialect reads: the id the event names, or, for an event that names none (`file.edited`, a `session.error` without `sessionID`), the `currentSessionId` the kit bridge adds once it has seen a session; an event with neither is skipped as a missing session id. `OPENCODE_SESSION_ID` and presence's own payload lookup apply only to the old bridge's wrapped `{ event }` payloads. `hook --source <id> --event <Name>` stays the invocation already-installed hooks use, with the same behavior as before. Stdout is presence's own rule for every agent and event: `{}` unless `--silent`. The kit dialect's `passThrough` is not consulted.
+`hook --agent <kit agent id>` is the form setup installs. It reads the payload with `readHookEvent` from `@rivus/agent-kit/harness/events`, attributes the event to the presence source of the sniffed agent (`claude-code` → `claude`, `gemini-cli` → `gemini`, and `codex`, `grok`, `opencode`, and `pi` unchanged), and maps `nativeEvent` onto the internal names this state machine already uses, by the signal rule below. An agent with no presence source, such as Cursor running a Claude Code hook, logs one `hook skipped:` line and ends on the same skip path as a missing session id. For `hook --agent opencode` the session id is the one the kit's opencode dialect reads: the id the event names, or, for an event that names none (`file.edited`, a `session.error` without `sessionID`), the `currentSessionId` the kit bridge adds once it has seen a session; an event with neither is skipped as a missing session id. `OPENCODE_SESSION_ID` and presence's own payload lookup apply only to the old bridge's wrapped `{ event }` payloads. `hook --source <id> --event <Name>` remains supported for earlier installations and direct invocations, with the same behavior as before. Stdout is presence's own rule for every agent and event: `{}` unless `--silent`. The kit dialect's `passThrough` is not consulted.
 
 Signal rule for `hook --agent`: a per-agent table (`src/cli/hook-interpret.ts`) maps each native event name to an internal name, and `normalizeEvent` turns that into start, heartbeat, or finish. Every event the `--source/--event` form handles keeps the signal it has there, even where the kit phase differs. A name the table does not list takes the kit phase: start and finish as they are, and activity, blocked, or unknown as a heartbeat, because presence has three statuses and a permission or question prompt is activity.
 
@@ -258,11 +236,11 @@ The seven sources above are built in. They live in a source table that a user's 
 
 For Pi specifically, the extension intentionally does **not** treat the Pi `session_start` event as an active-session signal — that event fires whenever the Pi TUI opens, including when the user has not yet submitted a task. Activation is gated on `before_agent_start`, which only fires after the user submits a prompt. Heartbeats come from `turn_start` and `tool_execution_*`. Finishes come from `agent_end` (turn done) and `session_shutdown` (Pi quit, reload, or session switch).
 
-For dsh, there is no managed hook installer: `setup` prompts to install a single-file Cordis plugin into `~/.dsh/plugins/` and registers it in the home-level `~/.dsh/cordis.patch.yml` (which applies to every profile). The plugin bridges dsh lifecycle events to `agent-presence hook --source dsh` and reports each model call's token usage in the hook payload, which the producer copies into the record; the worker appends it to a local usage log (`~/.agent-presence/usage-events.log`, `src/usage-events-log.ts`) under that file's log lock. A line can carry the id of the record it came from, and the reader counts a repeated id once. The dsh `scanUsage` reads that log back through a zod/mini line schema, so dsh contributes to the same usage windows and totals as the transcript-scraping sources without scraping dsh's zstd transcripts.
+For dsh, there is no kit adapter: `setup` prompts to install a single-file Cordis plugin into `~/.dsh/plugins/` and registers it in the home-level `~/.dsh/cordis.patch.yml` (which applies to every profile). The plugin bridges dsh lifecycle events to `agent-presence hook --source dsh` and reports each model call's token usage in the hook payload, which the producer copies into the record; the worker appends it to a local usage log (`~/.agent-presence/usage-events.log`, `src/usage-events-log.ts`) under that file's log lock. A line can carry the id of the record it came from, and the reader counts a repeated id once. The dsh `scanUsage` reads that log back through a zod/mini line schema, so dsh contributes to the same usage windows and totals as the transcript-scraping sources without scraping dsh's zstd transcripts.
 
-For Grok, there is no managed hook installer yet: the source is registered in the table (it appears in `source list`) and accepts Grok hook payloads through `agent-presence hook --source grok` and through `hook --agent grok`. With `--source grok --event <presence event name>`, the `--event` name drives the lifecycle mapping. Without `--event`, and with `--agent grok`, the payload's event name maps through the same Grok table (`GROK_EVENTS` in `src/hooks/grok.ts`), snake_case or PascalCase; on `--source grok` a name outside it counts as a heartbeat. The `builtin:grok` resolver reads the payload with the kit's Grok dialect (`readHookEvent`): the event name from `hookEventName`/`hook_event_name`, the session id from `sessionId`/`session_id` (env fallbacks `GROK_HOOK_EVENT`/`GROK_SESSION_ID`), and the project from `cwd`, falling back to `PWD`. Subagent start and stop compose the session id the same way Claude's resolver does, from `subagentId`/`subagentType`. Grok has no transcript scanner yet, so it contributes presence only.
+Setup installs Grok hooks through the harness bundle. The source is registered in the table (it appears in `source list`) and accepts Grok hook payloads through `agent-presence hook --source grok` and through `hook --agent grok`. With `--source grok --event <presence event name>`, the `--event` name drives the lifecycle mapping. Without `--event`, and with `--agent grok`, the payload's event name maps through the same Grok table (`GROK_EVENTS` in `src/hooks/grok.ts`), snake_case or PascalCase; on `--source grok` a name outside it counts as a heartbeat. The `builtin:grok` resolver reads the payload with the kit's Grok dialect (`readHookEvent`): the event name from `hookEventName`/`hook_event_name`, the session id from `sessionId`/`session_id` (env fallbacks `GROK_HOOK_EVENT`/`GROK_SESSION_ID`), and the project from `cwd`, falling back to `PWD`. Subagent start and stop compose the session id the same way Claude's resolver does, from `subagentId`/`subagentType`. Grok has no transcript scanner yet, so it contributes presence only.
 
-Hook commands are managed entries. Installers identify them by the `agent-presence hook` or legacy `agent-signature hook` command shape, remove the old managed entries, and then add the current managed entry. This keeps reruns from accumulating duplicate hooks.
+The harness ledger owns the artifacts setup installs. Planning compares the desired bundle, ledger and agent targets; applying the accepted plan preserves unrelated configuration and avoids duplicate registrations. The bundle and uninstall supply no legacy command markers, so entries from previous releases require that release's own uninstall. The previous-release check planned in Plan 0002 is not implemented yet.
 
 ### Session State Machine
 
@@ -480,84 +458,57 @@ A Linux watcher would be a systemd user unit subscribed to logind's `PrepareForS
 
 ### Setup And Idempotency
 
-`src/setup.ts` and `src/installers.ts` coordinate first-run setup:
+`src/cli/commands/setup.ts` coordinates first-run setup in this order:
 
-- login when no provider credential exists, unless `--skip-login` is passed
-- reuse existing provider credentials without prompting again
-- write provider preview configuration
-- install Codex hooks
-- install Claude Code hooks
-- install the opencode plugin
-- install Gemini CLI hooks
-- install the Pi Coding Agent extension at `~/.pi/agent/extensions/agent-presence.ts`
-- install the macOS power watcher (skipped on Linux; TTL pruning handles expired sessions)
-- force an initial slot sync
+1. Migrate the legacy presence home when approved, then clear any queue tombstone under takeover: delete queued records, increase the epoch, and remove the tombstone.
+2. Load configuration and log in when credentials are missing, unless `--skip-login` or `--hooks-only` is passed. `--login` forces fresh authentication unless login is skipped.
+3. Unless `--no-hooks` is passed, call `planInstall` for the bundle. The kit reports conflicts before returning a full plan. Display every conflicting locator, reason and allowed choices; prompt once per locator for one of those choices or cancel, then re-plan with the selected choices. Newly reported locators repeat this process. A target with no allowed choice, including dotfiles-managed or symlinked targets, stops setup without writing an agent target.
+4. Display the full plan's changes, commands, expected trust prompts, notes, dropped hooks and selected resolutions. Ask for explicit confirmation in a TTY. Outside a TTY, a conflict-free plan requires `--yes`; every conflict is refused even with `--yes`. Cancellation or declining confirmation discards any held plan, reports that no agent configuration was written, and exits non-zero.
+5. Write the stable shim, apply the same in-memory plan handle, and report each artifact result. `PlanStale` or `TargetChanged` stops setup with instructions to run it again; setup does not retry application.
+6. Offer the dsh plugin when detected in an interactive terminal, then install the macOS power watcher through its existing script. Linux prints the watcher skip message and relies on TTL pruning.
+7. Publish or resolve the provider's signature URL, then verify the installed bundle with `verify("agent-presence", { bundle, agents })`. Supplying the bundle also finds a desired artifact missing from both disk and ledger.
 
-Each installer is idempotent. Existing unrelated user configuration is preserved.
+`--no-hooks` skips the harness, shim, dsh prompt and watcher. Migration, queue recovery, login and provider setup retain their behavior. Credential and home-migration writes may happen before install confirmation; the confirmation protects agent-target installation writes. Harness planning can settle pending ledger operations.
 
-`src/harness/shim.ts` provides the shim writer and remover for the harness bundle, independently of these installers. It writes `<presence home>/bin/agent-presence` as an executable shell script through a temporary file in the same directory and an atomic rename. The script forwards arguments to the existing version-pinned npm command or the absolute checkout command. Setup and uninstall do not call this helper yet: harness integration is blocked because a conflicting kit plan exposes only the conflicting steps, without the full preview required before conflict choices and confirmation.
+`src/setup.ts` now runs only the watcher installer, and its uninstall list contains only dsh and the watcher. The kit-covered installer files and scripts remain in the repository for the later cleanup part of Plan 0002, but setup and uninstall no longer call them. The previous-release check is a later batch 5c step; setup does not currently detect and refuse every previous-release installation.
 
-Idempotency is part of the installer contract, not a nice-to-have:
+| Area                  | Idempotency rule                                                                                                                                                     |
+| --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Provider login        | Reuse the existing credential and configured slot; force or skip login only when requested.                                                                          |
+| Config                | Merge provider/render settings without deleting unrelated keys.                                                                                                      |
+| Harness artifacts     | Compare the bundle, ledger and targets; require allowed conflict resolutions and confirmation before applying changes, and preserve unrelated settings and comments. |
+| Hook shim             | Atomically replace the same executable file on each confirmed setup; switching command modes changes its contents, not the installed hook command.                   |
+| Power watcher         | On macOS, replace the managed LaunchAgent plist and script, then reload the same label. On Linux, skip with a message.                                               |
+| Legacy home migration | Ask before copying known legacy files; never overwrite existing destination files; remove known legacy files after the new home has them; keep unknown files.        |
+| State                 | Preserve session state during setup. A tombstoned queue is cleared before hooks are enabled again.                                                                   |
+| Credentials           | Preserve credentials during normal setup and uninstall; only `uninstall --credentials` or `uninstall --all` removes them.                                            |
 
-| Area                  | Idempotency rule                                                                                                                                                                                                                                                                                                              |
-| --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Provider login        | Reuse existing Keychain credential and configured slot. Normal setup starts QR login only when credentials are missing; `--skip-login` refreshes hooks without login checks, and `--login` forces fresh authentication.                                                                                                       |
-| Config                | Merge provider/render settings without deleting unrelated keys.                                                                                                                                                                                                                                                               |
-| Codex hooks           | Remove prior managed Agent Presence hooks, add exactly one current managed group per event, then remind the user to approve changed hooks in Codex settings.                                                                                                                                                                  |
-| Claude Code hooks     | Remove prior managed Agent Presence hooks, add exactly one current managed group per event.                                                                                                                                                                                                                                   |
-| opencode plugin       | Rewrite the managed plugin file from the current package; do not append duplicate plugin registrations.                                                                                                                                                                                                                       |
-| Pi extension          | Rewrite the managed `~/.pi/agent/extensions/agent-presence.ts` from the current package; refuse to overwrite a non-managed file with the same name. Pi auto-discovers the file, so settings.json is not modified by default. Uninstall removes only the managed file and only its own entry from `settings.json#/extensions`. |
-| Power watcher         | On macOS: replace the managed LaunchAgent plist and script, then reload the same label. On Linux: skipped with a message; TTL pruning covers expired sessions.                                                                                                                                                                |
-| Managed runtime       | Install into a staging directory first, then atomically switch the active runtime or shim target.                                                                                                                                                                                                                             |
-| Legacy home migration | During interactive setup, ask before copying known files from `~/.codex/agent-signature` to `~/.agent-presence`; never overwrite existing destination files; remove known legacy files after the new home has them; keep unknown files.                                                                                       |
-| State                 | Preserve local session state during setup; only `reset` or `uninstall --all` clears it.                                                                                                                                                                                                                                       |
-| Credentials           | Preserve credentials during normal setup and uninstall; only `uninstall --credentials` or `uninstall --all` removes them.                                                                                                                                                                                                     |
-
-This makes the supported repair command simple and keeps its default on magic-builder:
+Run setup after package upgrades, path changes or partial installs to inspect the proposed repair before applying it:
 
 ```bash
 npx --yes --registry=https://registry.npmjs.org @rivus/agent-presence@<version> setup
 ```
 
-Users should be able to run that command repeatedly after package upgrades, hook corruption, path changes, or partial installs.
-
 ### Codex Hook Trust
 
 Codex Desktop stores a trust hash for each hook entry. Rewriting `~/.codex/hooks.json` changes those hashes, so a hook can be present but not executed until the trust state is updated.
 
-Setup should:
-
-1. Write the managed Codex hooks.
-2. Print a clear reminder that Codex may require approval before updated hooks run.
-3. Leave `~/.codex/config.toml` trust state untouched.
-
-This keeps Agent Presence from silently changing Codex's trust database. The cost is one manual approval step when Codex marks hooks as new or modified.
-
-If Codex later exposes an official trust API or CLI command, setup can call that supported interface for the managed Agent Presence hooks only. Until then, the CLI should prompt instead of editing TOML trust hashes directly.
+The harness plan lists the expected trust prompts before install confirmation. Setup leaves `~/.codex/config.toml` trust state untouched; the user approves hooks through Codex when required. The stable installed command avoids changing the command text when a later setup only updates the shim's pinned version or command mode.
 
 ### Uninstall
 
-`uninstall` removes managed integration points while preserving user-owned data by default:
+`src/cli/commands/uninstall.ts` calls `uninstall("agent-presence", { agents })` without legacy markers, reports each artifact removal, and lists every kept locator with its reason. It removes only the harness ledger's artifacts; previous-release entries outside that ledger stay untouched.
 
-```text
-agent-presence uninstall
--> remove managed Codex hooks
--> remove managed Claude Code hooks
--> remove managed Gemini CLI hooks
--> remove managed opencode plugin
--> remove managed Pi Coding Agent extension
--> unload and remove managed power watcher
--> keep Keychain credentials, provider config, and state
-```
+After the harness step, uninstall removes the stable shim, dsh plugin and macOS power watcher. These removals run independently: a kit failure is printed and makes the final exit non-zero, but does not prevent the shim, scripts or requested credential/state removals from running. Normal uninstall preserves credentials, provider/render configuration and session state.
 
 Credential and data removal are explicit:
 
 ```text
-agent-presence uninstall --credentials  removes credentials and slot config
-agent-presence uninstall --all          removes hooks, credentials, config, state, and managed runtime
+agent-presence uninstall --credentials  removes credentials and slot identifiers from config
+agent-presence uninstall --all          also removes session state, queued records and installed source plugins
 ```
 
-Uninstall is also idempotent. Running it on a machine with no installed hooks should be a clean success.
+`--all` writes the queue tombstone before takeover, then deletes the queue directory, stop requests and session state. The tombstone, epoch and worker lock database remain so late producers and workers cannot restore removed state; a later setup clears the tombstone under takeover. Other configuration keys are preserved. Uninstall is idempotent when no artifacts remain.
 
 ## Observability
 
@@ -641,18 +592,18 @@ remote value is wrong but local is correct      -> provider sync path bug or del
 
 ## Failure Model
 
-| Failure                                 | Expected behavior                                                                                                             |
-| --------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| Agent exits without a finish hook       | Session expires after TTL.                                                                                                    |
-| Hook command fails                      | Coding agent continues; Codex receives `{}`.                                                                                  |
-| Provider returns 429                    | Local state remains correct; next non-debounced update can sync.                                                              |
-| Laptop sleeps or lid closes             | On macOS, power watcher resets local and remote state to 0 when possible. On Linux, TTL pruning clears sessions after expiry. |
-| Sudden power loss                       | Wake reset (macOS) and TTL clear stale sessions.                                                                              |
-| Keychain is unavailable                 | Explicit environment variables can supply token and slot id.                                                                  |
-| Linux has no secret-tool                | Credential operations bail with a clear install instruction; env vars still work.                                             |
-| `npx` cache disappears after setup      | Managed hooks keep working because they target the stable runtime or shim.                                                    |
-| Setup is interrupted halfway            | The previous runtime/config remains usable; the next setup run can repair managed files.                                      |
-| Codex hooks are present but not trusted | Setup prints a reminder; approve the managed hooks in Codex settings.                                                         |
+| Failure                                 | Expected behavior                                                                                                                |
+| --------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| Agent exits without a finish hook       | Session expires after TTL.                                                                                                       |
+| Hook command fails                      | Coding agent continues; Codex receives `{}`.                                                                                     |
+| Provider returns 429                    | Local state remains correct; next non-debounced update can sync.                                                                 |
+| Laptop sleeps or lid closes             | On macOS, power watcher resets local and remote state to 0 when possible. On Linux, TTL pruning clears sessions after expiry.    |
+| Sudden power loss                       | Wake reset (macOS) and TTL clear stale sessions.                                                                                 |
+| Keychain is unavailable                 | Explicit environment variables can supply token and slot id.                                                                     |
+| Linux has no secret-tool                | Credential operations bail with a clear install instruction; env vars still work.                                                |
+| `npx` cache disappears after setup      | The shim reruns the pinned npm command, which may need the registry to rebuild its cache; absolute mode depends on the checkout. |
+| Setup is interrupted halfway            | Agent targets stay unchanged before confirmation; after application starts, rerun setup to inspect and complete partial work.    |
+| Codex hooks are present but not trusted | The install plan lists expected trust prompts; approve the managed hooks in Codex settings.                                      |
 
 ## Security Boundaries
 

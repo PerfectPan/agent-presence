@@ -30,7 +30,7 @@ agent-presence setup
 npx --yes --registry=https://registry.npmjs.org @rivus/agent-presence@latest setup
 ```
 
-如果智能体环境启动 hook 时 `PATH` 很窄，用绝对路径安装 hook：
+如果智能体环境启动 hook 时 `PATH` 很窄，让稳定的 hook shim 调用绝对路径下的 Node 和 CLI：
 
 ```bash
 npx --yes --registry=https://registry.npmjs.org @rivus/agent-presence@latest setup --hook-command absolute
@@ -52,9 +52,11 @@ agent-presence setup
 
 1. 运行 `agent-presence setup`。
 2. 如果需要登录，扫二维码完成授权，这会保存 slot 凭据。
-3. 出现提示时粘贴 Magic-Builder token，让 setup 发布预览 FaaS —— 在飞书里打开妙笔机器人、发送 `dev`、从回复复制 token。
-4. setup 会安装 Codex、Claude Code、Gemini CLI、opencode、Pi 的 hook，以及 macOS 电源 watcher。
+3. 先处理列出的配置冲突，再查看完整安装计划并确认，setup 随后安装 hook 和 macOS 电源 watcher。
+4. 出现提示时粘贴 Magic-Builder token，让 setup 发布预览 FaaS —— 在飞书里打开妙笔机器人、发送 `dev`、从回复复制 token。
 5. 运行 `agent-presence url`，把输出粘贴到飞书个人资料签名的自定义链接预览里。
+
+`setup` 在确认安装计划前不会写入智能体配置。非交互终端需要 `setup --yes` 才会应用无冲突的计划；有冲突时即使传了 `--yes` 也会退出，交互终端仍需明确确认。安装结果会写入 harness 安装记录，并在发布 provider 后验证。
 
 重复运行 `setup` 会复用已有登录（无需再次扫码）。签名 URL —— `https://magic.solutionsuite.cn/r?fid=<faasId>` —— 不含任何凭据。本地配置、状态和日志在 `~/.agent-presence/`。
 
@@ -100,7 +102,7 @@ agent-presence config render \
 ## 常用命令
 
 ```bash
-agent-presence setup            # 还有：--login --skip-login --no-hooks --hook-command absolute
+agent-presence setup            # 还有：--login --skip-login --no-hooks --hook-command absolute --yes
 agent-presence url
 agent-presence status           # --remote 查看已发布的预览
 agent-presence usage            # --days N / --json

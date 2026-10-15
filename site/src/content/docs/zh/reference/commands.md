@@ -8,9 +8,10 @@ description: agent-presence 命令一览。
 ```bash
 agent-presence setup                 # 安装 hook + 链接签名
 agent-presence setup --login         # 强制重新扫码登录
-agent-presence setup --skip-login    # 只刷新 hook
+agent-presence setup --skip-login    # 跳过登录，保留 hook 和 provider 设置步骤
 agent-presence setup --no-hooks
 agent-presence setup --hook-command absolute
+agent-presence setup --yes           # 非交互终端应用无冲突的安装计划
 
 agent-presence url                   # 打印签名 URL
 agent-presence status                # 现在会渲染成什么
@@ -36,11 +37,18 @@ agent-presence source add <pkg> --registry <url> --id <id>
 agent-presence source remove <id>                 # 反注册并卸载该包
 
 agent-presence uninstall             # 移除 hook(保留凭据)
+agent-presence uninstall --credentials
 agent-presence uninstall --all
 ```
+
+`setup` 先列出每个配置冲突的位置、原因和允许的处理方式，再按你的选择重新规划，展示完整计划后请求确认。没有可选处理方式的目标（如 dotfiles 管理或符号链接目标）会使 setup 退出。取消或拒绝确认会丢弃已有计划并以非零退出码结束，不写入智能体配置；本地迁移和登录可能已完成。
+
+非交互终端必须传 `--yes` 才会应用无冲突的计划；有冲突时无论是否传 `--yes` 都会退出。交互终端始终需要明确确认。确认后 setup 写入稳定的 hook shim、应用计划、运行 dsh 和电源 watcher 步骤、设置 provider，最后验证 bundle。`--no-hooks` 跳过 harness、shim、dsh 和 watcher；`--skip-login`（也可用 `--hooks-only`）跳过登录。`--hook-command absolute` 只改变 shim 调用的程序，安装到智能体中的命令保持不变。
 
 hook 命令由 `setup` 自动安装,且永不阻塞智能体。添加、覆盖或禁用被统计的智能体见 [Sources](/zh/guide/sources/)。
 
 `doctor` 逐项打印 harness 检查及其状态，任何警告或错误都会使退出码非零。检查范围包括 Claude Code、Codex、Gemini CLI、Grok、opencode 和 Pi。重复检测覆盖命令式 hook 文件，不覆盖 opencode 和 Pi 桥接文件；它识别当前 harness 命令，暂不识别旧版本命令。它不会修复智能体配置，但检查安装记录锁时可能在 harness 状态目录中创建锁文件。presence home 路径含空格时，目前可能误报程序不存在。
 
-`inventory` 打印 harness 安装记录的修订号、已安装条目和待完成操作。两个命令都支持 `--json`。当前 `setup` 仍使用原有安装器，其安装结果不会出现在 harness 记录中，因此空记录不代表没有安装 presence hook。
+`inventory` 打印 harness 安装记录的修订号、已安装条目和待完成操作。两个命令都支持 `--json`。setup 通过 harness 安装的产物会出现在记录中；旧版本安装的 hook 不会自动记入记录。
+
+`uninstall` 只移除 harness 记录的产物，逐项报告移除结果和保留位置及原因，然后移除 shim、dsh 插件和 macOS watcher。harness 失败时仍会继续这些独立清理步骤，并以非零退出码结束；旧版本留下的产物需要用该版本的 uninstall 移除。默认保留凭据、配置和状态；`--credentials` 清除凭据及配置中的 slot 标识，`--all` 还会清除 session 状态、队列记录和已安装的源插件，同时保留防止旧进程恢复状态的队列 tombstone。其他配置字段会保留。
