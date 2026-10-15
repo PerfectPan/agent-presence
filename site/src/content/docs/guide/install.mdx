@@ -38,7 +38,7 @@ agent-presence setup
 
 `setup` lists configuration conflicts and their allowed resolutions, re-plans with your choices, then shows the complete changes, commands and expected trust prompts. Review and confirm that plan before it writes agent configuration. Canceling, declining confirmation or encountering a protected target stops setup. Login and local home migration may already have written their own data.
 
-In a non-interactive terminal, `setup --yes` applies a conflict-free plan. It does not resolve conflicts automatically. An interactive terminal always asks for confirmation, including with `--yes`. After applying the plan, setup offers the optional dsh plugin, installs the macOS power watcher, configures the provider and verifies the installed bundle. Linux skips the watcher and relies on TTL pruning.
+In a non-interactive terminal, `setup --yes` applies a conflict-free plan. It does not resolve conflicts automatically. An interactive terminal always asks for confirmation, including with `--yes`. After applying the plan, setup immediately verifies the kit artifacts. It then offers the optional dsh plugin, installs the macOS power watcher and configures the provider. A canceled dsh prompt or provider failure does not skip the verification results. Linux skips the watcher and relies on TTL pruning.
 
 ## Without a global install
 

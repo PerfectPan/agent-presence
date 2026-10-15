@@ -38,7 +38,7 @@ agent-presence setup
 
 `setup` 先列出配置冲突和允许的处理方式，按你的选择重新规划，再展示完整变更、命令和预期信任提示。确认计划后才会写入智能体配置。取消、拒绝确认或遇到受保护目标时，setup 会退出。登录和本地目录迁移可能已经写入各自的数据。
 
-非交互终端可用 `setup --yes` 应用无冲突的计划，但它不会自动处理冲突。交互终端始终会请求明确确认，包括传了 `--yes` 时。应用计划后，setup 会询问是否安装可选的 dsh 插件、安装 macOS 电源 watcher、配置 provider，最后验证安装的 bundle。Linux 跳过 watcher，依靠 TTL 清理。
+非交互终端可用 `setup --yes` 应用无冲突的计划，但它不会自动处理冲突。交互终端始终会请求明确确认，包括传了 `--yes` 时。应用计划后，setup 会立即验证 kit 产物，再询问是否安装可选的 dsh 插件、安装 macOS 电源 watcher 并配置 provider。取消 dsh 提示或 provider 失败不会跳过验证结果。Linux 跳过 watcher，依靠 TTL 清理。
 
 ## 不全局安装
 
