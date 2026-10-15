@@ -6,6 +6,7 @@ import { pathToFileURL } from 'node:url';
 import { transformWithOxc } from 'vite-plus';
 import { beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 import { hook } from '../src/cli/commands/hook.js';
+import { SCAN_ENV } from '../src/cli/hook-context.js';
 import { buildOpenCodePluginSource, buildPiExtensionSource } from '../src/installers.js';
 import { createEmptyState, type AgentSession } from '../src/state.js';
 import { loadState, saveState } from '../src/state-store.js';
@@ -91,17 +92,15 @@ const MANAGED_ENV_KEYS = [
   'HOME',
   'PWD',
   'XDG_CONFIG_HOME',
-  'XDG_DATA_HOME',
   'XDG_STATE_HOME',
   'AGENT_PRESENCE_HOME',
-  'CLAUDE_CONFIG_DIR',
+  ...Object.values(SCAN_ENV),
   'CLAUDE_HOOK_EVENT_NAME',
   'CLAUDE_SESSION_ID',
   'CLAUDE_TRANSCRIPT_PATH',
   'CODEX_SESSION_ID',
   'CODEX_THREAD_ID',
   'CMUX_SURFACE_ID',
-  'GEMINI_CLI_HOME',
   'GEMINI_HOOK_EVENT_NAME',
   'GEMINI_PROJECT_DIR',
   'GEMINI_SESSION_ID',

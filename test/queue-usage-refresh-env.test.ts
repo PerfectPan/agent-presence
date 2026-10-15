@@ -171,11 +171,12 @@ beforeEach(async () => {
   defaultHome = await mkdtemp(join(tmpdir(), 'env-default-home-'));
   process.env.HOME = defaultHome;
   // The worker's environment points every agent at its worker-home, each
-  // holding a real 100-token fixture; only a recorded variable may lead the
-  // scan there.
+  // holding a real 40-token fixture — a different count than the recorded
+  // side's 100, so a snapshot tells which side was read. Only a recorded
+  // variable may lead the scan there.
   for (const agent of AGENTS) {
     const workerDir = join(defaultHome, 'worker-env', agent.source);
-    await writeFixture(workerDir, agent.source);
+    await writeFixture(workerDir, agent.source, 40);
     process.env[agent.variable] = workerDir;
   }
 });
@@ -240,6 +241,53 @@ describe('the worker refresh scans with the recorded agent-home variables', () =
     const state = await readState(home.statePath);
     for (const { source } of AGENTS) {
       expect(state.usageSnapshots?.['1']?.[source]?.totalTokens ?? 0).toBe(0);
+    }
+  });
+
+  it('leaves a source with its own owed entry to that entry when a promoted refresh shares the batch', async () => {
+    // One batch: claude(T1), codex(T2, recording CODEX_HOME), claude(T3). The
+    // claude entry is promoted to every built-in source at T3 — but codex has
+    // its own entry, which scans codex with its recorded environment, so the
+    // promoted scan skips codex instead of stamping it from the worker's
+    // 40-token CODEX_HOME.
+    const hookCodex = await mkdtemp(join(tmpdir(), 'env-hook-codex-'));
+    await writeFixture(hookCodex, 'codex', 100);
+    try {
+      for (const [at, source, scanEnv] of [
+        [T0, 'claude', {}],
+        [T0 + 1_000, 'codex', { CODEX_HOME: hookCodex }],
+        [T0 + 2_000, 'claude', {}]
+      ] as const) {
+        await recordAt(home.statePath, at, eventBody('SessionStart', `s_${source}_${at}`, { source, scanEnv }));
+      }
+      await applyQueueBatch(home.statePath, {
+        version: 1,
+        config: await loadConfig(),
+        clock: { now: () => T0 + 3_000 }
+      });
+      const config = await loadConfig();
+
+      const items = doableOwedItems((await readState(home.statePath)).queueOwed, knownSources(config)).filter(
+        (candidate) => candidate.kind === 'usageRefresh'
+      );
+      for (const item of items) {
+        const outcome = await workOffOwedItem(item, {
+          statePath: home.statePath,
+          config,
+          clock: { now: () => T0 + 4_000 },
+          effects: defaultOwedWorkEffects,
+          signal: new AbortController().signal
+        });
+        expect(outcome).toBe('done');
+      }
+
+      const state = await readState(home.statePath);
+      // Codex carries its own recorded-environment scan (100), not the promoted
+      // scan's worker-environment stamp (40); claude reads its empty default.
+      expect(state.usageSnapshots?.['1']?.codex).toMatchObject({ totalTokens: 100 });
+      expect(state.usageSnapshots?.['1']?.claude).toMatchObject({ totalTokens: 0 });
+    } finally {
+      await rm(hookCodex, { recursive: true, force: true });
     }
   });
 

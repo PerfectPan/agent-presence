@@ -100,9 +100,8 @@ describe('printUsage --json', () => {
   it('reports inputTokens without the cache and totalTokens as the cache-inclusive input plus output', async () => {
     // The command reads the wall clock for its window; the clock is faked to
     // half a second past local midnight, where a record timed relative to the
-    // real now would fall on the previous day.
-    vi.useFakeTimers({ toFake: ['Date'] });
-    vi.setSystemTime(new Date(2026, 6, 14, 0, 0, 0, 500));
+    // real now would fall on the previous day. Everything the test changes is
+    // restored in the finally below.
     const home = await mkdtemp(join(tmpdir(), 'agent-presence-usage-json-'));
     const saved: Record<string, string | undefined> = {};
     const names = [
@@ -157,6 +156,8 @@ describe('printUsage --json', () => {
       logged.push(String(line));
     });
     try {
+      vi.useFakeTimers({ toFake: ['Date'] });
+      vi.setSystemTime(new Date(2026, 6, 14, 0, 0, 0, 500));
       await printUsage(['--json', '--days', '1']);
     } finally {
       log.mockRestore();

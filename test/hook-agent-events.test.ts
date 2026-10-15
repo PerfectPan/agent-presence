@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { builtinHookDialects } from '@rivus/agent-kit/harness/events';
 import { beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 import { hook } from '../src/cli/commands/hook.js';
+import { SCAN_ENV } from '../src/cli/hook-context.js';
 import { createEmptyState, type AgentSession, type PresenceState } from '../src/state.js';
 import { loadState, saveState } from '../src/state-store.js';
 import { captureHookWorkerStarts, drainQueue, restoreHookWorkerStarts } from './hook-producer-support.js';
@@ -69,11 +70,10 @@ const MANAGED_ENV_KEYS = [
   'HOME',
   'PWD',
   'XDG_CONFIG_HOME',
-  'XDG_DATA_HOME',
   'XDG_STATE_HOME',
   'AGENT_PRESENCE_HOME',
+  ...Object.values(SCAN_ENV),
   'AGENT_PRESENCE_LOG_FILE',
-  'CLAUDE_CONFIG_DIR',
   'CLAUDE_HOOK_EVENT_NAME',
   'CLAUDE_SESSION_ID',
   'CLAUDE_TRANSCRIPT_PATH',
@@ -81,7 +81,6 @@ const MANAGED_ENV_KEYS = [
   'CODEX_THREAD_ID',
   'CURSOR_VERSION',
   'CMUX_SURFACE_ID',
-  'GEMINI_CLI_HOME',
   'GEMINI_HOOK_EVENT_NAME',
   'GEMINI_PROJECT_DIR',
   'GEMINI_SESSION_ID',
@@ -456,6 +455,11 @@ describe('hook --agent codex', () => {
   it('SessionStart creates a running session and refreshes the usage badge', async () => {
     await run('SessionStart');
     expect(startedView(await readState(), 'codex-thread-1')).toEqual(startedExpected('codex'));
+    // No agent home from the surrounding shell reaches the refresh: the fixture
+    // roots are empty, so every contribution scans to zero.
+    expect(Object.values(await readState().then((state) => state.usageSnapshots?.['1'] ?? {}))).toEqual(
+      Array.from({ length: BILLABLE_SOURCE_IDS.length }, () => expect.objectContaining({ totalTokens: 0 }))
+    );
   });
 
   it('a compact SessionStart still restarts the running session', async () => {

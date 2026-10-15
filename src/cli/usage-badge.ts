@@ -47,6 +47,11 @@ export interface UsageBadgeCacheRefresh {
   /** A hook refresh owns only this source. Omit for an explicit full refresh. */
   source?: string;
   /**
+   * Sources a promoted full scan leaves out: each has its own refresh coming,
+   * which scans it with its own recorded environment and time.
+   */
+  excludeSources?: readonly string[];
+  /**
    * Stops the refresh before or while its scans run; scans already running finish in the background, as they only read
    * transcripts. Once the scans have finished, an abort no longer stops it: it waits for the state lock and saves.
    */
@@ -128,7 +133,7 @@ export async function refreshUsageBadgeCache(options: UsageBadgeCacheRefresh): P
       : options.source;
   const selectedSources = refreshSource
     ? options.sources.filter((candidate) => candidate.id === refreshSource)
-    : options.sources;
+    : options.sources.filter((candidate) => !options.excludeSources?.includes(candidate.id));
   if (refreshSource && selectedSources.length === 0) {
     return { completed: true };
   }
@@ -235,7 +240,7 @@ export async function refreshSignatureUsageBadges(
   statePath: string,
   now: number,
   source?: string,
-  options: Pick<UsageBadgeCacheRefresh, 'signal' | 'env' | 'onSave'> = {}
+  options: Pick<UsageBadgeCacheRefresh, 'signal' | 'env' | 'onSave' | 'excludeSources'> = {}
 ): Promise<UsageRefreshOutcome> {
   const plan = usageRenderPlan(config);
   if (!plan.enabled) {
@@ -256,6 +261,7 @@ export async function refreshSignatureUsageBadges(
     source,
     signal: options.signal,
     env: options.env,
+    excludeSources: options.excludeSources,
     onSave: options.onSave
   });
 }
