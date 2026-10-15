@@ -111,10 +111,11 @@ function aggregateSnapshots(snapshots: UsageSnapshot[]): { totalTokens: number; 
 
 /**
  * Refresh source-owned usage snapshots, then rebuild each aggregate badge from
- * the cached contributions. A hook normally supplies its source id, but the
- * first source boundary after midnight promotes that refresh to all built-ins
- * so inactive sources cannot leave the new calendar day permanently stale.
- * Explicit updates also replace the complete built-in snapshot set.
+ * the cached contributions. A hook normally supplies its source id; when the
+ * day rolls over or no aggregate exists, the refresh is promoted and fills the
+ * day — its own source plus every built-in the day still lacks (see the
+ * selection below). Explicit updates replace the complete built-in snapshot
+ * set.
  */
 export async function refreshUsageBadgeCache(options: UsageBadgeCacheRefresh): Promise<UsageRefreshOutcome> {
   if (options.signal?.aborted) {
@@ -217,9 +218,9 @@ export async function refreshUsageBadgeCache(options: UsageBadgeCacheRefresh): P
       );
       snapshots[days] = bySource;
 
-      // A partial cache cannot produce a truthful aggregate. Cross-midnight
-      // refreshes are promoted to a full scan above, so every configured
-      // built-in receives a current-day contribution, including zero usage.
+      // A partial cache cannot produce a truthful aggregate: the badge is
+      // rebuilt only when every configured built-in has a snapshot from the
+      // current day, including zero usage from the promoted refresh's fill.
       if (
         options.sources.every((source) => {
           const snapshot = bySource[source.id];
@@ -245,10 +246,11 @@ export async function refreshUsageBadgeCache(options: UsageBadgeCacheRefresh): P
 
 /**
  * Refresh cached usage for every window the signature references. A hook passes
- * its source id and normally scans only that source; the first boundary after
- * midnight and an explicit update rebuild every built-in contribution. Scans
- * run outside the state lock and any failure leaves the previous cache intact.
- * `signal` stops the refresh before or while its scans run, `env` locates the transcripts, and `onSave` runs inside its
+ * its source id and normally scans only that source; a promoted refresh fills
+ * the day for the built-ins it still lacks, and an explicit update replaces
+ * every built-in contribution. Scans run outside the state lock and any failure
+ * leaves the previous cache intact. `signal` stops the refresh before or while
+ * its scans run, `env` locates the transcripts, and `onSave` runs inside its
  * save (see `UsageBadgeCacheRefresh`).
  */
 export async function refreshSignatureUsageBadges(
