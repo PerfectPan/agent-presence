@@ -4,7 +4,7 @@
 // Type-only, so erased: an inline `type` specifier would keep the module edge.
 import type { QueueOwed } from './queue/schema.js';
 
-export type AgentStatus = 'running' | 'finished' | 'expired';
+type AgentStatus = 'running' | 'finished' | 'expired';
 
 export interface AgentSession {
   id: string;

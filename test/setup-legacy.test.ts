@@ -192,6 +192,8 @@ describe('previous-release setup check', () => {
       expect(output()).toContain(`${paths.piExtension}; kind=file; treatment=replace`);
       expect(output()).toContain(paths.opencodeConfig);
       expect(output()).toContain('npx --yes @rivus/agent-presence@0.9.0 uninstall');
+      expect(output()).toContain("For replace entries, run the previous release's uninstall");
+      expect(output()).not.toContain('kept files above');
       expect(output()).toContain('without --credentials or --all');
       expect(output()).toContain('node <checkout>/dist/src/cli.js uninstall');
       if (commandMode === 'npx') {

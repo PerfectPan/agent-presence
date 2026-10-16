@@ -5,7 +5,7 @@ import { resolveGrokHookContext } from '../src/hooks/grok.js';
 import { resolveOpenCodeHookContext } from '../src/hooks/opencode.js';
 import { resolvePiHookContext } from '../src/hooks/pi.js';
 import { resolveDshHookContext } from '../src/hooks/dsh.js';
-import { resolveHookContext } from '../src/cli/hook-context.js';
+import { resolveBuiltinHookContext } from '../src/cli/hook-context.js';
 import { applyAgentEvent, createEmptyState, finishAllSessions, getActiveSessions } from '../src/state.js';
 import { renderPresence } from '../src/render.js';
 
@@ -240,8 +240,10 @@ describe('Grok hook context', () => {
     });
   });
 
-  it('routes through resolveHookContext when source is grok', () => {
-    expect(resolveHookContext('grok', { hookEventName: 'stop', sessionId: 'grok-session-3', cwd: '/repo' })).toEqual({
+  it('routes through resolveBuiltinHookContext when source is grok', () => {
+    expect(
+      resolveBuiltinHookContext('grok', { hookEventName: 'stop', sessionId: 'grok-session-3', cwd: '/repo' })
+    ).toEqual({
       event: 'Stop',
       project: '/repo',
       sessionId: 'grok-session-3'
@@ -418,8 +420,8 @@ describe('Pi hook context', () => {
     });
   });
 
-  it('routes identity and project through resolveHookContext when source is pi', () => {
-    expect(resolveHookContext('pi', { session_id: 'pi-session-2', cwd: '/repo', event: 'Stop' })).toEqual({
+  it('routes identity and project through resolveBuiltinHookContext when source is pi', () => {
+    expect(resolveBuiltinHookContext('pi', { session_id: 'pi-session-2', cwd: '/repo', event: 'Stop' })).toEqual({
       project: '/repo',
       sessionId: 'pi-session-2'
     });
@@ -458,8 +460,10 @@ describe('dsh hook context', () => {
     });
   });
 
-  it('routes through resolveHookContext when source is dsh', () => {
-    expect(resolveHookContext('dsh', { session_id: 'dsh-session-2', cwd: '/repo', hook_event_name: 'Stop' })).toEqual({
+  it('routes through resolveBuiltinHookContext when source is dsh', () => {
+    expect(
+      resolveBuiltinHookContext('dsh', { session_id: 'dsh-session-2', cwd: '/repo', hook_event_name: 'Stop' })
+    ).toEqual({
       event: 'Stop',
       project: '/repo',
       sessionId: 'dsh-session-2'

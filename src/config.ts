@@ -5,13 +5,13 @@ import { readJsonFile, writeJsonAtomic } from './json-file.js';
 import type { RenderTemplates } from './render.js';
 import type { PricingOverrides } from './usage/index.js';
 
-export const DEFAULT_PROVIDER_BASE_URL = 'https://l.garyyang.work';
-export const DEFAULT_PREVIEW_BASE_URL = 'https://l.garyyang.work/';
+const DEFAULT_PROVIDER_BASE_URL = 'https://l.garyyang.work';
+const DEFAULT_PREVIEW_BASE_URL = 'https://l.garyyang.work/';
 export const DEFAULT_MAGIC_BUILDER_BASE_URL = 'https://magic.solutionsuite.cn';
-export const DEFAULT_TTL_MS = 3 * 60 * 1000;
-export const DEFAULT_DEBOUNCE_MS = 60 * 1000;
+const DEFAULT_TTL_MS = 3 * 60 * 1000;
+const DEFAULT_DEBOUNCE_MS = 60 * 1000;
 export const DEFAULT_LOGIN_POLL_MS = 3 * 1000;
-export const DEFAULT_PROVIDER_ID = 'magic-builder';
+const DEFAULT_PROVIDER_ID = 'magic-builder';
 
 export type ProviderId = 'feishu-signature' | 'magic-builder';
 
@@ -32,7 +32,7 @@ export interface MagicBuilderProviderConfig {
   fallbackTitle?: string;
 }
 
-export interface UsageConfig {
+interface UsageConfig {
   /** Append a "today's usage" badge to the signature title. Opt-in. */
   showInSignature?: boolean;
   /** Rolling-window length (days) shown in the signature badge. Defaults to 1. */
@@ -78,7 +78,7 @@ export interface SourcePluginConfig {
   enabled?: boolean;
 }
 
-export interface PluginsConfig {
+interface PluginsConfig {
   /** Presence sources keyed by source id, merged over the shipped defaults. */
   sources?: Record<string, SourcePluginConfig>;
 }
@@ -320,7 +320,7 @@ export function configSlotId(config: AppConfig): string | undefined {
   );
 }
 
-export function readPositiveInt(value: string | undefined): number | undefined {
+function readPositiveInt(value: string | undefined): number | undefined {
   if (!value) {
     return undefined;
   }

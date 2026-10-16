@@ -102,7 +102,6 @@ src/cli/args.ts             argv parsing helpers
 src/cli/ui.ts               Clack wrapper and non-TTY fallback
 src/cli/slot-sync.ts        state-lock to provider-sync bridge
 src/cli/hook-context.ts     built-in source hook context selection
-src/cli/hook-apply.ts       the old direct application path; the event-table tests use it as the oracle until Q2 deletes it
 src/queue/                  the hook event queue: record writer, reader, worker, takeover (see Hook Event Queue below)
 src/sources.ts              source registry: built-ins plus configured plugin sources
 src/usage/billable-sources.ts  the billable source table (usage command and badge refresh)

@@ -1,6 +1,7 @@
-import { describe, expect, it } from 'vite-plus/test';
+import { describe, expect, it, vi } from 'vite-plus/test';
 import { hasAnyOption, hasFlag, optionValue, parseArgs } from '../src/cli/args.js';
-import { resolveHookContext } from '../src/cli/hook-context.js';
+import { printHelp } from '../src/cli/help.js';
+import { resolveBuiltinHookContext } from '../src/cli/hook-context.js';
 import { assertMacOS, assertSupportedPlatform, isMacOS, isSupportedPlatform } from '../src/platform.js';
 
 describe('cli args', () => {
@@ -20,6 +21,26 @@ describe('cli args', () => {
   });
 });
 
+describe('cli help', () => {
+  it('shows the installed agent form and direct source form without legacy per-source event lists', () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    try {
+      printHelp();
+      const help = log.mock.calls.flat().join('\n');
+      expect(help.split('\n').filter((line) => line.includes('agent-presence hook'))).toEqual([
+        '  agent-presence hook --agent <claude-code|codex|gemini-cli|grok|opencode|pi>',
+        '  agent-presence hook --source <id> --event <name> [--silent]'
+      ]);
+      expect(help).toContain(
+        'Direct hook calls use --source with claude, codex,\ngemini, grok, dsh, or a configured source'
+      );
+      expect(help).toContain('an internal event name');
+    } finally {
+      log.mockRestore();
+    }
+  });
+});
+
 describe('cli hook context', () => {
   it('keeps hook context resolution outside the interactive cli layer', () => {
     const previousThreadId = process.env.CODEX_THREAD_ID;
@@ -27,7 +48,7 @@ describe('cli hook context', () => {
 
     try {
       expect(
-        resolveHookContext('codex', {
+        resolveBuiltinHookContext('codex', {
           thread_id: 'thread-1',
           cwd: '/repo'
         })

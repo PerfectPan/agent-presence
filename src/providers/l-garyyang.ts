@@ -10,11 +10,11 @@ export interface QrCodeResponse {
   expiresIn: number;
 }
 
-export interface LoginPending {
+interface LoginPending {
   status: string;
 }
 
-export interface LoginSuccess {
+interface LoginSuccess {
   status: string;
   token: string;
   slotId: string;

@@ -5,18 +5,18 @@ import * as z from 'zod/mini';
 import { hasNodeErrorCode, readJsonFile, writeJsonAtomic } from '../../src/json-file.js';
 import { shellQuote } from '../../src/shell-quote.js';
 
-export interface HookCommand {
+interface HookCommand {
   type?: unknown;
   command: string;
   timeout?: unknown;
 }
 
-export interface HookGroup {
+interface HookGroup {
   matcher?: unknown;
   hooks?: HookCommand[] | null;
 }
 
-export interface HookSettings {
+interface HookSettings {
   hooks: Record<string, HookGroup[]>;
 }
 
@@ -37,10 +37,9 @@ const LEGACY_CLI_COMMAND = 'agent-signature';
 const OPENCODE_PLUGIN_REF = './plugins/agent-presence.js';
 const LEGACY_OPENCODE_PLUGIN_REF = './plugins/agent-signature.js';
 
-export const PI_EXTENSION_FILE_NAME = 'agent-presence.ts';
-export const PI_EXTENSION_MARKER = '@rivus/agent-presence pi extension';
+const PI_EXTENSION_MARKER = '@rivus/agent-presence pi extension';
 
-export interface OpenCodeConfig {
+interface OpenCodeConfig {
   plugin?: unknown;
   [key: string]: unknown;
 }
@@ -55,14 +54,14 @@ export function isAgentSignatureCommand(command: string): boolean {
   );
 }
 
-export function withoutAgentSignatureHookGroups(groups: HookGroup[]): HookGroup[] {
+function withoutAgentSignatureHookGroups(groups: HookGroup[]): HookGroup[] {
   return groups.flatMap((group) => {
     const hooks = (group.hooks ?? []).filter((hook) => !isAgentSignatureCommand(hook.command));
     return hooks.length > 0 ? [{ ...group, hooks }] : [];
   });
 }
 
-export function withoutAgentSignatureHooks(input: HookSettingsInput): HookSettings {
+function withoutAgentSignatureHooks(input: HookSettingsInput): HookSettings {
   const settings: HookSettings = {
     ...input,
     hooks: {}
@@ -90,7 +89,7 @@ function normalizeOpenCodePlugins(plugin: unknown): unknown[] {
   return [];
 }
 
-export function withOpenCodeAgentSignaturePluginConfig(input: OpenCodeConfig): OpenCodeConfig {
+function withOpenCodeAgentSignaturePluginConfig(input: OpenCodeConfig): OpenCodeConfig {
   const plugins = normalizeOpenCodePlugins(input.plugin).filter((plugin) => plugin !== LEGACY_OPENCODE_PLUGIN_REF);
   if (!plugins.includes(OPENCODE_PLUGIN_REF)) {
     plugins.push(OPENCODE_PLUGIN_REF);
@@ -98,7 +97,7 @@ export function withOpenCodeAgentSignaturePluginConfig(input: OpenCodeConfig): O
   return { ...input, plugin: plugins };
 }
 
-export function withoutOpenCodeAgentSignaturePluginConfig(input: OpenCodeConfig): OpenCodeConfig {
+function withoutOpenCodeAgentSignaturePluginConfig(input: OpenCodeConfig): OpenCodeConfig {
   const plugins = normalizeOpenCodePlugins(input.plugin).filter(
     (plugin) => plugin !== OPENCODE_PLUGIN_REF && plugin !== LEGACY_OPENCODE_PLUGIN_REF
   );
@@ -111,7 +110,7 @@ export function withoutOpenCodeAgentSignaturePluginConfig(input: OpenCodeConfig)
   return next;
 }
 
-export interface PiSettings {
+interface PiSettings {
   extensions?: string[];
   [key: string]: unknown;
 }
@@ -135,7 +134,7 @@ async function readPiSettings(path: string): Promise<PiSettings> {
   return { ...input, ...settings, extensions: normalizePiExtensions(settings.extensions) };
 }
 
-export function withPiAgentPresenceExtension(input: PiSettings, extensionPath: string): PiSettings {
+function withPiAgentPresenceExtension(input: PiSettings, extensionPath: string): PiSettings {
   const extensions = normalizePiExtensions(input.extensions).filter((entry) => entry !== extensionPath);
   // Auto-discovery already picks up files in ~/.pi/agent/extensions/, so we
   // do not append a duplicate entry by default. We still scrub any prior
@@ -149,7 +148,7 @@ export function withPiAgentPresenceExtension(input: PiSettings, extensionPath: s
   return next;
 }
 
-export function withoutPiAgentPresenceExtension(input: PiSettings, extensionPath: string): PiSettings {
+function withoutPiAgentPresenceExtension(input: PiSettings, extensionPath: string): PiSettings {
   const extensions = normalizePiExtensions(input.extensions).filter((entry) => entry !== extensionPath);
   const next = { ...input };
   if (extensions.length > 0) {
@@ -160,12 +159,12 @@ export function withoutPiAgentPresenceExtension(input: PiSettings, extensionPath
   return next;
 }
 
-export interface PiExtensionPaths {
+interface PiExtensionPaths {
   extensionPath: string;
   settingsPath: string;
 }
 
-export interface PiInstallResult {
+interface PiInstallResult {
   status: 'installed' | 'refused';
   extensionPath: string;
   settingsPath: string;
@@ -173,7 +172,7 @@ export interface PiInstallResult {
   settingsError?: string;
 }
 
-export interface PiUninstallResult {
+interface PiUninstallResult {
   status: 'removed' | 'skipped';
   extensionPath: string;
   settingsPath: string;
@@ -200,7 +199,7 @@ function describeInstallerError(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-export async function uninstallPiExtension(paths: PiExtensionPaths): Promise<PiUninstallResult> {
+async function uninstallPiExtension(paths: PiExtensionPaths): Promise<PiUninstallResult> {
   const existing = await readManagedExtension(paths.extensionPath);
   let status: PiUninstallResult['status'] = 'skipped';
   if (existing.status === 'managed') {
@@ -366,7 +365,7 @@ export default AgentSignaturePlugin
 `;
 }
 
-export function buildPiExtensionSource(commandParts = agentPresenceCommandParts()): string {
+function buildPiExtensionSource(commandParts = agentPresenceCommandParts()): string {
   return `// ${PI_EXTENSION_MARKER}
 //
 // Bridges Pi Coding Agent lifecycle events into @rivus/agent-presence so that
@@ -464,7 +463,7 @@ export default function (pi: ExtensionAPI) {
 `;
 }
 
-export async function installPiExtension(paths: PiExtensionPaths): Promise<PiInstallResult> {
+async function installPiExtension(paths: PiExtensionPaths): Promise<PiInstallResult> {
   await mkdir(dirname(paths.extensionPath), { recursive: true, mode: 0o700 });
   const existing = await readManagedExtension(paths.extensionPath);
   if (existing.status === 'unmanaged') {
@@ -494,7 +493,7 @@ export async function installPiExtension(paths: PiExtensionPaths): Promise<PiIns
   };
 }
 
-export function withClaudeAgentSignatureHooks(input: HookSettingsInput): HookSettings {
+function withClaudeAgentSignatureHooks(input: HookSettingsInput): HookSettings {
   const settings: HookSettings = {
     ...input,
     hooks: { ...input.hooks }
@@ -519,7 +518,7 @@ export function withClaudeAgentSignatureHooks(input: HookSettingsInput): HookSet
 
 const GEMINI_EVENTS = ['SessionStart', 'UserPromptSubmit', 'PreToolUse', 'PostToolUse', 'Stop', 'SessionEnd'];
 
-export function withGeminiAgentSignatureHooks(input: HookSettingsInput): HookSettings {
+function withGeminiAgentSignatureHooks(input: HookSettingsInput): HookSettings {
   const settings: HookSettings = {
     ...input,
     hooks: { ...input.hooks }

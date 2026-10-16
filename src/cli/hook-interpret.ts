@@ -96,7 +96,7 @@ const EVENT_TABLES: Readonly<Record<string, EventTable>> = {
  * A skip with the code and fields the queue's skip record needs (Plan 0003 3.2); the applier builds the line the hook
  * used to log from them. `source` names the presence source when one is known, `agent` the kit agent when none is.
  */
-export type SkippedHook =
+type SkippedHook =
   | { readonly kind: 'skip'; readonly code: 'no-presence-source'; readonly agent: string; readonly nativeEvent: string }
   | { readonly kind: 'skip'; readonly code: 'ignored-event'; readonly source: string; readonly nativeEvent: string };
 

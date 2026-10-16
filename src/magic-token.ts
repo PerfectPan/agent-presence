@@ -4,9 +4,9 @@ import { homedir } from 'node:os';
 import { hasNodeErrorCode } from './json-file.js';
 import { createGenericSecretStore } from './secret.js';
 
-export const MAGIC_TOKEN_FILE_NAME = '.magic-token';
-export const MAGIC_TOKEN_KEYCHAIN_SERVICE = 'agent-presence:magic-builder';
-export const MAGIC_TOKEN_KEYCHAIN_ACCOUNT = 'token';
+const MAGIC_TOKEN_FILE_NAME = '.magic-token';
+const MAGIC_TOKEN_KEYCHAIN_SERVICE = 'agent-presence:magic-builder';
+const MAGIC_TOKEN_KEYCHAIN_ACCOUNT = 'token';
 
 /**
  * File search order matches the magic-builder skill pack so a token a user
@@ -16,7 +16,7 @@ export const MAGIC_TOKEN_KEYCHAIN_ACCOUNT = 'token';
  * Skill-pack-relative paths are intentionally not searched: agent-presence
  * does not ship a skill directory of its own.
  */
-export function getMagicTokenSearchPaths(cwd: string = process.cwd()): string[] {
+function getMagicTokenSearchPaths(cwd: string = process.cwd()): string[] {
   return [join(homedir(), MAGIC_TOKEN_FILE_NAME), join(cwd, MAGIC_TOKEN_FILE_NAME)];
 }
 
@@ -70,8 +70,4 @@ export async function readMagicToken(cwd: string = process.cwd()): Promise<ReadM
 /** Persist a token to the OS keyring (Keychain on macOS, libsecret on Linux). */
 export async function writeMagicToken(token: string): Promise<void> {
   await tokenStore().write(token.trim());
-}
-
-export async function deleteMagicToken(): Promise<void> {
-  await tokenStore().delete();
 }
