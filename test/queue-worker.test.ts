@@ -405,6 +405,7 @@ describe('a worker holding the lock', () => {
     const run = pool.start();
     await rounds.paused();
 
+    expect(await readWorkerVersion(home.statePath)).toBe(1);
     await writeTombstone(home.statePath);
     await recordAt(home.statePath, T0, eventBody('SessionStart', 's1'));
     rounds.resume();
@@ -680,6 +681,7 @@ describe('a command taking over', () => {
     const resumed = new Promise<void>((resolve) => {
       resume = resolve;
     });
+    resumePaused.push(resume);
     let rounds = 0;
     let afterStale: { requests: string[]; lockHeld: boolean } | undefined;
     const prefix = basename(queuePaths(home.statePath).stopRequestPrefix);

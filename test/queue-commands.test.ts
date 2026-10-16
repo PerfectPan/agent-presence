@@ -65,15 +65,20 @@ const NEWER = 2;
 let h: CommandHarness;
 let restoreNow: () => void = () => undefined;
 let printed: ReturnType<typeof capturePrint> | undefined;
+let resumePaused: Array<() => void>;
 
 beforeEach(async () => {
   publishValueMock.mockReset().mockResolvedValue(undefined);
   refreshUsageMock.mockReset();
   spawnMock.mockClear();
+  resumePaused = [];
   h = await createCommandHarness();
 });
 
 afterEach(async () => {
+  for (const resume of resumePaused) {
+    resume();
+  }
   restoreNow();
   printed?.restore();
   await h.dispose();
@@ -104,6 +109,7 @@ async function pauseHolderForCommand() {
   const round = gate();
   const waiting = gate();
   const proceed = gate();
+  resumePaused.push(proceed.resolve);
   const delay: Delay = async (ms, signal) => {
     if (ms === WORKER_ROUND_MS) {
       round.resolve();
@@ -361,12 +367,15 @@ describe('reset during a slow usage refresh (Spec S6)', () => {
     const holder = await pauseHolderForCommand();
 
     const command = reset(['--force', '--silent'], holder.options);
-    await holder.waiting;
-    await recordAt(h.home.statePath, T0 + 3_000, eventBody('SessionStart', 's1'));
-    now.set(T0 + 4_000);
-    holder.release();
+    try {
+      await Promise.race([holder.waiting, command]);
+      await recordAt(h.home.statePath, T0 + 3_000, eventBody('SessionStart', 's1'));
+      now.set(T0 + 4_000);
+    } finally {
+      holder.release();
+      await command;
+    }
 
-    await command;
     await h.pool.settled();
 
     expect(await holder.running).toBe('stop-request');
@@ -400,12 +409,15 @@ describe('reset during a slow usage refresh (Spec S6)', () => {
     const out = capture();
 
     const command = printStatus([], holder.options);
-    await holder.waiting;
-    await recordAt(h.home.statePath, T0 + 3_000, eventBody('SessionStart', 's1'));
-    now.set(T0 + 4_000);
-    holder.release();
+    try {
+      await Promise.race([holder.waiting, command]);
+      await recordAt(h.home.statePath, T0 + 3_000, eventBody('SessionStart', 's1'));
+      now.set(T0 + 4_000);
+    } finally {
+      holder.release();
+      await command;
+    }
 
-    await command;
     await h.pool.settled();
 
     expect(await holder.running).toBe('stop-request');

@@ -47,8 +47,10 @@ let home: QueueHome;
 let vt: VirtualTime;
 let fake: FakeEffects;
 let pool: WorkerPool;
+let resumePaused: Array<() => void>;
 
 beforeEach(async () => {
+  resumePaused = [];
   home = await createQueueHome();
   // No usage in the signature, so boundaries owe no refresh: these checks are about records at the lock.
   await home.writeConfig({ provider: 'feishu-signature' });
@@ -66,6 +68,9 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  for (const resume of resumePaused) {
+    resume();
+  }
   await pool.stop();
   await home.dispose();
 });
@@ -100,6 +105,7 @@ describe('the upgrade burst', () => {
     // cannot miss an idle exit and every producer checks the older holder before it leaves.
     const holding = gate();
     const producedBurst = gate();
+    resumePaused.push(producedBurst.resolve);
     const older = pool.start(OLDER, {
       delay: async (ms, signal) => {
         holding.resolve();
@@ -109,6 +115,7 @@ describe('the upgrade burst', () => {
     });
     await holding.promise;
 
+    // Holding the older worker until the burst is recorded excludes its mid-burst newer-record exit interleaving.
     const produced = await Promise.all(
       Array.from({ length: 100 }, (_, index) =>
         produceRecord(home.statePath, eventBody('Stop', `gone${index}`), {

@@ -87,6 +87,7 @@ const NEWER = 2;
 
 let h: CommandHarness;
 let harness: HarnessFixture;
+let resumePaused: Array<() => void>;
 
 beforeEach(async () => {
   spawnMock.mockClear();
@@ -94,11 +95,15 @@ beforeEach(async () => {
   runSetupScriptsMock.mockClear();
   removePluginsDirMock.mockClear();
   deleteCredentialMock.mockClear();
+  resumePaused = [];
   h = await createCommandHarness();
   harness = await createHarnessFixture();
 });
 
 afterEach(async () => {
+  for (const resume of resumePaused) {
+    resume();
+  }
   await h.dispose();
   await harness.dispose();
 });
@@ -126,6 +131,7 @@ describe('uninstall --all (Spec S10)', () => {
     const gate = new Promise<void>((resolve) => {
       releaseWorker = resolve;
     });
+    resumePaused.push(releaseWorker);
     const gatedDelay: Delay = (ms, signal) => gate.then(() => h.vt.delay(ms, signal));
     const hold = h.fake.holdRefreshes();
     const running = h.pool.start(1, { idleMs: 300_000, delay: gatedDelay });
@@ -143,14 +149,16 @@ describe('uninstall --all (Spec S10)', () => {
       h.takeoverOptions({ startWorker: starts.startWorker, delay: gatedDelay }),
       harness.layer
     );
-    // The tombstone is already down while uninstall waits for the worker's lock.
-    await until(async () => (await h.requestFiles()).length === 2, 'the live and the planted stop request');
-    expect(await produceRecord(h.home.statePath, eventBody('SessionStart', 'late'), { clock: h.vt.clock })).toEqual({
-      status: 'disabled'
-    });
-    releaseWorker();
-
-    await removing;
+    try {
+      // The tombstone is already down while uninstall waits for the worker's lock.
+      await until(async () => (await h.requestFiles()).length === 2, 'the live and the planted stop request');
+      expect(await produceRecord(h.home.statePath, eventBody('SessionStart', 'late'), { clock: h.vt.clock })).toEqual({
+        status: 'disabled'
+      });
+    } finally {
+      releaseWorker();
+      await removing;
+    }
     await h.pool.settled();
 
     expect(await running).toBe('tombstone');
