@@ -589,7 +589,8 @@ describe('a command taking over', () => {
     let rounds = 0;
     let afterStale: { requests: string[]; lockHeld: boolean } | undefined;
     const prefix = basename(queuePaths(home.statePath).stopRequestPrefix);
-    const pool = workers({
+    const pool = workers();
+    const holder = pool.start(1, {
       delay: async (ms, signal) => {
         rounds += 1;
         if (rounds === 1) {
@@ -603,7 +604,6 @@ describe('a command taking over', () => {
         await vt.delay(ms, signal);
       }
     });
-    const holder = pool.start();
     await paused;
 
     let commandWaiting: () => void = () => undefined;
@@ -630,7 +630,7 @@ describe('a command taking over', () => {
         startWorker: () => undefined
       }
     );
-    await waiting;
+    await Promise.race([waiting, command]);
     const requestedAt = vt.monotonic.now();
     // The machine slept: the wall clock moved past the age bound while the command waited.
     vt.jump(30_000);
