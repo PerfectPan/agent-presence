@@ -1,4 +1,6 @@
-import { applyInstall, inventory, planInstall } from '@rivus/agent-kit/harness';
+import { rm } from 'node:fs/promises';
+import { join } from 'node:path';
+import { applyInstall, inventory, planInstall, type Bundle } from '@rivus/agent-kit/harness';
 import { Effect } from 'effect';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 import * as z from 'zod/mini';
@@ -28,7 +30,7 @@ let log: ReturnType<typeof vi.spyOn>;
 let error: ReturnType<typeof vi.spyOn>;
 
 beforeEach(async () => {
-  fixture = await createHarnessFixture();
+  fixture = await createHarnessFixture({ homePrefix: 'presence harness-' });
   vi.stubEnv('HOME', fixture.home);
   vi.stubEnv('AGENT_PRESENCE_HOME', undefined);
   vi.stubEnv('AGENT_SIGNATURE_HOME', undefined);
@@ -121,6 +123,39 @@ describe('harness commands', () => {
     expect(result).toBeUndefined();
     expect(process.exitCode).toBe(1);
     expect(error.mock.calls).toEqual([['fixture promise failed']]);
+    expect(fixture.processCalls).toEqual([]);
+  });
+
+  it('checks the whole shell-quoted shim path before and after it is removed', async () => {
+    await fixture.writeShim();
+    const bundle = createPresenceBundle(fixture.presenceHome);
+    // One registration keeps the missing-shim finding singular; each event otherwise reports the same path.
+    const singleEventBundle: Bundle = {
+      ...bundle,
+      artifacts: bundle.artifacts.map((artifact) =>
+        artifact.type === 'hooks' ? { ...artifact, events: { 'claude-code': ['SessionStart'] } } : artifact
+      )
+    };
+    const plan = await fixture.run(planInstall(singleEventBundle, { agents: ['claude-code'] }));
+    await fixture.run(applyInstall(plan));
+
+    await runCli(['doctor', '--json']);
+    const presentChecks = z.parse(checksSchema, JSON.parse(z.parse(z.string(), log.mock.calls.at(-1)?.[0])));
+    expect(presentChecks.filter((check) => check.name === 'stale-path')).toEqual([]);
+    expect(process.exitCode).toBe(0);
+
+    const shimPath = join(fixture.presenceHome, 'bin', 'agent-presence');
+    expect(shimPath).toContain(' ');
+    await rm(shimPath);
+    log.mockClear();
+    await runCli(['doctor', '--json']);
+    const missingChecks = z.parse(checksSchema, JSON.parse(z.parse(z.string(), log.mock.calls.at(-1)?.[0])));
+    expect(missingChecks.filter((check) => check.name === 'stale-path')).toEqual([
+      { name: 'stale-path', status: 'warn', message: `${shimPath} does not exist` }
+    ]);
+    expect(process.exitCode).toBe(1);
+    expect(error).not.toHaveBeenCalled();
+    expect(fixture.cliCalls).toEqual([]);
     expect(fixture.processCalls).toEqual([]);
   });
 
