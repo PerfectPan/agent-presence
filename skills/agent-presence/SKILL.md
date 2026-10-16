@@ -98,7 +98,7 @@ Pi only counts as active once the user submits a task (`before_agent_start`). Op
    agent-presence inventory
    ```
 
-   Use the [install guide's installed locations](https://agent-presence.vercel.app/guide/install/#installed-locations) before inspecting the reported artifacts. Setup's plan shows resolved paths for overridden agent homes. `doctor` checks command-hook duplicates, not opencode/Pi bridge duplicates, and currently recognizes installed commands rather than previous-release markers. `inventory` includes all applications in the shared kit ledger. Both commands accept `--json`; the [command reference](https://agent-presence.vercel.app/reference/commands/) describes their limits.
+   Use the [install guide's installed locations](https://agent-presence.vercel.app/guide/install/#installed-locations) before inspecting the reported artifacts. Setup's plan shows resolved paths for overridden agent homes. `doctor` checks command-hook duplicates using presence-specific previous-release markers plus the installed command expanded for each agent. It cannot detect old absolute-path commands from checkout paths without a presence marker and does not inspect opencode or Pi bridge files. `inventory` includes all applications in the shared kit ledger. Both commands accept `--json`; the [command reference](https://agent-presence.vercel.app/reference/commands/) describes their limits.
 
 5. Verify platform watcher:
 

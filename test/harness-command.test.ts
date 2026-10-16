@@ -115,6 +115,17 @@ describe('harness commands', () => {
     expect(fixture.processCalls).toEqual([]);
   });
 
+  it('prints a rejected promise message without the Effect wrapper or a stack', async () => {
+    const result = await realRunHarness(
+      Effect.tryPromise(() => Promise.reject(new Error('fixture promise failed'))),
+      fixture.layer
+    );
+    expect(result).toBeUndefined();
+    expect(process.exitCode).toBe(1);
+    expect(error.mock.calls).toEqual([['fixture promise failed']]);
+    expect(fixture.processCalls).toEqual([]);
+  });
+
   it('checks the whole shell-quoted shim path before and after it is removed', async () => {
     await fixture.writeShim();
     const bundle = createPresenceBundle(fixture.presenceHome);

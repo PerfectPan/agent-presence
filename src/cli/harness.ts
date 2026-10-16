@@ -1,7 +1,8 @@
 import { inspect } from 'node:util';
 import { HarnessLive, type HarnessServices } from '@rivus/agent-kit/harness';
 import { NodePlatformLive } from '@rivus/agent-kit/node/effect';
-import { Effect, Exit, Layer } from 'effect';
+import { Cause, Effect, Exit, Layer } from 'effect';
+import { errorMessage } from './errors.js';
 
 const harnessLayer = HarnessLive.pipe(Layer.provideMerge(NodePlatformLive));
 
@@ -14,7 +15,11 @@ export async function runHarness<A, E>(
     for (const reason of exit.cause.reasons) {
       switch (reason._tag) {
         case 'Fail':
-          console.error(inspect(reason.error, { depth: null, colors: false }));
+          console.error(
+            Cause.isUnknownError(reason.error)
+              ? errorMessage(reason.error.cause)
+              : inspect(reason.error, { depth: null, colors: false })
+          );
           break;
         case 'Die':
           console.error(inspect(reason.defect, { depth: null, colors: false }));

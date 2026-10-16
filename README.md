@@ -19,6 +19,8 @@ Codex / Claude Code / Gemini CLI / opencode / Pi / Grok / dsh
 
 Requires Node.js 22.13 or newer. macOS and Linux only — Windows exits with a clear error. macOS uses Keychain and installs a LaunchAgent power watcher; Linux uses libsecret and relies on TTL pruning instead of a watcher.
 
+For an existing installation from 0.9.0 or earlier, follow the upgrade procedure below before replacing the package.
+
 ```bash
 pnpm add -g @rivus/agent-presence
 agent-presence setup
@@ -47,6 +49,20 @@ agent-presence setup
 ```
 
 `agent-signature` stays available as a compatibility alias, so old hooks keep working. See [docs/architecture.md](docs/architecture.md) for the implementation shape and trust boundaries.
+
+## Upgrade from 0.9.0 or earlier
+
+If setup lists files kept from an earlier removal, move them out of the install locations first, or remove them if unwanted. They can be files installed by this version, including a modified hook file kept by its uninstall. Do this before any old uninstall, including when replacement entries are also listed. For the remaining old installation, run the previous release's own uninstall before installing this release, without `--credentials` or `--all`, so credentials, configuration and state stay:
+
+```bash
+npx --yes @rivus/agent-presence@<previous-version> uninstall
+```
+
+Run the uninstall for each distinct version pinned in replacement hook commands. Also run `0.9.0` whenever any replacement entry is not a hook command with a pinned version, including bridge files and opencode config references, even when other entries pin versions. A checkout install can instead use `node <checkout>/dist/src/cli.js uninstall` before updating that checkout. Then install this release and run `agent-presence setup`. The current uninstall removes only harness-recorded agent artifacts, so it cannot replace this step. Later upgrades use setup in place.
+
+Setup lists detected previous-release entries and files kept from an earlier removal, then stops before queue recovery, login or install confirmation. Kept files are yours: move or remove them by hand; the old uninstall would delete them. Also remove renamed or hand-edited remnants that the old uninstall leaves. Keep any old install-target override variables set for that uninstall; this release ignores them and warns when they are set.
+
+Old absolute-path hook commands from a checkout without a presence marker can escape detection. Inspect the agent configuration after the old uninstall, especially for quoted checkout paths. The old uninstall also removes other tools' Claude/Codex/Gemini hooks containing `dist/src/cli.js hook`; preserve and restore those entries if needed. Switching to the stable shim is expected to require one Codex hook re-trust; later shim-only upgrades keep the hook definition stable. See the [upgrade guide](https://agent-presence.vercel.app/guide/install/#upgrade-from-090-or-earlier).
 
 ## Quick start
 
@@ -132,7 +148,7 @@ A source plugin runs in-process and can read your slot credential, so `add` requ
 
 ## Logs
 
-Hook and provider activity is written to `~/.agent-presence/agent-presence.log` (override with `AGENT_PRESENCE_LOG_FILE`). Logs are compacted automatically after 5 MiB, retaining roughly the latest 1 MiB for troubleshooting. Existing macOS users should run `agent-presence setup --skip-login` once after upgrading so the persistent power watcher also receives the retention policy. Bearer tokens, full Authorization headers, QR tickets, and full slot values are never logged.
+Hook and provider activity is written to `~/.agent-presence/agent-presence.log` (override with `AGENT_PRESENCE_LOG_FILE`). Logs are compacted automatically after 5 MiB, retaining roughly the latest 1 MiB for troubleshooting. After following the upgrade procedure above, existing macOS users should run `agent-presence setup --skip-login` so the persistent power watcher also receives the retention policy. Bearer tokens, full Authorization headers, QR tickets, and full slot values are never logged.
 
 ## Documentation
 

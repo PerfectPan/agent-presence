@@ -19,6 +19,7 @@ import { LINUX_WATCHER_SKIP_MESSAGE, runSetupScripts } from '../../setup.js';
 import { hasFlag, optionValue } from '../args.js';
 import { hasCredential } from '../credential.js';
 import { runHarness } from '../harness.js';
+import { checkPreviousRelease, warnPreviousReleaseOverrides } from '../setup-legacy.js';
 import { planSetupInstall } from '../setup-plan.js';
 import { MAGIC_TOKEN_HELP, publishMagicBuilderFaas } from '../magic-builder-setup.js';
 import {
@@ -153,9 +154,13 @@ export async function setup(
     }
   }
 
-  // The previous-release check belongs here, before queue recovery and login.
+  warnPreviousReleaseOverrides();
 
-  // An uninstall or `worker --stop` left the tombstone (Plan 0003 3.8): drop the records it kept from applying, raise
+  if (!skipHooks && !(await runHarness(checkPreviousRelease(), layer))) {
+    return;
+  }
+
+  // An uninstall --all or worker --stop left the tombstone (Plan 0003 3.8): drop the records it kept from applying, raise
   // the epoch so a record a producer still writes with the old epoch is deleted unapplied, and let hooks record again.
   const statePath = getStatePath();
   if (await isDisabled(statePath)) {
@@ -176,7 +181,6 @@ export async function setup(
 
   const { config } = await loadValidatedConfig();
   const activeProvider = defaultCommandProviderId(config, optionValue(args, '--provider'));
-
   if (!skipLogin && (forceLogin || !(await hasCredential()))) {
     await login(['--provider', activeProvider]);
   }

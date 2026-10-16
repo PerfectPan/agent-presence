@@ -19,6 +19,8 @@ Codex / Claude Code / Gemini CLI / opencode / Pi / Grok / dsh
 
 需要 Node.js 22.13 或更高版本。仅支持 macOS 和 Linux —— Windows 会直接报错退出。macOS 用 Keychain 存凭据并安装 LaunchAgent 电源 watcher；Linux 用 libsecret，并以 TTL 清理代替 watcher。
 
+已使用 0.9.0 或更早版本的用户，请先按下面的升级步骤操作，再替换安装的包。
+
 ```bash
 pnpm add -g @rivus/agent-presence
 agent-presence setup
@@ -47,6 +49,20 @@ agent-presence setup
 ```
 
 包里也暴露了兼容命令 `agent-signature`，旧 hook 可以继续工作。实现边界与信任边界见 [docs/architecture.md](docs/architecture.md)。
+
+## 从 0.9.0 或更早版本升级
+
+如果 setup 列出此前卸载时保留的文件，请先将它们移出安装位置，不再需要时也可删除。这些文件也可能由本版本安装，例如卸载时保留的已修改 hook 文件。即使同时列出了需要替换的项目，也必须先处理保留文件，再运行任何旧卸载器。其余旧安装在升级前运行旧版本自己的卸载命令，不加 `--credentials` 或 `--all`，以保留凭据、配置和状态：
+
+```bash
+npx --yes @rivus/agent-presence@<previous-version> uninstall
+```
+
+对需要替换的 hook 命令中固定的每个不同版本，分别运行卸载命令。只要有一个需要替换的项目不是固定版本的 hook 命令，例如桥接文件或 opencode 配置引用，就额外运行 `0.9.0`，即使其他项目已固定版本。从 checkout 安装的用户也可在更新 checkout 前运行 `node <checkout>/dist/src/cli.js uninstall`。然后安装本版本并运行 `agent-presence setup`。本版本的卸载只移除 harness 安装记录中的智能体产物，不能代替这一步；后续升级直接重新运行 setup。
+
+setup 会列出检测到的旧版本项目和此前卸载时保留的文件，在队列恢复、登录和安装确认前退出。保留文件属于用户，请手动移动或删除；旧卸载器会删除它们。旧卸载器遗漏的改名副本或手改项目也需要手动清理。旧安装目标覆盖变量须保持设置，再运行旧版本卸载；本版本忽略这些变量，并在设置时警告。
+
+checkout 路径不含 presence 标记的旧绝对路径 hook 命令可能无法被检测。旧版本卸载后请检查智能体配置，尤其是带引号的 checkout 路径。旧卸载器还会移除其他工具在 Claude/Codex/Gemini 中包含 `dist/src/cli.js hook` 的 hook，必要时先保存再恢复。切换到稳定 shim 预计需要在 Codex 中重新信任一次 hook；后续只更新 shim 时，hook 定义保持稳定。详见[升级指引](https://agent-presence.vercel.app/zh/guide/install/#从-090-或更早版本升级)。
 
 ## 使用流程
 
@@ -132,7 +148,7 @@ agent-presence source remove youragent
 
 ## 日志
 
-hook 和 provider 活动写到 `~/.agent-presence/agent-presence.log`（用 `AGENT_PRESENCE_LOG_FILE` 覆盖）。日志超过 5 MiB 后会自动压缩，保留最近约 1 MiB 供排障。已有 macOS 安装升级后需运行一次 `agent-presence setup --skip-login`，让常驻的 power watcher 同步获得清理策略。bearer token、完整 Authorization 头、二维码 ticket、完整 slot 值都不会被记录。
+hook 和 provider 活动写到 `~/.agent-presence/agent-presence.log`（用 `AGENT_PRESENCE_LOG_FILE` 覆盖）。日志超过 5 MiB 后会自动压缩，保留最近约 1 MiB 供排障。按上面的升级步骤操作后，已有 macOS 安装需运行 `agent-presence setup --skip-login`，让常驻的 power watcher 同步获得清理策略。bearer token、完整 Authorization 头、二维码 ticket、完整 slot 值都不会被记录。
 
 ## 文档
 
