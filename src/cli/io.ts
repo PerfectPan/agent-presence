@@ -1,5 +1,3 @@
-export { writeLog } from '../log.js';
-
 export async function readStdinJson(): Promise<unknown> {
   if (process.stdin.isTTY) {
     return {};

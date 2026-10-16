@@ -11,11 +11,9 @@ import { BUILTIN_SOURCE_PLUGINS } from '../hook-context.js';
 import { readStdinJson } from '../io.js';
 import { resolveHookContextForSource, type SourceDiagnostics } from '../../sources.js';
 
-// The hook is the queue's producer (Plan 0003 3.3): it interprets the payload in process, writes one record, and
-// starts a worker when no process of this release or a newer one holds the worker lock. It takes no lock, writes no
-// log line (3.11) and no stop request, and prints its output and exits 0 in every case: a failed read, write or start
-// loses the event (3.10). Lifecycle tests record through this producer and drain an in-process worker run to assert
-// persisted sessions and usage-badge effects.
+// The hook is the queue's producer: it interprets the payload, records it, and starts a worker when no process of this
+// release or a newer one holds the worker lock. The worker applies sessions, usage badges, and provider updates.
+// The producer takes no lock, writes no log line or stop request, and prints its output in every case.
 
 /** The queue writes of one hook run: whether a worker is wanted, and whether the run already recorded its failure. */
 interface HookProduction {

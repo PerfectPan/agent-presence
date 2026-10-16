@@ -873,11 +873,11 @@ holds the log lock or a handover aborts the wait (3.5).
 
 ### 6.5 Work split and schedule
 
-| Batch | Owner       | Depends on                                | When            |
-| ----- | ----------- | ----------------------------------------- | --------------- |
-| Q1a   | PerfectPan  | Kit 0.15.0 (released, 6.1)                | done 2026-10-14 |
-| Q1b   | PerfectPan  | Q1a                                       | done 2026-10-14 |
-| Q2    | unconfirmed | Q1b released with Plan 0002 batch 5 (4.1) | pending         |
+| Batch | Owner      | Depends on                                | When            |
+| ----- | ---------- | ----------------------------------------- | --------------- |
+| Q1a   | PerfectPan | Kit 0.15.0 (released, 6.1)                | done 2026-10-14 |
+| Q1b   | PerfectPan | Q1a                                       | done 2026-10-14 |
+| Q2    | Codex      | Q1b released with Plan 0002 batch 5 (4.1) | done 2026-10-17 |
 
 ## 7. Risks, open questions, and follow-up
 
