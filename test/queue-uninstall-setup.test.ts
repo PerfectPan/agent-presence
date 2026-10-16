@@ -137,7 +137,12 @@ describe('uninstall --all (Spec S10)', () => {
     expect((await listQueue(h.home.statePath)).records).toHaveLength(2);
     const starts = h.countingStarts();
 
-    const removing = uninstall(['--all'], h.takeoverOptions({ startWorker: starts.startWorker }), harness.layer);
+    // Keep the command's retries and request touches paused with the worker while inspecting the tombstone.
+    const removing = uninstall(
+      ['--all'],
+      h.takeoverOptions({ startWorker: starts.startWorker, delay: gatedDelay }),
+      harness.layer
+    );
     // The tombstone is already down while uninstall waits for the worker's lock.
     await until(async () => (await h.requestFiles()).length === 2, 'the live and the planted stop request');
     expect(await produceRecord(h.home.statePath, eventBody('SessionStart', 'late'), { clock: h.vt.clock })).toEqual({

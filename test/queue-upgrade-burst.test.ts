@@ -70,6 +70,14 @@ afterEach(async () => {
   await home.dispose();
 });
 
+function gate(): { promise: Promise<void>; resolve: () => void } {
+  let resolve: () => void = () => undefined;
+  const promise = new Promise<void>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+}
+
 describe('the upgrade burst', () => {
   it('of 100 newer producers while an older worker runs leaves one newer worker applying every event once', async () => {
     // 200 running sessions with distinct heartbeats, all older than the burst events and inside the ttl, so none of
@@ -88,9 +96,18 @@ describe('the upgrade burst', () => {
       }
     ]);
     await writeState(home.statePath, { sessions: Object.fromEntries(seeded) });
-    // A long idle interval keeps the older worker at the lock until the burst's first record arrives.
-    const older = pool.start(OLDER, { idleMs: 300_000 });
-    await until(async () => (await readWorkerVersion(home.statePath)) === OLDER, 'the older worker holding the lock');
+    // The first round proves the lock is held; keep it there until the burst has been recorded, so an observer
+    // cannot miss an idle exit and every producer checks the older holder before it leaves.
+    const holding = gate();
+    const producedBurst = gate();
+    const older = pool.start(OLDER, {
+      delay: async (ms, signal) => {
+        holding.resolve();
+        await producedBurst.promise;
+        await vt.delay(ms, signal);
+      }
+    });
+    await holding.promise;
 
     const produced = await Promise.all(
       Array.from({ length: 100 }, (_, index) =>
@@ -101,6 +118,7 @@ describe('the upgrade burst', () => {
       )
     );
     expect(produced.every((outcome) => outcome.status === 'recorded')).toBe(true);
+    producedBurst.resolve();
 
     const newerRuns: Array<Promise<WorkerExitReason>> = [];
     for (const outcome of produced) {
@@ -131,11 +149,13 @@ describe('producers while a command holds the lock', () => {
     const started: StartWorker = () => {
       starts.count += 1;
     };
-    // The command keeps the lock until 20 seconds of virtual time have passed; the waiting worker's rounds move it.
+    // The waiting worker's rounds move virtual time until the command has held the lock for 20 seconds.
+    // At that point the worker waits for the command to leave, so observer lag cannot use its 60-second budget.
+    const heldLongEnough = gate();
     const command = takeOver(
       home.statePath,
       async (takeover) => {
-        await until(() => vt.monotonic.now() >= 20_000, 'the command holding the lock for 20 seconds');
+        await heldLongEnough.promise;
         await takeover.applyPending();
       },
       {
@@ -148,13 +168,22 @@ describe('producers while a command holds the lock', () => {
       }
     );
     await until(async () => (await readWorkerVersion(home.statePath)) === OLDER, 'the command holding the lock');
+    const heldAt = vt.monotonic.now();
 
     const produced = await produceRecord(home.statePath, eventBody('SessionStart', 's1'), {
       version: NEWER,
       clock: vt.clock
     });
     expect(produced).toMatchObject({ status: 'recorded', startWorker: true });
-    const waiting = pool.start(NEWER);
+    const waiting = pool.start(NEWER, {
+      delay: async (ms, signal) => {
+        await vt.delay(ms, signal);
+        if (vt.monotonic.now() - heldAt >= 20_000) {
+          heldLongEnough.resolve();
+          await command;
+        }
+      }
+    });
 
     await command;
     expect(starts.count).toBe(1);
