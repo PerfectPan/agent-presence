@@ -91,6 +91,10 @@ url                 -> raw URL only
 
 This keeps the pretty CLI layer out of hook and automation protocols.
 
+`doctor` and `inventory` load the harness lazily. `src/cli/harness.ts` is the sole Effect execution root, providing `HarnessLive` with `NodePlatformLive` and reporting failed programs on stderr with a non-zero exit code. Other command modules may import Effect to construct programs and use its types; Effect runners, including aliases or destructured runners, and `Runtime`/`ManagedRuntime` imports or use stay in this root. The hook, status, render and usage paths do not load this root. `doctor` reports every check and fails on warnings or errors; `inventory` reads the ledger revision, entries and pending operations. Both support `--json`. Doctor's duplicate check covers command-hook files, not opencode and Pi bridge files.
+
+`src/harness/bundle.ts` defines the `agent-presence` bundle for Claude Code, Codex, Gemini CLI, Grok, opencode and Pi: one observer hook spec with the package version, a stable artifact digest and a five-second timeout. Its command names `<presence home>/bin/agent-presence`, with `{agent}` expanded by the kit. Gemini uses its own event names and receives the timeout in milliseconds. The bundle has no legacy markers, skills or MCP servers. Doctor uses the expanded commands as duplicate markers. Setup and uninstall still use the existing installers; they do not yet write the shim or manage this bundle, so their installations are absent from the harness ledger.
+
 The CLI files are split by responsibility:
 
 ```text

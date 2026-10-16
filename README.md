@@ -104,6 +104,8 @@ agent-presence setup            # also: --login --skip-login --no-hooks --hook-c
 agent-presence url
 agent-presence status           # --remote inspects the published preview
 agent-presence usage            # --days N / --json
+agent-presence doctor           # harness checks; --json
+agent-presence inventory        # harness ledger; --json
 agent-presence update --force
 agent-presence reset --force
 agent-presence uninstall        # --credentials / --all

@@ -104,6 +104,8 @@ agent-presence setup            # 还有：--login --skip-login --no-hooks --hoo
 agent-presence url
 agent-presence status           # --remote 查看已发布的预览
 agent-presence usage            # --days N / --json
+agent-presence doctor           # harness 检查；--json
+agent-presence inventory        # harness 安装记录；--json
 agent-presence update --force
 agent-presence reset --force
 agent-presence uninstall        # --credentials / --all

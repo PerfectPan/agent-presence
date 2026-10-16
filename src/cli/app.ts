@@ -56,6 +56,16 @@ export async function runCli(argv: string[]): Promise<void> {
       await printStatus(parsed.args);
       return;
     }
+    case 'doctor': {
+      const { doctor } = await import('./commands/doctor.js');
+      await doctor(parsed.args);
+      return;
+    }
+    case 'inventory': {
+      const { printInventory } = await import('./commands/inventory.js');
+      await printInventory(parsed.args);
+      return;
+    }
     case 'usage': {
       const { printUsage } = await import('./commands/usage.js');
       await printUsage(parsed.args);
