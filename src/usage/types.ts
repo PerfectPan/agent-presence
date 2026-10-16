@@ -39,7 +39,7 @@ export type ScanEnvironment = Readonly<Record<string, string | undefined>>;
  * returns records in the four-bucket shape; they are converted to kit records
  * at the totals boundary.
  */
-export interface KitBillableSource {
+interface KitBillableSource {
   id: string;
   /** The kit agent whose decoder scans this source in the batched window scan. */
   kitAgent: string;

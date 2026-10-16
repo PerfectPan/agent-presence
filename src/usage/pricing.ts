@@ -4,7 +4,7 @@ import { createPricing, type Pricing } from '@rivus/agent-kit/cost';
 import * as z from 'zod/mini';
 
 /** Per-million-token rates in USD. */
-export interface ModelPricing {
+interface ModelPricing {
   input: number;
   output: number;
   cacheWrite: number;
@@ -24,7 +24,7 @@ export interface ModelPricing {
  * still work when a transcript records a family name not present in the
  * snapshot. Per-deployment `config.usage.pricing` overrides still win.
  */
-export const DEFAULT_PRICING: Record<string, ModelPricing> = {
+const DEFAULT_PRICING: Record<string, ModelPricing> = {
   // Anthropic (Claude) — standard tier list prices.
   opus: { input: 15, output: 75, cacheWrite: 18.75, cacheWrite1h: 30, cacheRead: 1.5 },
   sonnet: { input: 3, output: 15, cacheWrite: 3.75, cacheWrite1h: 6, cacheRead: 0.3 },

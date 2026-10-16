@@ -176,7 +176,7 @@ function agentPresenceCommandParts(): string[] {
   return ['npx', '--yes', '--registry=https://registry.npmjs.org', `@rivus/agent-presence@${packageVersion()}`];
 }
 
-export function buildDshPluginSource(commandParts = agentPresenceCommandParts()): string {
+function buildDshPluginSource(commandParts = agentPresenceCommandParts()): string {
   return `// ${DSH_PLUGIN_MARKER}
 //
 // Bridges dsh (DeepSeek harness) lifecycle and token usage into

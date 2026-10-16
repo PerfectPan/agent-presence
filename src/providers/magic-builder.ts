@@ -4,7 +4,6 @@ const log = createLogWriter({
   provider: 'magic-builder'
 });
 
-export const DEFAULT_MAGIC_BUILDER_BASE_URL = 'https://magic.solutionsuite.cn';
 export const DEFAULT_MAGIC_BUILDER_FAAS_NAME = 'agent_presence_preview';
 
 export interface MagicBuilderPublishOptions {

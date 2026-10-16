@@ -22,7 +22,7 @@ import { owedWorkRemains, recordsRemain } from './worker.js';
 import { holdWorkerLock, waitForWorkerLock, type WorkerLockHold } from './worker-lock.js';
 
 /** How long a command waits for the worker lock, in every release (Plan 0003 3.7). */
-export const TAKEOVER_WAIT_MS = 10_000;
+const TAKEOVER_WAIT_MS = 10_000;
 /** How often a waiting command checks the lock and, when it is free, tries to take it. */
 export const TAKEOVER_RETRY_MS = 50;
 

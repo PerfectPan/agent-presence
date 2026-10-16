@@ -102,7 +102,7 @@ export async function checkWorkerLock(
 }
 
 /** Whether a producer of record version `version` starts a worker: the lock is free or its holder is older. */
-export function workerNeeded(lock: WorkerLockState, version: number): boolean {
+function workerNeeded(lock: WorkerLockState, version: number): boolean {
   return !lock.held || lock.version < version;
 }
 

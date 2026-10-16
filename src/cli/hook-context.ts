@@ -8,7 +8,7 @@ import { resolvePiHookContext } from '../hooks/pi.js';
 import { resolveDshHookContext } from '../hooks/dsh.js';
 import type { ScanWindow, UsageRecord } from '../usage/types.js';
 
-export interface HookContext {
+interface HookContext {
   event?: string;
   sessionId?: string;
   project?: string;
@@ -84,10 +84,6 @@ export const BUILTIN_SOURCE_PLUGINS: Record<string, BuiltinSource> = {
 
 export const BUILTIN_SOURCE_IDS = Object.keys(BUILTIN_SOURCE_PLUGINS);
 
-export function isBuiltinSource(source: string): boolean {
-  return source in BUILTIN_SOURCE_PLUGINS;
-}
-
 /**
  * Resolve a built-in source to its hook context. Unknown (non-built-in) sources
  * return an empty context; callers that want config sources go through
@@ -97,9 +93,3 @@ export function resolveBuiltinHookContext(source: string, payload: unknown): Hoo
   const plugin = BUILTIN_SOURCE_PLUGINS[source];
   return (plugin && plugin.resolveHookContext(payload)) ?? {};
 }
-
-/**
- * Backward-compatible alias for the built-in dispatch. Existing callers and
- * tests import this name; unified resolution lives in `src/sources.ts`.
- */
-export const resolveHookContext = resolveBuiltinHookContext;

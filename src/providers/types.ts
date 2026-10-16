@@ -1,8 +1,6 @@
 import type { ProviderId } from '../config.js';
 import type { LoginStatus, QrCodeResponse } from './l-garyyang.js';
 
-export type { LoginStatus, QrCodeResponse } from './l-garyyang.js';
-
 /**
  * The capability-oriented seam every CLI command resolves through, instead of
  * importing a concrete provider class. A provider only implements the methods

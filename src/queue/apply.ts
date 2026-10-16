@@ -82,7 +82,7 @@ async function logQuietly(write: () => Promise<void>): Promise<void> {
 function skipLine(record: SkipRecord): string {
   const source = record.source ?? record.agent;
   const agent = record.agent ?? record.source;
-  // The codes this release writes (`KnownSkipCode`); a code of a later release is only logged.
+  // The codes this release writes; a code of a later release is only logged.
   switch (record.code) {
     case 'missing-session-id':
       return `hook skipped: missing session id for source=${source} event=${record.nativeEvent}`;

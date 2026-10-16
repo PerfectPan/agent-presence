@@ -68,8 +68,6 @@ const eventRecordSchema = z.object({
  * The skip codes this release writes. A record's `code` is an open string, like an error code: a later release may
  * skip for a reason of its own, and an older applier then only logs the code.
  */
-export type KnownSkipCode = 'missing-session-id' | 'no-presence-source' | 'ignored-event';
-
 const skipRecordSchema = z
   .object({
     ...recordHeader,
@@ -97,7 +95,6 @@ const recordSchema = z.discriminatedUnion('kind', [eventRecordSchema, skipRecord
 
 export type EventRecord = z.infer<typeof eventRecordSchema>;
 export type SkipRecord = z.infer<typeof skipRecordSchema>;
-export type ErrorRecord = z.infer<typeof errorRecordSchema>;
 export type QueueRecord = z.infer<typeof recordSchema>;
 export type RecordUsage = z.infer<typeof usageSchema>;
 export type ScanEnv = z.infer<typeof scanEnvSchema>;

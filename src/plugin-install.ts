@@ -7,7 +7,7 @@ import { hasNodeErrorCode } from './json-file.js';
 
 const execFileAsync = promisify(execFile);
 
-export const DEFAULT_PLUGIN_REGISTRY = 'https://registry.npmjs.org';
+const DEFAULT_PLUGIN_REGISTRY = 'https://registry.npmjs.org';
 
 export interface InstallPluginOptions {
   /** npm registry to install from; defaults to the public registry. */

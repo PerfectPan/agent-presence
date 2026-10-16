@@ -8,7 +8,7 @@ export interface RenderTemplates {
   many?: string;
 }
 
-export const DEFAULT_RENDER_TEMPLATES: Required<RenderTemplates> = {
+const DEFAULT_RENDER_TEMPLATES: Required<RenderTemplates> = {
   zero: 'AI 牛马暂未开工',
   one: '{total} 个 AI 牛马正在搬砖 | {details}',
   many: '{total} 个 AI 牛马正在搬砖 | {details}'
@@ -47,7 +47,7 @@ export interface SlotSyncDecisionOptions {
 const USAGE_TOKEN = /\{usage(?:_(\d+)d)?\}/g;
 
 /** Shown in place of a usage badge that is too old to trust (see below). */
-export const STALE_USAGE_PLACEHOLDER = '—';
+const STALE_USAGE_PLACEHOLDER = '—';
 
 /**
  * Whether a window's cached badge, computed at `computedAt`, is too stale to
@@ -84,7 +84,7 @@ export class SlotRateLimitError extends Error {
 }
 
 /** Human label for a usage window: 1→"今日", 7→"近7天", N→"近N天". */
-export function usageWindowLabel(days: number): string {
+function usageWindowLabel(days: number): string {
   return days === 1 ? '今日' : `近${days}天`;
 }
 

@@ -27,7 +27,7 @@ function pickEnvString(env: StringEnv | undefined, keys: string[]): string | und
   return undefined;
 }
 
-export function findPayloadString(payload: unknown, keys: string[], nestedKeys: string[] = []): string | undefined {
+function findPayloadString(payload: unknown, keys: string[], nestedKeys: string[] = []): string | undefined {
   if (!isRecord(payload)) {
     return undefined;
   }

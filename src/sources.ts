@@ -18,7 +18,7 @@ import { writeLog } from './log.js';
 export type { SourcePlugin, SourceContext } from './cli/hook-context.js';
 
 /** A diagnostic a resolver emits: the log line, with the code and source the producer's error record carries. */
-export interface SourceDiagnostic {
+interface SourceDiagnostic {
   /** The error-record code, kebab-case. */
   code: string;
   /** The source the diagnostic names; every line this module emits names one. */
@@ -501,7 +501,7 @@ export async function loadSourcePluginForValidation(packageName: string): Promis
   }
 }
 
-export type SourceKind = 'builtin' | 'handler' | 'match' | 'invalid';
+type SourceKind = 'builtin' | 'handler' | 'match' | 'invalid';
 
 export interface SourceDescriptor {
   id: string;
