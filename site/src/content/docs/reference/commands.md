@@ -49,6 +49,13 @@ Installed locations are listed in [Install](/guide/install/#installed-locations)
 
 Hook commands are installed automatically by `setup` and never block the agent. See [Sources](/guide/sources/) for adding, overriding, or disabling the counted agents.
 
+```bash
+agent-presence hook --agent <claude-code|codex|gemini-cli|grok|opencode|pi>
+agent-presence hook --source <id> --event <name>
+```
+
+Setup installs the `--agent` form, which reads the agent's native hook payload. Direct calls use `--source` with `claude`, `codex`, `gemini`, `grok`, `dsh`, or a configured source; `--event` takes an internal event name such as `SessionStart`, `Heartbeat`, or `Stop`. opencode and Pi use their `--agent` bridges.
+
 `doctor` prints each harness check with its status and exits non-zero for any warning or error. It checks Claude Code, Codex, Gemini CLI, Grok, opencode and Pi. Duplicate detection covers command-hook files, not opencode and Pi bridge files, and uses presence-specific previous-release markers plus the current harness command. Old absolute-path commands from checkout paths without a presence marker remain undetectable; see [Upgrading](/guide/install/#upgrade-from-090-or-earlier). It does not repair agent configuration, though checking the ledger lock may create lock files in the harness state directory. `doctor` also reports `stale-path`, `unknown-event` and `timeout-unit` problems in other tools' hooks and exits 1 for them.
 
 `inventory` prints the harness ledger revision, installed entries and pending operations. Both commands accept `--json`. Artifacts installed by setup through the harness appear in this ledger; hooks installed by previous releases are not automatically recorded. `inventory` includes every kit application's entries in the shared ledger, not only presence's.

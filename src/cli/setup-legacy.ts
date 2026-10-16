@@ -76,7 +76,7 @@ function reportPreviousRelease(entries: readonly LegacyEntry[]): void {
       }
     }
     showInfo(
-      "For replace entries, after moving or removing any kept files above, run the previous release's uninstall without --credentials or --all to keep credentials, configuration and state:"
+      `For replace entries, ${protect.length > 0 ? 'after moving or removing any kept files above, ' : ''}run the previous release's uninstall without --credentials or --all to keep credentials, configuration and state:`
     );
     for (const version of versions) {
       showInfo(`  npx --yes @rivus/agent-presence@${version} uninstall`);

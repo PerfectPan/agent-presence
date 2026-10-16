@@ -19,10 +19,11 @@ Usage:
   agent-presence update [--provider <magic-builder|feishu-signature>] [--force] [--value <text>] [--silent]
   agent-presence reset [--provider <magic-builder|feishu-signature>] [--force] [--silent]
   agent-presence hook --agent <claude-code|codex|gemini-cli|grok|opencode|pi>
-  agent-presence hook --source codex --event <SessionStart|Heartbeat|UserPromptSubmit|PreToolUse|Stop>
-  agent-presence hook --source claude --event <SessionStart|UserPromptSubmit|PreToolUse|PostToolUse|Stop|SessionEnd|SubagentStart|SubagentStop> --silent
-  agent-presence hook --source gemini --event <SessionStart|UserPromptSubmit|PreToolUse|PostToolUse|Stop|SessionEnd> --silent
-  agent-presence hook --source opencode --event <SessionStart|Heartbeat|Stop> --silent
+  agent-presence hook --source <id> --event <name>
+
+Setup installs the --agent form. Direct hook calls use --source with claude, codex,
+gemini, grok, dsh, or a configured source, and an internal event name such as
+SessionStart, Heartbeat, or Stop.
 `);
 }
 

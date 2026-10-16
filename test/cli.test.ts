@@ -1,5 +1,6 @@
-import { describe, expect, it } from 'vite-plus/test';
+import { describe, expect, it, vi } from 'vite-plus/test';
 import { hasAnyOption, hasFlag, optionValue, parseArgs } from '../src/cli/args.js';
+import { printHelp } from '../src/cli/help.js';
 import { resolveBuiltinHookContext } from '../src/cli/hook-context.js';
 import { assertMacOS, assertSupportedPlatform, isMacOS, isSupportedPlatform } from '../src/platform.js';
 
@@ -17,6 +18,26 @@ describe('cli args', () => {
     expect(optionValue(args, '--provider')).toBe('feishu-signature');
     expect(hasFlag(args, '--force')).toBe(true);
     expect(hasAnyOption(args, ['--value', '--force'])).toBe(true);
+  });
+});
+
+describe('cli help', () => {
+  it('shows the installed agent form and direct source form without legacy per-source event lists', () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    try {
+      printHelp();
+      const help = log.mock.calls.flat().join('\n');
+      expect(help.split('\n').filter((line) => line.includes('agent-presence hook'))).toEqual([
+        '  agent-presence hook --agent <claude-code|codex|gemini-cli|grok|opencode|pi>',
+        '  agent-presence hook --source <id> --event <name>'
+      ]);
+      expect(help).toContain(
+        'Direct hook calls use --source with claude, codex,\ngemini, grok, dsh, or a configured source'
+      );
+      expect(help).toContain('an internal event name');
+    } finally {
+      log.mockRestore();
+    }
   });
 });
 

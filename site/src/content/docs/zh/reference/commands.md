@@ -49,6 +49,13 @@ agent-presence uninstall --all
 
 hook 命令由 `setup` 自动安装,且永不阻塞智能体。添加、覆盖或禁用被统计的智能体见 [Sources](/zh/guide/sources/)。
 
+```bash
+agent-presence hook --agent <claude-code|codex|gemini-cli|grok|opencode|pi>
+agent-presence hook --source <id> --event <name>
+```
+
+setup 安装 `--agent` 形式，读取智能体的原生 hook payload。直接调用使用 `--source`，支持 `claude`、`codex`、`gemini`、`grok`、`dsh` 和配置中的源；`--event` 接收 `SessionStart`、`Heartbeat`、`Stop` 等内部事件名。opencode 和 Pi 使用各自的 `--agent` 桥接。
+
 `doctor` 逐项打印 harness 检查及其状态，任何警告或错误都会使退出码非零。检查范围包括 Claude Code、Codex、Gemini CLI、Grok、opencode 和 Pi。重复检测覆盖命令式 hook 文件，不覆盖 opencode 和 Pi 桥接文件；同时使用 presence 专属的旧版本标记和当前 harness 命令。checkout 路径不含 presence 标记的旧绝对路径命令仍无法识别，见[升级指引](/zh/guide/install/#从-090-或更早版本升级)。它不会修复智能体配置，但检查安装记录锁时可能在 harness 状态目录中创建锁文件。presence home 路径含空格时，目前可能误报程序不存在。`doctor` 也会报告其他工具 hook 中的 `stale-path`、`unknown-event` 和 `timeout-unit` 问题，并以退出码 1 结束。
 
 `inventory` 打印 harness 安装记录的修订号、已安装条目和待完成操作。两个命令都支持 `--json`。setup 通过 harness 安装的产物会出现在记录中；旧版本安装的 hook 不会自动记入记录。`inventory` 包含共享安装记录中所有 kit 应用的条目，不限于 presence。
