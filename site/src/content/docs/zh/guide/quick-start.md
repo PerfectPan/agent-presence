@@ -9,7 +9,9 @@ description: 两条命令,让签名实时显示你的 AI 牛马。
 agent-presence setup
 ```
 
-按提示扫码、粘贴 Magic-Builder token,让 setup 装好各智能体的 hook。
+按提示扫码，然后查看 setup 的安装计划；setup 获得确认后才写入智能体配置。验证通过后，按提示粘贴 Magic-Builder token。非交互终端可用 `setup --yes` 应用无冲突计划；交互终端始终会请求确认。
+
+已使用 0.9.0 或更早版本的用户，请先按[升级指引](/zh/guide/install/#从-090-或更早版本升级)操作，再替换安装的包。
 
 ## 2. 拿到签名 URL
 
@@ -21,7 +23,7 @@ agent-presence url
 
 ## 3. 干活
 
-启动任意编码智能体,徽章会在会话边界自动更新——无 cron、无常驻进程。
+启动任意编码智能体。hook 将生命周期事件写入队列，后台 worker 更新徽章，空闲五分钟后退出。
 
 ```text
 3 个 AI 牛马正在并行搬砖 | claude 2 · codex 1 | 今日 171M · $260

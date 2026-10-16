@@ -32,7 +32,7 @@ const CODEX_EVENTS: EventTable = {
 const GEMINI_EVENTS: EventTable = {
   SessionStart: 'SessionStart',
   SessionEnd: 'SessionEnd',
-  // The Claude-style names old installs registered.
+  // The payload reader preserves these names even outside Gemini's registration set.
   UserPromptSubmit: 'UserPromptSubmit',
   PreToolUse: 'PreToolUse',
   PostToolUse: 'PostToolUse',

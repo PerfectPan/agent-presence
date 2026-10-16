@@ -5,15 +5,18 @@ description: presence 如何从智能体 hook 流到你的签名。
 
 ```text
 Codex / Claude Code / Gemini CLI / opencode / Pi / Grok hooks
--> 本地 presence 状态(加锁 JSON,TTL 清理)
--> 防抖渲染(模板 + usage 徽章)
+-> hook 将事件写入本地队列并返回
+-> worker 在状态锁下将队列事件应用到 JSON 状态(TTL 清理)
+-> usage 刷新 + 防抖渲染(模板 + usage 徽章)
 -> l.garyyang slot(值存储;magic-builder FaaS 在其前面做预览)
 -> 飞书签名链接预览
 ```
 
-整条链路是事件驱动的:hook 在会话边界触发,改写一份加锁的 JSON 状态,防抖渲染器把值推到 slot。不需要 cron 或后台定时器——每次都会扫描整个自然日 usage 窗口,所以单次边界刷新就是完整的。
+整条链路由事件驱动：hook 将事件写入本地队列后返回。worker 在状态锁下将队列事件应用到 JSON 状态，在会话边界刷新 usage，再通过防抖渲染器发布。空闲五分钟后，worker 退出。
 
-token 统计是**事后**从本地 transcript 读取的,从不依赖 hook 负载(生命周期事件不带 token 数)。
+token 统计是**事后**从本地 transcript 读取的。托管 dsh 插件是例外：其 hook 负载携带每次模型调用的 usage，由 worker 追加到本地日志，再由 usage 扫描器读取。
+
+`setup` 通过 kit harness 规划变更，在写入智能体配置前请求确认，将产物记入安装记录并验证；`uninstall` 移除这些已记录的产物。`doctor` 检查安装健康状态，`inventory` 展示共享的安装记录。管理位置见[安装指南](/zh/guide/install/#安装位置)。
 
 ## Provider
 
