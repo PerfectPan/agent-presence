@@ -27,8 +27,10 @@ export const AGENT_HOME_VARIABLES = [
   'PI_CODING_AGENT_DIR'
 ] as const;
 
-export async function createHarnessFixture(options: { managedPaths?: ReadonlyMap<string, string> } = {}) {
-  const home = await mkdtemp(join(tmpdir(), 'presence-harness-'));
+export async function createHarnessFixture(
+  options: { managedPaths?: ReadonlyMap<string, string>; homePrefix?: string } = {}
+) {
+  const home = await mkdtemp(join(tmpdir(), options.homePrefix ?? 'presence-harness-'));
   const presenceHome = join(home, '.agent-presence');
   const node = createNodePlatform({ home, env: { HOME: home, PATH: '' } });
   const cliCalls: AgentCommand[] = [];
