@@ -15,10 +15,11 @@ import {
 import { checkWorkerLock } from '../src/queue/produce.js';
 import { listQueue } from '../src/queue/reader.js';
 import { holdStopRequest, STOP_REQUEST_TOUCH_MS, type Delay } from '../src/queue/stop-request.js';
-import { takeOver } from '../src/queue/takeover.js';
+import { takeOver, TAKEOVER_RETRY_MS } from '../src/queue/takeover.js';
 import {
   STARTED_WORKER_WAIT_MS,
   WORKER_IDLE_MS,
+  WORKER_ROUND_MS,
   type WorkerExitReason,
   type WorkerOptions
 } from '../src/queue/worker.js';
@@ -61,6 +62,7 @@ let fake: FakeEffects;
 let alive: Set<number>;
 let heldLocks: ProcessLock[];
 let pools: WorkerPool[];
+let resumePaused: Array<() => void>;
 
 beforeEach(async () => {
   home = await createQueueHome();
@@ -69,9 +71,13 @@ beforeEach(async () => {
   alive = new Set([process.pid, COMMAND_PID]);
   heldLocks = [];
   pools = [];
+  resumePaused = [];
 });
 
 afterEach(async () => {
+  for (const resume of resumePaused) {
+    resume();
+  }
   for (const pool of pools) {
     await pool.stop();
   }
@@ -151,6 +157,42 @@ function writeRecordSync(at: number, sessionId: string, version = 1): void {
   writeFileSync(join(queueDir, name), JSON.stringify(record));
 }
 
+/** Park at a worker delay before the test observes or changes a state with a virtual-time deadline. */
+function pauseRoundsAt(...times: number[]): {
+  delay: Delay;
+  paused(index?: number): Promise<void>;
+  resume(index?: number): void;
+} {
+  const stops = times.map((at) => {
+    let notify: () => void = () => undefined;
+    let resume: () => void = () => undefined;
+    const paused = new Promise<void>((resolve) => {
+      notify = resolve;
+    });
+    const resumed = new Promise<void>((resolve) => {
+      resume = resolve;
+    });
+    resumePaused.push(resume);
+    return { at, paused, resumed, notify, resume };
+  });
+  let next = 0;
+  return {
+    delay: async (ms, signal) => {
+      const stop = stops[next];
+      if (stop && vt.monotonic.now() >= stop.at) {
+        stop.notify();
+        await stop.resumed;
+        if (stops[next] === stop) {
+          next += 1;
+        }
+      }
+      await vt.delay(ms, signal);
+    },
+    paused: (index = 0) => stops[index]!.paused,
+    resume: (index = 0) => stops[index]!.resume()
+  };
+}
+
 /** The touch timer stays with the test; every other wait runs on virtual time. */
 function touchesByHand(): { delay: Delay; tick: () => void } {
   let endWait: (() => void) | undefined;
@@ -189,13 +231,17 @@ function tryCountingPlatform(tries: { count: number }): ProcessLockPlatform {
 describe('a started worker', () => {
   it('takes the free lock, writes its version, applies, and leaves after the idle interval with its version gone', async () => {
     await recordAt(home.statePath, T0, eventBody('SessionStart', 's1'));
-    const pool = workers();
+    const rounds = pauseRoundsAt(0, WORKER_IDLE_MS - 30_000);
+    const pool = workers({ delay: rounds.delay });
 
     const run = pool.start();
-    await until(async () => sessionIds(await readState(home.statePath)).includes('s1'), 'the record applied');
+    await rounds.paused();
+    expect(sessionIds(await readState(home.statePath))).toEqual(['s1']);
     expect(await readWorkerVersion(home.statePath)).toBe(1);
-    await until(() => vt.monotonic.now() >= WORKER_IDLE_MS - 30_000, 'most of the idle interval');
+    rounds.resume();
+    await rounds.paused(1);
     expect(await lockHeld()).toBe(true);
+    rounds.resume(1);
 
     expect(await run).toBe('idle');
     expect(vt.monotonic.now()).toBeGreaterThanOrEqual(WORKER_IDLE_MS);
@@ -239,11 +285,13 @@ describe('a started worker', () => {
 
   it('exits when the tombstone appears while it waits, without taking the lock', async () => {
     await holdLockAs(1);
-    const pool = workers();
+    const rounds = pauseRoundsAt(5_000);
+    const pool = workers({ delay: rounds.delay });
 
     const run = pool.start(2);
-    await until(() => vt.monotonic.now() >= 5_000, 'a few rounds');
+    await rounds.paused();
     await writeTombstone(home.statePath);
+    rounds.resume();
 
     expect(await run).toBe('tombstone');
     expect(await readWorkerVersion(home.statePath)).toBe(1);
@@ -251,15 +299,17 @@ describe('a started worker', () => {
 
   it('waits while the holder has not written its version, and exits once it shows its own version or a newer one', async () => {
     const lock = await holdLockAs(0);
-    const pool = workers();
+    const rounds = pauseRoundsAt(5_000);
+    const pool = workers({ delay: rounds.delay });
 
     let settled = false;
     const run = pool.start(1).finally(() => {
       settled = true;
     });
-    await until(() => vt.monotonic.now() >= 5_000, 'a few rounds');
+    await rounds.paused();
     expect(settled).toBe(false);
     await writeWorkerVersion(home.statePath, 2);
+    rounds.resume();
 
     expect(await run).toBe('holder');
     await releaseLock(lock);
@@ -280,25 +330,31 @@ describe('a started worker', () => {
 
   it('makes no lock try while a stop request is live, and takes the lock once it is gone', async () => {
     const lock = await holdLockAs(0);
-    // The command waits with a live request; its toucher keeps the request fresh on this clock.
-    const request = await holdStopRequest(home.statePath, { clock: vt.clock, pid: COMMAND_PID, delay: vt.delay });
+    // The worker is the only timer actor; stamp the request again between the two five-second phases.
+    const touches = touchesByHand();
+    const request = await holdStopRequest(home.statePath, { clock: vt.clock, pid: COMMAND_PID, delay: touches.delay });
+    const rounds = pauseRoundsAt(5_000, 10_000);
     const tries = { count: 0 };
     let settled = false;
-    const pool = workers({ platform: tryCountingPlatform(tries), idleMs: 1_000 });
+    const pool = workers({ platform: tryCountingPlatform(tries), idleMs: 1_000, delay: rounds.delay });
     const run = pool.start().finally(() => {
       settled = true;
     });
-    await until(() => vt.monotonic.now() >= 5_000, 'a few rounds');
+    await rounds.paused();
     expect(settled).toBe(false);
 
     // The holder leaves while the request is still live: the lock stays free for the waiting command.
+    const now = new Date(vt.clock.now());
+    utimesSync(request.request.path, now, now);
     await releaseLock(lock);
-    await until(() => vt.monotonic.now() >= 10_000, 'a few more rounds');
+    rounds.resume();
+    await rounds.paused(1);
     expect(settled).toBe(false);
     expect(tries.count).toBe(0);
     expect(await lockHeld()).toBe(false);
 
     await request.release();
+    rounds.resume(1);
     expect(await run).toBe('idle');
     expect(tries.count).toBeGreaterThan(0);
   }, 30_000);
@@ -307,10 +363,12 @@ describe('a started worker', () => {
 describe('a worker holding the lock', () => {
   it('applies records arriving while a publish hangs, each within a second of virtual time', async () => {
     const publish = fake.holdPublishes();
+    const rounds = pauseRoundsAt(...Array.from({ length: 6 }, (_, index) => index * WORKER_ROUND_MS));
     // The virtual time of every apply-lane save, pushed synchronously at the save, so no observer can lag it.
     const saves: number[] = [];
     await recordAt(home.statePath, vt.clock.now(), eventBody('SessionStart', 's0'));
     const run = workers({
+      delay: rounds.delay,
       onBatchStep: async (step) => {
         if (step === 'saved') {
           saves.push(vt.monotonic.now());
@@ -318,16 +376,17 @@ describe('a worker holding the lock', () => {
       }
     }).start();
     await publish.started;
+    await rounds.paused();
 
     for (let index = 1; index <= 5; index += 1) {
-      // The write itself takes no virtual time: its file I/O holds the ticks.
+      // Keep producer I/O outside elapsed apply time by publishing each record while the worker is parked.
       const before = saves.length;
       const writtenAt = vt.monotonic.now();
       await recordAt(home.statePath, vt.clock.now(), eventBody('SessionStart', `s${index}`));
-      // A save happens only for a batch with a pending record, and the only record that can be pending now is this
-      // one, so the first save after this write is the batch that applied it. Counted, not searched: a previous
-      // batch's save can sit at the same virtual time as the write.
-      await until(() => saves.length > before, `s${index} applied`);
+      rounds.resume(index - 1);
+      await rounds.paused(index);
+      // Only this record can be pending in this phase, so its batch accounts for the one new save.
+      expect(saves).toHaveLength(before + 1);
       expect(saves[before]! - writtenAt).toBeLessThanOrEqual(1_000);
       expect(`s${index}` in (await readState(home.statePath)).sessions).toBe(true);
     }
@@ -335,17 +394,21 @@ describe('a worker holding the lock', () => {
     expect(fake.published).toHaveLength(0);
 
     await writeTombstone(home.statePath);
+    rounds.resume(5);
     expect(await run).toBe('tombstone');
     await publish.aborted;
   });
 
   it('leaves at the tombstone, deletes its version, and starts no worker with records pending', async () => {
-    const pool = workers();
+    const rounds = pauseRoundsAt(0);
+    const pool = workers({ delay: rounds.delay });
     const run = pool.start();
-    await until(async () => (await readWorkerVersion(home.statePath)) === 1, 'the lock taken');
+    await rounds.paused();
 
+    expect(await readWorkerVersion(home.statePath)).toBe(1);
     await writeTombstone(home.statePath);
     await recordAt(home.statePath, T0, eventBody('SessionStart', 's1'));
+    rounds.resume();
 
     expect(await run).toBe('tombstone');
     expect(pool.startedByLeavers()).toBe(0);
@@ -359,8 +422,10 @@ describe('a worker holding the lock', () => {
       eventBody('SessionStart', 'c1', { source: 'claude', scanEnv: { CLAUDE_CONFIG_DIR: '/fake-home/a' } })
     );
     const gate = fake.holdRefreshes();
+    const rounds = pauseRoundsAt(0);
     let startedByLeaver = 0;
     const pool = workers({
+      delay: rounds.delay,
       startWorker: () => {
         startedByLeaver += 1;
       }
@@ -372,6 +437,8 @@ describe('a worker holding the lock', () => {
     // The touch timer stays with the test: its 2-second wait must not pump virtual time past the bound below.
     const touches = touchesByHand();
     const request = await holdStopRequest(home.statePath, { clock: vt.clock, pid: COMMAND_PID, delay: touches.delay });
+    // A request is visible before its mtime is set to the virtual clock. Let the holder read only the stamped file.
+    rounds.resume();
     expect(await run).toBe('stop-request');
     // The holder stops at its first check after the request appeared (Plan 0003 5.2).
     expect(vt.monotonic.now() - requestedAt).toBeLessThanOrEqual(1_000);
@@ -387,17 +454,23 @@ describe('a worker holding the lock', () => {
   });
 
   it('does not stop for a stop request dated past the age bound, and deletes it', async () => {
-    const pool = workers();
+    const rounds = pauseRoundsAt(0, WORKER_ROUND_MS, 2 * WORKER_ROUND_MS);
+    const pool = workers({ delay: rounds.delay });
     const run = pool.start();
-    await until(async () => (await readWorkerVersion(home.statePath)) === 1, 'the lock taken');
+    await rounds.paused();
 
     // Dated far enough ahead that virtual time does not catch up with it during the test.
     writeRequestSync(process.pid, vt.clock.now() + 600_000);
-    await until(async () => (await requestFiles()).length === 0, 'the request deleted');
+    rounds.resume();
+    await rounds.paused(1);
+    expect(await requestFiles()).toEqual([]);
     await recordAt(home.statePath, vt.clock.now(), eventBody('SessionStart', 's1'));
-    await until(async () => sessionIds(await readState(home.statePath)).includes('s1'), 'the record applied');
+    rounds.resume(1);
+    await rounds.paused(2);
+    expect(sessionIds(await readState(home.statePath))).toEqual(['s1']);
 
     await writeTombstone(home.statePath);
+    rounds.resume(2);
     expect(await run).toBe('tombstone');
   });
 
@@ -479,15 +552,33 @@ describe('the follow-up lane', () => {
 describe('a worker whose iterations fail', () => {
   it('leaves with failing after one idle interval of iterations that throw past the batch, releasing the lock', async () => {
     await recordAt(home.statePath, T0, eventBody('SessionStart', 's1'));
-    const pool = workers({ idleMs: 1_000 });
+    let notifyApplied: () => void = () => undefined;
+    const batchApplied = new Promise<void>((resolve) => {
+      notifyApplied = resolve;
+    });
+    let resumeBatch: () => void = () => undefined;
+    const batchResumed = new Promise<void>((resolve) => {
+      resumeBatch = resolve;
+    });
+    resumePaused.push(resumeBatch);
+    const pool = workers({
+      idleMs: 1_000,
+      onBatchStep: async (step) => {
+        if (step === 'deleted') {
+          notifyApplied();
+          await batchResumed;
+        }
+      }
+    });
     const run = pool.start();
-    await until(async () => sessionIds(await readState(home.statePath)).includes('s1'), 'the record applied');
+    await batchApplied;
     // A state file that cannot be parsed makes every iteration throw in the follow-up lane's state load, which
     // `hasWork` reads after an empty batch returns — a broken config entry no longer can, because the worker's
-    // loader drops it. The applied event is pinned by the wait above: the file read at the end is this test's own
-    // restore, so it asserts nothing about the worker and is left out.
+    // loader drops it. The batch stays parked after applying the event, before the follow-up lane can save again.
+    // The file read at the end is this test's own restore, so it asserts nothing about the worker and is left out.
     const applied = readFileSync(home.statePath, 'utf8');
     writeFileSync(home.statePath, '{"sessions": ');
+    resumeBatch();
 
     expect(await run).toBe('failing');
 
@@ -500,17 +591,14 @@ describe('a worker whose iterations fail', () => {
 
   it('does not leave with failing when the failures stop within the interval', async () => {
     writeFileSync(home.statePath, '{"sessions": ');
-    const pool = workers({ idleMs: 1_000 });
+    const rounds = pauseRoundsAt(0);
+    const pool = workers({ idleMs: 1_000, delay: rounds.delay });
     const run = pool.start();
-    await until(() => {
-      try {
-        return readFileSync(home.logPath, 'utf8').includes('worker.batch.failed');
-      } catch {
-        return false;
-      }
-    }, 'a failed iteration logged');
+    await rounds.paused();
+    expect(readFileSync(home.logPath, 'utf8')).toContain('worker.batch.failed');
 
     await writeState(home.statePath, {});
+    rounds.resume();
 
     expect(await run).toBe('idle');
   }, 15_000);
@@ -521,12 +609,13 @@ describe('a command taking over', () => {
     await recordAt(home.statePath, T0, eventBody('SessionStart', 's1'));
     // The holder's publish is still running when the command asks, so the sync stays owed and it starts a worker.
     const publish = fake.holdPublishes();
-    const pool = workers();
+    const rounds = pauseRoundsAt(5_000);
+    const pool = workers({ delay: rounds.delay });
     // An older worker holds the lock, so newer started workers wait for it.
     const older = pool.start(1);
     await publish.started;
     const waiting = [pool.start(2), pool.start(2)];
-    await until(() => vt.monotonic.now() >= 5_000, 'the started workers waiting');
+    await rounds.paused();
 
     let reasonsWhileHolding: WorkerExitReason[] = [];
     await takeOver(
@@ -540,7 +629,13 @@ describe('a command taking over', () => {
         version: 2,
         clock: vt.clock,
         monotonic: vt.monotonic,
-        delay: vt.delay,
+        delay: (ms, signal) => {
+          // The request is fully stamped before the first retry; its toucher waits behind the same gate.
+          if (ms === TAKEOVER_RETRY_MS) {
+            rounds.resume();
+          }
+          return rounds.delay(ms, signal);
+        },
         effects: fake.effects,
         startWorker: () => undefined
       }
@@ -586,20 +681,31 @@ describe('a command taking over', () => {
     const resumed = new Promise<void>((resolve) => {
       resume = resolve;
     });
-    let first = true;
-    const pool = workers({
-      onBatchStep: async (step) => {
-        if (step === 'read' && first) {
-          first = false;
+    resumePaused.push(resume);
+    let rounds = 0;
+    let afterStale: { requests: string[]; lockHeld: boolean } | undefined;
+    const prefix = basename(queuePaths(home.statePath).stopRequestPrefix);
+    const pool = workers();
+    const holder = pool.start(1, {
+      delay: async (ms, signal) => {
+        rounds += 1;
+        if (rounds === 1) {
           pause?.();
           await resumed;
+        } else if (rounds === 2) {
+          // The first post-jump iteration deleted the stale request and kept the lock.
+          const requests = readdirSync(home.dir).filter((name) => name.startsWith(prefix));
+          afterStale = { requests, lockHeld: await lockHeld() };
         }
+        await vt.delay(ms, signal);
       }
     });
-    const holder = pool.start();
     await paused;
 
-    const touches = touchesByHand();
+    let commandWaiting: () => void = () => undefined;
+    const waiting = new Promise<void>((resolve) => {
+      commandWaiting = resolve;
+    });
     let ranAt = -1;
     const command = takeOver(
       home.statePath,
@@ -609,23 +715,26 @@ describe('a command taking over', () => {
       {
         clock: vt.clock,
         monotonic: vt.monotonic,
-        delay: touches.delay,
+        delay: (ms, signal) => {
+          // The first lock retry starts after the request's write and mtime update, with its deadline set.
+          if (ms === TAKEOVER_RETRY_MS) {
+            commandWaiting();
+          }
+          return vt.delay(ms, signal);
+        },
         effects: fake.effects,
         startWorker: () => undefined
       }
     );
-    await until(async () => (await requestFiles()).length === 1, 'the request written');
+    await Promise.race([waiting, command]);
     const requestedAt = vt.monotonic.now();
     // The machine slept: the wall clock moved past the age bound while the command waited.
     vt.jump(30_000);
     resume();
 
-    await until(async () => (await requestFiles()).length === 0, 'the holder deleting the stale request');
-    expect(await lockHeld()).toBe(true);
-    touches.tick();
-
     await command;
     expect(await holder).toBe('stop-request');
+    expect(afterStale).toEqual({ requests: [], lockHeld: true });
     expect(ranAt - requestedAt).toBeLessThan(10_000);
     expect(await requestFiles()).toEqual([]);
   });
@@ -706,15 +815,16 @@ describe('an idle worker leaving', () => {
         writeFileSync(queuePaths(home.statePath).workerVersion, '1\n');
       }
     });
-    const pool = workers({ idleMs: 1_000 });
+    const rounds = pauseRoundsAt(10_000);
+    const pool = workers({ idleMs: 1_000, delay: rounds.delay });
 
     const run = pool.start(2, { platform });
-    await until(() => olderHolder !== undefined, 'the idle worker leaving');
-    await until(() => vt.monotonic.now() >= 10_000, 'the idle worker waiting as a started worker');
+    await rounds.paused();
     expect(sessionIds(await readState(home.statePath))).toEqual([]);
 
     olderHolder?.exec('ROLLBACK');
     olderHolder?.close();
+    rounds.resume();
 
     expect(await run).toBe('idle');
     expect(sessionIds(await readState(home.statePath))).toEqual(['s2']);

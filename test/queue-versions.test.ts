@@ -142,12 +142,30 @@ describe('upgrades between queue releases', () => {
     expect(await readWorkerVersion(home.statePath)).toBe(0);
 
     const olderDelay = countedDelay();
-    await produce(OLDER, vt.clock.now(), eventBody('SessionStart', 'o1'), { delay: olderDelay.delay, idleMs: 60_000 });
-    await until(async () => 'o1' in (await readState(home.statePath)).sessions, 'the older worker applying');
-    expect(await readWorkerVersion(home.statePath)).toBe(OLDER);
+    let resumeOlder: () => void = () => undefined;
+    const readyForNewer = new Promise<void>((resolve) => {
+      resumeOlder = resolve;
+    });
+    // Keep the older holder alive while observing its state and writing the newer record.
+    await produce(OLDER, vt.clock.now(), eventBody('SessionStart', 'o1'), {
+      delay: async (ms, signal) => {
+        await readyForNewer;
+        await olderDelay.delay(ms, signal);
+      },
+      idleMs: 60_000
+    });
+    let iterationsBefore = 0;
+    try {
+      await until(async () => 'o1' in (await readState(home.statePath)).sessions, 'the older worker applying');
+      expect(await readWorkerVersion(home.statePath)).toBe(OLDER);
 
-    const iterationsBefore = olderDelay.count();
-    expect(await produce(NEWER, vt.clock.now(), eventBody('SessionStart', 'n2'))).toMatchObject({ startWorker: true });
+      iterationsBefore = olderDelay.count();
+      expect(await produce(NEWER, vt.clock.now(), eventBody('SessionStart', 'n2'))).toMatchObject({
+        startWorker: true
+      });
+    } finally {
+      resumeOlder();
+    }
 
     expect(await pool.settled()).toEqual(['idle', 'newer-record', 'idle']);
     expect(olderDelay.count() - iterationsBefore).toBeLessThanOrEqual(2);

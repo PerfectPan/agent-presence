@@ -9,6 +9,9 @@ import { readWorkerVersion, writeTombstone } from '../src/queue/files.js';
 import type { OwedWorkEffects } from '../src/queue/follow-up.js';
 import { checkWorkerLock, produceRecord } from '../src/queue/produce.js';
 import { listQueue } from '../src/queue/reader.js';
+import type { Delay } from '../src/queue/stop-request.js';
+import { TAKEOVER_RETRY_MS } from '../src/queue/takeover.js';
+import { WORKER_ROUND_MS } from '../src/queue/worker.js';
 import { dshUsage, eventBody, readState, recordAt, until, writeState, T0 } from './queue-support.js';
 import {
   capturePrint,
@@ -62,15 +65,20 @@ const NEWER = 2;
 let h: CommandHarness;
 let restoreNow: () => void = () => undefined;
 let printed: ReturnType<typeof capturePrint> | undefined;
+let resumePaused: Array<() => void>;
 
 beforeEach(async () => {
   publishValueMock.mockReset().mockResolvedValue(undefined);
   refreshUsageMock.mockReset();
   spawnMock.mockClear();
+  resumePaused = [];
   h = await createCommandHarness();
 });
 
 afterEach(async () => {
+  for (const resume of resumePaused) {
+    resume();
+  }
   restoreNow();
   printed?.restore();
   await h.dispose();
@@ -85,6 +93,41 @@ function capture(): ReturnType<typeof capturePrint> {
   printed?.restore();
   printed = capturePrint();
   return printed;
+}
+
+function gate(): { promise: Promise<void>; resolve: () => void } {
+  let resolve: () => void = () => undefined;
+  const promise = new Promise<void>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+}
+
+// Keep every timer still until the command's first lock retry proves its request was written. The test can then
+// write the later record before either holder or command moves on, regardless of how long its observer takes.
+async function pauseHolderForCommand() {
+  const round = gate();
+  const waiting = gate();
+  const proceed = gate();
+  resumePaused.push(proceed.resolve);
+  const delay: Delay = async (ms, signal) => {
+    if (ms === WORKER_ROUND_MS) {
+      round.resolve();
+    }
+    if (ms === TAKEOVER_RETRY_MS) {
+      waiting.resolve();
+    }
+    await proceed.promise;
+    await h.vt.delay(ms, signal);
+  };
+  const running = h.pool.start(1, { delay });
+  await round.promise;
+  return {
+    running,
+    waiting: waiting.promise,
+    options: h.takeoverOptions({ delay }),
+    release: () => proceed.resolve()
+  };
 }
 
 describe('status', () => {
@@ -262,16 +305,18 @@ describe('reset during a slow usage refresh (Spec S6)', () => {
     });
     await recordAt(h.home.statePath, T0 + 2_000, eventBody('SessionStart', 's1'));
     const held = h.fake.holdRefreshes();
-    const running = h.pool.start();
+    const holderStarts = h.countingStarts();
+    const running = h.pool.start(1, { startWorker: holderStarts.startWorker });
     const busyWith = await held.started;
     const starts = h.countingStarts();
 
     await reset(['--force', '--silent'], h.takeoverOptions({ startWorker: starts.startWorker }));
     await h.pool.settled();
 
-    // The holder stopped for reset's request and left the refresh owed; the worker it started exits behind reset.
+    // Both holders leave background work owed. A successor may run after reset releases, so count its start instead.
     expect(await running).toBe('stop-request');
     expect(busyWith.source).toBe('codex');
+    expect(busyWith.signal.aborted).toBe(true);
     expect(h.fake.refreshed).toHaveLength(1);
     const state = await readState(h.home.statePath);
     expect(Object.values(state.sessions).map((session) => session.status)).toEqual(['finished', 'finished']);
@@ -279,7 +324,7 @@ describe('reset during a slow usage refresh (Spec S6)', () => {
     expect(publishValueMock).toHaveBeenCalledWith('ZERO');
     expect(h.fake.published).toEqual([]);
     expect((await listQueue(h.home.statePath)).records).toEqual([]);
-    // Reset left the refresh to a worker: it starts one when it leaves (3.6), and the test counts instead of running it.
+    expect(holderStarts.count()).toBe(1);
     expect(starts.count()).toBe(1);
   });
 
@@ -319,18 +364,21 @@ describe('reset during a slow usage refresh (Spec S6)', () => {
     const now = movableNow(T0);
     restoreNow = () => now.restore();
     await writeState(h.home.statePath, { sessions: {} });
-    const running = h.pool.start(1, { idleMs: 300_000 });
-    await until(async () => (await readWorkerVersion(h.home.statePath)) === 1, 'the holder running');
+    const holder = await pauseHolderForCommand();
 
-    const command = reset(['--force', '--silent'], h.takeoverOptions());
-    await until(async () => (await h.requestFiles()).length === 1, 'reset waiting for the lock');
-    await recordAt(h.home.statePath, T0 + 3_000, eventBody('SessionStart', 's1'));
-    now.set(T0 + 4_000);
+    const command = reset(['--force', '--silent'], holder.options);
+    try {
+      await Promise.race([holder.waiting, command]);
+      await recordAt(h.home.statePath, T0 + 3_000, eventBody('SessionStart', 's1'));
+      now.set(T0 + 4_000);
+    } finally {
+      holder.release();
+      await command;
+    }
 
-    await command;
     await h.pool.settled();
 
-    expect(await running).toBe('stop-request');
+    expect(await holder.running).toBe('stop-request');
     const session = (await readState(h.home.statePath)).sessions.s1;
     expect(session).toMatchObject({
       status: 'finished',
@@ -357,19 +405,22 @@ describe('reset during a slow usage refresh (Spec S6)', () => {
         }
       }
     });
-    const running = h.pool.start(1, { idleMs: 300_000 });
-    await until(async () => (await readWorkerVersion(h.home.statePath)) === 1, 'the holder running');
+    const holder = await pauseHolderForCommand();
     const out = capture();
 
-    const command = printStatus([], h.takeoverOptions());
-    await until(async () => (await h.requestFiles()).length === 1, 'status waiting for the lock');
-    await recordAt(h.home.statePath, T0 + 3_000, eventBody('SessionStart', 's1'));
-    now.set(T0 + 4_000);
+    const command = printStatus([], holder.options);
+    try {
+      await Promise.race([holder.waiting, command]);
+      await recordAt(h.home.statePath, T0 + 3_000, eventBody('SessionStart', 's1'));
+      now.set(T0 + 4_000);
+    } finally {
+      holder.release();
+      await command;
+    }
 
-    await command;
     await h.pool.settled();
 
-    expect(await running).toBe('stop-request');
+    expect(await holder.running).toBe('stop-request');
     const payload = JSON.parse(out.lines[0]!) as { activeCount: number; value: string; active: Array<{ id: string }> };
     expect(payload.activeCount).toBe(1);
     expect(payload.active.map((session) => session.id)).toEqual(['s1']);
