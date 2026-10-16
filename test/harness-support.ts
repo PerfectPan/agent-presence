@@ -26,8 +26,8 @@ export const AGENT_HOME_VARIABLES = [
   'PI_CODING_AGENT_DIR'
 ] as const;
 
-export async function createHarnessFixture() {
-  const home = await mkdtemp(join(tmpdir(), 'presence-harness-'));
+export async function createHarnessFixture(homePrefix = 'presence-harness-') {
+  const home = await mkdtemp(join(tmpdir(), homePrefix));
   const presenceHome = join(home, '.agent-presence');
   const node = createNodePlatform({ home, env: { HOME: home, PATH: '' } });
   const cliCalls: AgentCommand[] = [];
