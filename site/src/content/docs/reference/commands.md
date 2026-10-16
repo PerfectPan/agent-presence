@@ -51,7 +51,7 @@ Hook commands are installed automatically by `setup` and never block the agent. 
 
 ```bash
 agent-presence hook --agent <claude-code|codex|gemini-cli|grok|opencode|pi>
-agent-presence hook --source <id> --event <name>
+agent-presence hook --source <id> --event <name> [--silent]
 ```
 
 Setup installs the `--agent` form, which reads the agent's native hook payload. Direct calls use `--source` with `claude`, `codex`, `gemini`, `grok`, `dsh`, or a configured source; `--event` takes an internal event name such as `SessionStart`, `Heartbeat`, or `Stop`. opencode and Pi use their `--agent` bridges.

@@ -29,7 +29,7 @@ describe('cli help', () => {
       const help = log.mock.calls.flat().join('\n');
       expect(help.split('\n').filter((line) => line.includes('agent-presence hook'))).toEqual([
         '  agent-presence hook --agent <claude-code|codex|gemini-cli|grok|opencode|pi>',
-        '  agent-presence hook --source <id> --event <name>'
+        '  agent-presence hook --source <id> --event <name> [--silent]'
       ]);
       expect(help).toContain(
         'Direct hook calls use --source with claude, codex,\ngemini, grok, dsh, or a configured source'

@@ -824,11 +824,10 @@ queue (3.12).
   newer release; the 250 ms rounds, the request touches and age check, the 60-second limit and the idle interval run
   on an injected clock.
   `test/hook-graph.test.ts` adds `@rivus/agent-kit-collab/process-lock` and
-  `@rivus/agent-kit/node` to its allowlist next to `@rivus/agent-kit/harness/events`, because `src/sources.ts`,
-  `src/cli/hook-output.ts` and `src/cli/io.ts` (its `writeLog` re-export, which the hook imports with `readStdinJson`)
-  reach the log lock (as batch 1's lock change would have); `zod` stays off it, and the schema module, the state-store
-  module, the dsh log module, `src/usage/billable-sources.ts` and the scanners (`src/usage/scan-*.ts`, `scan-dsh.ts`
-  among them) join its forbidden modules.
+  `@rivus/agent-kit/node` to its allowlist next to `@rivus/agent-kit/harness/events`, because `src/sources.ts` reaches
+  the log lock and `src/cli/hook-output.ts` reaches the producer's worker-lock check; `zod` stays off it, and the schema
+  module, the state-store module, the dsh log module, `src/usage/billable-sources.ts` and the scanners
+  (`src/usage/scan-*.ts`, `scan-dsh.ts` among them) join its forbidden modules.
 - Exit: 5.2's worker checks and the version checks above pass; gates.
 
 #### Q1b: producer, commands, uninstall (one PR, released with Q1a)
@@ -844,7 +843,7 @@ queue (3.12).
   between queue releases. `test/hook-graph.test.ts`'s allowlist
   stays exactly `@rivus/agent-kit/harness/events`,
   `@rivus/agent-kit-collab/process-lock` and `@rivus/agent-kit/node`, now for the producer's lock check (3.3) and the
-  platform it takes, and still for the log lock that `src/cli/io.ts` reaches; never `zod`. Its walk reaches
+  platform it takes, and still for the log lock that `src/sources.ts` reaches; never `zod`. Its walk reaches
   `src/queue/produce.ts` and `src/cli/hook-context.ts` (through `src/sources.ts`) and none of the forbidden modules:
   the schema, state-store and dsh log modules, `src/usage/billable-sources.ts` and the scanners, `src/usage/scan-dsh.ts`
   among them. Hook cold start against the 143 ms baseline (5.4).
@@ -877,7 +876,7 @@ holds the log lock or a handover aborts the wait (3.5).
 | ----- | ---------- | ----------------------------------------- | --------------- |
 | Q1a   | PerfectPan | Kit 0.15.0 (released, 6.1)                | done 2026-10-14 |
 | Q1b   | PerfectPan | Q1a                                       | done 2026-10-14 |
-| Q2    | Codex      | Q1b released with Plan 0002 batch 5 (4.1) | done 2026-10-17 |
+| Q2    | PerfectPan | Q1b released with Plan 0002 batch 5 (4.1) | done 2026-10-17 |
 
 ## 7. Risks, open questions, and follow-up
 

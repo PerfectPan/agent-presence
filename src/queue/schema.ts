@@ -65,8 +65,9 @@ const eventRecordSchema = z.object({
 });
 
 /**
- * The skip codes this release writes. A record's `code` is an open string, like an error code: a later release may
- * skip for a reason of its own, and an older applier then only logs the code.
+ * A record of a skipped hook event. This release writes `missing-session-id`, `no-presence-source`, and
+ * `ignored-event`. A record's `code` is an open string, like an error code: a later release may skip for a reason of
+ * its own, and an older applier then only logs the code.
  */
 const skipRecordSchema = z
   .object({

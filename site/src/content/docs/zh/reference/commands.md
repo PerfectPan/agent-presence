@@ -51,7 +51,7 @@ hook 命令由 `setup` 自动安装,且永不阻塞智能体。添加、覆盖�
 
 ```bash
 agent-presence hook --agent <claude-code|codex|gemini-cli|grok|opencode|pi>
-agent-presence hook --source <id> --event <name>
+agent-presence hook --source <id> --event <name> [--silent]
 ```
 
 setup 安装 `--agent` 形式，读取智能体的原生 hook payload。直接调用使用 `--source`，支持 `claude`、`codex`、`gemini`、`grok`、`dsh` 和配置中的源；`--event` 接收 `SessionStart`、`Heartbeat`、`Stop` 等内部事件名。opencode 和 Pi 使用各自的 `--agent` 桥接。

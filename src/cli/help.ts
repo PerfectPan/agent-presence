@@ -19,7 +19,7 @@ Usage:
   agent-presence update [--provider <magic-builder|feishu-signature>] [--force] [--value <text>] [--silent]
   agent-presence reset [--provider <magic-builder|feishu-signature>] [--force] [--silent]
   agent-presence hook --agent <claude-code|codex|gemini-cli|grok|opencode|pi>
-  agent-presence hook --source <id> --event <name>
+  agent-presence hook --source <id> --event <name> [--silent]
 
 Setup installs the --agent form. Direct hook calls use --source with claude, codex,
 gemini, grok, dsh, or a configured source, and an internal event name such as
