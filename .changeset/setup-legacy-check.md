@@ -1,0 +1,11 @@
+---
+'@rivus/agent-presence': patch
+---
+
+Before upgrading from 0.9.0 or earlier, first move any files kept from an earlier removal out of the install locations, or remove them if unwanted (including files installed and later kept by this version), even when replacement entries are also listed. Then use the previous release's own `agent-presence uninstall` for the remaining old installation without `--credentials` or `--all`, install this release and run setup. Use `npx --yes @rivus/agent-presence@<previous-version> uninstall` for each distinct version pinned in replacement hook commands. Also run `0.9.0` whenever any replacement entry is not a pinned hook command, including bridge files or opencode config references, even alongside pinned versions; a checkout install can use `node <checkout>/dist/src/cli.js uninstall` before updating it. Keep old install-target override variables set for that uninstall; this release ignores them and warns when set. The current uninstall removes only ledger-recorded agent artifacts.
+
+Setup now lists detected previous-release entries and files kept from an earlier removal, then refuses before queue recovery, login or install confirmation. Kept files, including this version's own, must be moved or removed by hand, as must renamed or hand-edited remnants the old uninstall leaves. Old absolute-path commands from checkout paths without a presence marker can escape detection; inspect their configuration after cleanup. The old uninstall can also remove another tool's Claude/Codex/Gemini hook containing `dist/src/cli.js hook`, so preserve and restore those entries if needed. Doctor now detects marker-carrying previous-release command hooks beside the new hooks.
+
+Setup runs the read-only check and install as at most two harness programs. Queue recovery, configuration loading and login keep their existing error handling outside Effect; promise failures inside a harness program print their cause message on one line. Installation is verified immediately after apply, before the power-watcher step, dsh prompt and provider setup, which then run in that order outside Effect.
+
+Moving to the stable shim's `hook --agent` command is expected to require one Codex hook re-trust cycle. Later shim-only upgrades keep the installed hook definition stable and need no previous-release uninstall.

@@ -568,7 +568,7 @@ describe('hook --agent gemini-cli', () => {
     expect(finishedView(await readState(), 'gemini-session-1')).toEqual(finishedExpected());
   });
 
-  it('keeps today’s signal for the four names Gemini never dispatched', async () => {
+  it('preserves the Claude-style names accepted by the Gemini payload reader', async () => {
     await seedSessions({ ...runningSession('gemini', 'gemini-session-1'), ...finishedOverrides() });
     await run('UserPromptSubmit');
     const reopened = await readState();
@@ -612,7 +612,15 @@ describe('hook --agent opencode', () => {
     runAgent({ agent: 'opencode', payload: openCodeBus(type, properties) });
 
   it('session.created starts the session and refreshes the usage badge', async () => {
-    await run('session.created', { info: { id: session } });
+    await run('session.created', { info: { id: session, directory: '/work/repo' } });
+    const state = await readState();
+    expect(startedView(state, session)).toEqual(startedExpected('opencode'));
+    expect(Object.keys(state.usageSnapshots?.['1'] ?? {}).sort()).toEqual(BILLABLE_SOURCE_IDS);
+  });
+
+  it('session.created restarts a running session (startedAt resets)', async () => {
+    await seedSessions(runningSession('opencode', session));
+    await run('session.created', { info: { id: session, directory: '/work/repo' } });
     expect(startedView(await readState(), session)).toEqual(startedExpected('opencode'));
   });
 
@@ -642,6 +650,40 @@ describe('hook --agent opencode', () => {
       payload: openCodeBus('message.part.updated', { part: { id: 'prt_1', sessionID: session } })
     });
     expect(keptView(await readState(), session)).toEqual(runningKept('opencode'));
+  });
+
+  it('a finished session stays finished on message updates (no reopen path)', async () => {
+    await seedSessions({ ...runningSession('opencode', session), ...finishedOverrides() });
+    await run('message.updated', { info: { id: 'msg_1', sessionID: session } });
+    expect(settledView(await readState(), session)).toEqual(finishedSettled('opencode', session));
+    expect(await readLog()).toContain('source=opencode event=Heartbeat hasSessionId=true');
+  });
+
+  it('a late message updates its named session before the bridge current session', async () => {
+    await run('session.created', { info: { id: 'ses_a', directory: '/work/repo' } });
+    await run('session.created', { info: { id: 'ses_b', directory: '/work/repo' } });
+
+    vi.mocked(Date.now).mockReturnValue(NOW + 5_000);
+    await runAgent({
+      agent: 'opencode',
+      payload: {
+        ...openCodeBus('message.updated', { info: { id: 'msg_1', sessionID: 'ses_a' } }),
+        currentSessionId: 'ses_b'
+      }
+    });
+
+    const state = await readState();
+    expect(state.sessions['ses_a']).toMatchObject({
+      status: 'running',
+      startedAt: NOW,
+      lastHeartbeatAt: NOW + 5_000
+    });
+    expect(state.sessions['ses_b']).toMatchObject({
+      status: 'running',
+      startedAt: NOW,
+      lastHeartbeatAt: NOW
+    });
+    expect(state.usageBadgesAt).toBe(NOW);
   });
 
   it.each([
@@ -780,17 +822,41 @@ describe('hook --agent opencode', () => {
   });
 });
 
+describe('opencode source payloads outside the kit bridge', () => {
+  it('skips direct session_id and environment-only session fallbacks', async () => {
+    const session = 'opencode-session-1';
+    await seedSessions(runningSession('opencode', session));
+    stdinPayload.current = { session_id: session };
+    await hook(['--source', 'opencode', '--event', 'SessionStart', '--silent']);
+    await drainQueue();
+    expect(settledView(await readState(), session)).toEqual(untouchedRunning('opencode', session));
+    expect(await readLog()).toContain('hook skipped: missing session id for source=opencode event=SessionStart');
+
+    stdinPayload.current = {};
+    process.env.OPENCODE_HOOK_EVENT = 'SessionStart';
+    process.env.OPENCODE_SESSION_ID = session;
+    await hook(['--source', 'opencode', '--silent']);
+    await drainQueue();
+    expect(settledView(await readState(), session)).toEqual(untouchedRunning('opencode', session));
+    expect(await readLog()).toContain('hook skipped: missing session id for source=opencode event=Heartbeat');
+  });
+});
+
 describe('hook --agent pi', () => {
   const run = (type: string) => runAgent({ agent: 'pi', payload: piPayload(type) });
 
   it('before_agent_start starts the session and refreshes the usage badge', async () => {
     await run('before_agent_start');
-    expect(startedView(await readState(), 'pi-session-1')).toEqual(startedExpected('pi'));
+    const state = await readState();
+    expect(startedView(state, 'pi-session-1')).toEqual(startedExpected('pi'));
+    expect(Object.keys(state.usageSnapshots?.['1'] ?? {}).sort()).toEqual(BILLABLE_SOURCE_IDS);
   });
 
   it('session_start is ignored on an empty state and on a running session', async () => {
     await run('session_start');
-    expect((await readState()).sessions).toEqual({});
+    const empty = await readState();
+    expect(empty.sessions).toEqual({});
+    expect(empty.usageBadgesAt).toBeUndefined();
     expect(await readLog()).toContain('hook skipped: ignored event source=pi event=session_start');
 
     await seedSessions(runningSession('pi', 'pi-session-1'));
@@ -808,6 +874,13 @@ describe('hook --agent pi', () => {
     await seedSessions(runningSession('pi', 'pi-session-1'));
     await run(type);
     expect(keptView(await readState(), 'pi-session-1')).toEqual(runningKept('pi'));
+  });
+
+  it('a finished session stays finished on turn activity', async () => {
+    await seedSessions({ ...runningSession('pi', 'pi-session-1'), ...finishedOverrides() });
+    await run('turn_start');
+    expect(settledView(await readState(), 'pi-session-1')).toEqual(finishedSettled('pi', 'pi-session-1'));
+    expect(await readLog()).toContain('source=pi event=Heartbeat hasSessionId=true');
   });
 
   it.each(['agent_end', 'session_shutdown'])('%s finishes the running session', async (type) => {

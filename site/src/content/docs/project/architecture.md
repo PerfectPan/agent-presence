@@ -5,15 +5,18 @@ description: How presence flows from agent hooks to your signature.
 
 ```text
 Codex / Claude Code / Gemini CLI / opencode / Pi / Grok hooks
--> local presence state (lock-guarded JSON, TTL pruning)
--> debounced renderer (templates + usage badges)
+-> hook records an event in the local queue and returns
+-> worker applies queued events to locked JSON state (TTL pruning)
+-> usage refresh + debounced renderer (templates + usage badges)
 -> l.garyyang slot  (value storage; magic-builder FaaS fronts it for the preview)
 -> Feishu signature link preview
 ```
 
-The pipeline is event-driven: hooks fire on session boundaries, mutate a lock-guarded JSON state, and a debounced renderer pushes the value to the slot. No cron or background timer is required — each refresh scans the whole calendar-day usage window, so a single boundary refresh is complete.
+The pipeline is event-driven: a hook records its event in a local queue and returns. A worker applies queued events to JSON state under the state lock, refreshes usage on session boundaries and publishes through the debounced renderer. It exits after five idle minutes.
 
-Token usage is read **after the fact** from local agent transcripts, never from hook payloads (lifecycle events do not carry token counts).
+Token usage is read **after the fact** from local agent transcripts. The managed dsh plugin is the exception: its hook payload carries each model call's usage, which the worker appends to a local log for the usage scanner to read.
+
+`setup` uses the kit harness to plan changes, request confirmation before writing agent configuration, record artifacts in a ledger and verify them; `uninstall` removes those recorded artifacts. `doctor` checks installation health; `inventory` shows the shared ledger. See [Install](/guide/install/#installed-locations) for managed locations.
 
 ## Providers
 

@@ -14,8 +14,8 @@ import { resolveHookContextForSource, type SourceDiagnostics } from '../../sourc
 // The hook is the queue's producer (Plan 0003 3.3): it interprets the payload in process, writes one record, and
 // starts a worker when no process of this release or a newer one holds the worker lock. It takes no lock, writes no
 // log line (3.11) and no stop request, and prints its output and exits 0 in every case: a failed read, write or start
-// loses the event (3.10). The direct application path stays in `src/cli/hook-apply.ts` until Q2 deletes it; the
-// event-table test uses it as the oracle.
+// loses the event (3.10). Lifecycle tests record through this producer and drain an in-process worker run to assert
+// persisted sessions and usage-badge effects.
 
 /** The queue writes of one hook run: whether a worker is wanted, and whether the run already recorded its failure. */
 interface HookProduction {

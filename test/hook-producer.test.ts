@@ -304,6 +304,45 @@ describe('hook producer — event records', () => {
     expect(usageLog).toContain('"model":"m-test"');
     expect(usageLog).toContain(`"id":"${id}"`);
   });
+
+  it('configured opencode and pi aliases share the built-in payload rules', async () => {
+    await writeConfig({
+      plugins: {
+        sources: {
+          'work-opencode': { handler: 'builtin:opencode' },
+          'work-pi': { handler: 'builtin:pi' }
+        }
+      }
+    });
+    await runHook(['--source', 'work-opencode', '--event', 'SessionStart', '--silent'], {
+      session_id: 'configured-session',
+      cwd: '/work/repo'
+    });
+    await runHook(['--source', 'work-pi', '--silent'], {
+      event: 'Stop',
+      session_id: 'configured-session',
+      cwd: '/work/repo'
+    });
+
+    const records = await writtenRecords();
+    expect(records).toHaveLength(2);
+    expect(records).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: 'skip',
+          code: 'missing-session-id',
+          source: 'work-opencode',
+          nativeEvent: 'SessionStart'
+        }),
+        expect.objectContaining({
+          kind: 'event',
+          source: 'work-pi',
+          event: 'Heartbeat',
+          sessionId: 'configured-session'
+        })
+      ])
+    );
+  });
 });
 
 describe('hook producer — skip records', () => {

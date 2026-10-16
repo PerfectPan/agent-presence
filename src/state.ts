@@ -100,7 +100,7 @@ export function finishAllSessions(state: PresenceState, now: number): PresenceSt
 }
 
 function normalizeEvent(event: string): NormalizedEvent {
-  if (event === 'SessionStart' || event === 'SubagentStart' || event === 'session.created' || event === 'start') {
+  if (event === 'SessionStart' || event === 'SubagentStart' || event === 'start') {
     return 'start';
   }
   if (
@@ -108,9 +108,6 @@ function normalizeEvent(event: string): NormalizedEvent {
     event === 'SessionEnd' ||
     event === 'StopFailure' ||
     event === 'SubagentStop' ||
-    event === 'session.deleted' ||
-    event === 'session.error' ||
-    event === 'session.idle' ||
     event === 'finish'
   ) {
     return 'finish';
@@ -120,14 +117,6 @@ function normalizeEvent(event: string): NormalizedEvent {
     event === 'UserPromptSubmit' ||
     event === 'PreToolUse' ||
     event === 'PostToolUse' ||
-    event === 'command.executed' ||
-    event === 'file.edited' ||
-    event === 'message.updated' ||
-    event === 'session.status' ||
-    event === 'session.updated' ||
-    event === 'todo.updated' ||
-    event === 'tool.execute.after' ||
-    event === 'tool.execute.before' ||
     event === 'heartbeat'
   ) {
     return 'heartbeat';
