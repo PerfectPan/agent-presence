@@ -10,6 +10,7 @@ import { listQueue } from '../src/queue/reader.js';
 import { stopWorker } from '../src/queue/takeover.js';
 import { eventBody, readState, recordAt, until, writeState, T0 } from './queue-support.js';
 import { createCommandHarness, type CommandHarness } from './queue-command-harness.js';
+import { createHarnessFixture, type HarnessFixture } from './harness-support.js';
 
 // Plan 0003 3.8: `uninstall --all` writes the tombstone, empties the queue under a takeover, and keeps the lock and
 // the epoch; `setup` removes a tombstone, raises the epoch, and lets records apply again; without a tombstone it
@@ -40,6 +41,7 @@ const deleteCredentialMock = vi.hoisted(() =>
 
 vi.mock('../src/setup.js', () => ({
   LINUX_WATCHER_SKIP_MESSAGE: 'linux watcher skipped',
+  platformUninstallScriptNames: () => ['uninstall-dsh-plugin.js', 'uninstall-shutdown-watcher.js'],
   runSetupScripts: runSetupScriptsMock,
   runUninstallScripts: runUninstallScriptsMock
 }));
@@ -84,6 +86,7 @@ const OLDER = 1;
 const NEWER = 2;
 
 let h: CommandHarness;
+let harness: HarnessFixture;
 
 beforeEach(async () => {
   spawnMock.mockClear();
@@ -92,10 +95,12 @@ beforeEach(async () => {
   removePluginsDirMock.mockClear();
   deleteCredentialMock.mockClear();
   h = await createCommandHarness();
+  harness = await createHarnessFixture();
 });
 
 afterEach(async () => {
   await h.dispose();
+  await harness.dispose();
 });
 
 async function plantStopRequest(): Promise<string> {
@@ -132,7 +137,7 @@ describe('uninstall --all (Spec S10)', () => {
     expect((await listQueue(h.home.statePath)).records).toHaveLength(2);
     const starts = h.countingStarts();
 
-    const removing = uninstall(['--all'], h.takeoverOptions({ startWorker: starts.startWorker }));
+    const removing = uninstall(['--all'], h.takeoverOptions({ startWorker: starts.startWorker }), harness.layer);
     // The tombstone is already down while uninstall waits for the worker's lock.
     await until(async () => (await h.requestFiles()).length === 2, 'the live and the planted stop request');
     expect(await produceRecord(h.home.statePath, eventBody('SessionStart', 'late'), { clock: h.vt.clock })).toEqual({
@@ -166,7 +171,7 @@ describe('uninstall --all (Spec S10)', () => {
 describe('setup after a tombstone', () => {
   it('after uninstall --all it empties the queue, raises the epoch, and records apply again', async () => {
     await recordAt(h.home.statePath, T0, eventBody('SessionStart', 'gone'), { epoch: 0 });
-    await uninstall(['--all'], h.takeoverOptions());
+    await uninstall(['--all'], h.takeoverOptions(), harness.layer);
 
     // A producer that passed its tombstone check just before the uninstall still wrote one record.
     await recordAt(h.home.statePath, T0 + 1_000, eventBody('SessionStart', 'raced'), { epoch: 0 });

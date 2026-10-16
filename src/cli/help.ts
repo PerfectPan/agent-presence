@@ -3,7 +3,7 @@ export function printHelp(): void {
 
 Usage:
   agent-presence login [--provider <magic-builder|feishu-signature>]
-  agent-presence setup [--provider <magic-builder|feishu-signature>] [--login] [--skip-login] [--no-hooks] [--hook-command <npx|absolute>]
+  agent-presence setup [--provider <magic-builder|feishu-signature>] [--login] [--skip-login] [--hooks-only] [--no-hooks] [--yes] [--hook-command <npx|absolute>]
   agent-presence uninstall [--credentials] [--all]
   agent-presence url [--provider <magic-builder|feishu-signature>]
   agent-presence config show

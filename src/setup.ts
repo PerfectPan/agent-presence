@@ -8,24 +8,9 @@ const execFileAsync = promisify(execFile);
 const WATCHER_INSTALL_SCRIPT = 'install-shutdown-watcher.js';
 const WATCHER_UNINSTALL_SCRIPT = 'uninstall-shutdown-watcher.js';
 
-export const DEFAULT_SETUP_SCRIPT_NAMES = [
-  'install-codex-hook.js',
-  'install-claude-hook.js',
-  'install-opencode-plugin.js',
-  'install-gemini-hook.js',
-  'install-pi-extension.js',
-  WATCHER_INSTALL_SCRIPT
-] as const;
+export const DEFAULT_SETUP_SCRIPT_NAMES = [WATCHER_INSTALL_SCRIPT] as const;
 
-export const DEFAULT_UNINSTALL_SCRIPT_NAMES = [
-  'uninstall-codex-hook.js',
-  'uninstall-claude-hook.js',
-  'uninstall-opencode-plugin.js',
-  'uninstall-gemini-hook.js',
-  'uninstall-pi-extension.js',
-  'uninstall-dsh-plugin.js',
-  WATCHER_UNINSTALL_SCRIPT
-] as const;
+export const DEFAULT_UNINSTALL_SCRIPT_NAMES = ['uninstall-dsh-plugin.js', WATCHER_UNINSTALL_SCRIPT] as const;
 
 export const LINUX_WATCHER_SKIP_MESSAGE =
   'agent-presence: skipping power watcher on linux (no reliable systemd/logind path); TTL pruning still covers expired sessions.';
@@ -34,7 +19,7 @@ export function platformSetupScriptNames(platform: NodeJS.Platform = process.pla
   if (isMacOS(platform)) {
     return DEFAULT_SETUP_SCRIPT_NAMES;
   }
-  return DEFAULT_SETUP_SCRIPT_NAMES.filter((name) => name !== WATCHER_INSTALL_SCRIPT);
+  return [];
 }
 
 export function platformUninstallScriptNames(platform: NodeJS.Platform = process.platform): readonly string[] {

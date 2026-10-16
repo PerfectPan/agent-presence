@@ -30,7 +30,7 @@ agent-presence setup
 npx --yes --registry=https://registry.npmjs.org @rivus/agent-presence@latest setup
 ```
 
-如果智能体环境启动 hook 时 `PATH` 很窄，用绝对路径安装 hook：
+如果智能体环境启动 hook 时 `PATH` 很窄，让稳定的 hook shim 调用绝对路径下的 Node 和 CLI：
 
 ```bash
 npx --yes --registry=https://registry.npmjs.org @rivus/agent-presence@latest setup --hook-command absolute
@@ -52,9 +52,13 @@ agent-presence setup
 
 1. 运行 `agent-presence setup`。
 2. 如果需要登录，扫二维码完成授权，这会保存 slot 凭据。
-3. 出现提示时粘贴 Magic-Builder token，让 setup 发布预览 FaaS —— 在飞书里打开妙笔机器人、发送 `dev`、从回复复制 token。
-4. setup 会安装 Codex、Claude Code、Gemini CLI、opencode、Pi 的 hook，以及 macOS 电源 watcher。
+3. 先处理列出的配置冲突，再查看完整安装计划并确认，setup 随后安装 hook 和 macOS 电源 watcher。
+4. 出现提示时粘贴 Magic-Builder token，让 setup 发布预览 FaaS —— 在飞书里打开妙笔机器人、发送 `dev`、从回复复制 token。
 5. 运行 `agent-presence url`，把输出粘贴到飞书个人资料签名的自定义链接预览里。
+
+`setup` 在确认安装计划前不会写入智能体配置。非交互终端需要 `setup --yes` 才会应用无冲突的计划；有冲突时即使传了 `--yes` 也会退出，交互终端仍需明确确认。setup 应用计划、写入 harness 安装记录并立即验证 kit 产物。验证成功后，依次运行电源 watcher 步骤、询问是否安装可选的 dsh 插件，再配置 provider。
+
+安装的 hook 调用 `~/.agent-presence/bin/agent-presence` 中的稳定 shim。setup 更新其中固定版本的包命令，或绝对路径模式下的 Node/CLI 路径，智能体中的 hook 命令保持不变。Claude Code、Codex、Gemini CLI 和 Grok 的命令式 hook 按各自的原生单位设置五秒超时；opencode/Pi 桥接仅对同步结束事件的交付设置五秒超时，其他事件异步发送，不设置子进程超时。Gemini 使用自己的事件名。Claude hook 放在插件中，避免写入 Cursor 也会读取的共享 settings 文件。切换到 shim 命令预计需要在 Codex 中重新审阅一次 hook；后续只更新 shim 时，安装命令保持稳定。见[安装位置与检查](https://agent-presence.vercel.app/zh/guide/install/#安装位置)。
 
 重复运行 `setup` 会复用已有登录（无需再次扫码）。签名 URL —— `https://magic.solutionsuite.cn/r?fid=<faasId>` —— 不含任何凭据。本地配置、状态和日志在 `~/.agent-presence/`。
 
@@ -100,7 +104,7 @@ agent-presence config render \
 ## 常用命令
 
 ```bash
-agent-presence setup            # 还有：--login --skip-login --no-hooks --hook-command absolute
+agent-presence setup            # 还有：--login --skip-login --no-hooks --hook-command absolute --yes
 agent-presence url
 agent-presence status           # --remote 查看已发布的预览
 agent-presence usage            # --days N / --json

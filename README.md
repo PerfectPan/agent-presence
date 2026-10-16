@@ -30,7 +30,7 @@ Without a global install:
 npx --yes --registry=https://registry.npmjs.org @rivus/agent-presence@latest setup
 ```
 
-For agent environments that launch hooks with a restricted `PATH`, pin absolute `node`/CLI paths:
+For agent environments that launch hooks with a restricted `PATH`, have the stable hook shim call absolute Node and CLI paths:
 
 ```bash
 npx --yes --registry=https://registry.npmjs.org @rivus/agent-presence@latest setup --hook-command absolute
@@ -52,9 +52,13 @@ agent-presence setup
 
 1. Run `agent-presence setup`.
 2. Scan the QR code if login is needed; this stores the slot credential.
-3. Paste a Magic-Builder token when prompted so setup can publish the preview FaaS — open the 妙笔 bot, send `dev`, copy the token from its reply.
-4. Setup installs hooks for Codex, Claude Code, Gemini CLI, opencode, and Pi, plus the macOS power watcher.
+3. Resolve any listed configuration conflicts, then review and confirm the full install plan. Setup installs the hooks and macOS power watcher.
+4. Paste a Magic-Builder token when prompted so setup can publish the preview FaaS — open the 妙笔 bot, send `dev`, copy the token from its reply.
 5. Run `agent-presence url` and paste it into your Feishu profile signature as a custom link preview.
+
+`setup` writes no agent configuration before install confirmation. In a non-interactive terminal, `setup --yes` applies a conflict-free plan; conflicts still cause it to exit, and an interactive terminal still requires explicit confirmation. Setup applies the plan, records installed artifacts in the harness ledger and immediately verifies the kit artifacts. After successful verification, it runs the power-watcher step, offers the optional dsh plugin and configures the provider.
+
+The installed hooks use a stable shim at `~/.agent-presence/bin/agent-presence`. Setup updates its pinned package command, or its Node/CLI paths in absolute mode, without changing the agents' hook commands. Claude Code, Codex, Gemini CLI and Grok command hooks use a five-second timeout in each agent's native unit. The opencode/Pi bridges limit synchronous finish delivery to five seconds; other events are sent asynchronously without a child-process timeout. Gemini uses its own event names. Claude hooks live in a plugin instead of the shared settings file that Cursor also reads. Changing to the shim command is expected to require one Codex hook review; later shim-only updates keep the installed command stable. See [installed locations and checks](https://agent-presence.vercel.app/guide/install/#installed-locations).
 
 Re-running `setup` reuses an existing login (no second QR scan). The signature URL — `https://magic.solutionsuite.cn/r?fid=<faasId>` — carries no credentials. Local config, state, and logs live under `~/.agent-presence/`.
 
@@ -100,7 +104,7 @@ agent-presence config render \
 ## Commands
 
 ```bash
-agent-presence setup            # also: --login --skip-login --no-hooks --hook-command absolute
+agent-presence setup            # also: --login --skip-login --no-hooks --hook-command absolute --yes
 agent-presence url
 agent-presence status           # --remote inspects the published preview
 agent-presence usage            # --days N / --json

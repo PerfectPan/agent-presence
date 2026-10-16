@@ -10,6 +10,7 @@ import { uninstall } from '../src/cli/commands/uninstall.js';
 import type { AppConfig } from '../src/config.js';
 import { owedWorkRemains } from '../src/queue/worker.js';
 import { createCommandHarness, TEMPLATES, type CommandHarness } from './queue-command-harness.js';
+import { createHarnessFixture } from './harness-support.js';
 
 // Commands on a config with broken entries: each run reports the dropped values once on stderr, keeps
 // working, and a write command changes only what it is meant to change — the file's other content survives. Each
@@ -41,6 +42,7 @@ vi.mock('../src/secret.js', () => ({
 
 vi.mock('../src/setup.js', () => ({
   LINUX_WATCHER_SKIP_MESSAGE: 'linux watcher skipped',
+  platformUninstallScriptNames: () => ['uninstall-dsh-plugin.js', 'uninstall-shutdown-watcher.js'],
   runSetupScripts: vi.fn<() => Promise<{ scriptName: string }[]>>().mockResolvedValue([]),
   runUninstallScripts: vi.fn<() => Promise<{ scriptName: string }[]>>().mockResolvedValue([])
 }));
@@ -191,7 +193,12 @@ describe('write commands keep what they did not change', () => {
     await writeRawConfig(null);
 
     const printed = captureLog();
-    await uninstall(['--credentials']);
+    const harness = await createHarnessFixture();
+    try {
+      await uninstall(['--credentials'], {}, harness.layer);
+    } finally {
+      await harness.dispose();
+    }
 
     expect(await readRawConfig()).toEqual({});
     expect(printed.join(' ')).toContain('credentials cleared');

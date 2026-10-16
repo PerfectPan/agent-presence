@@ -36,7 +36,9 @@ agent-presence setup
 </TabItem>
 </Tabs>
 
-`setup` is the only thing you run. It installs the hooks for every supported agent and links your signature.
+`setup` lists configuration conflicts and their allowed resolutions, re-plans with your choices, then shows the complete changes, commands and expected trust prompts. Review and confirm that plan before it writes agent configuration. Canceling, declining confirmation or encountering a protected target stops setup. Login and local home migration may already have written their own data.
+
+In a non-interactive terminal, `setup --yes` applies a conflict-free plan. It does not resolve conflicts automatically. An interactive terminal always asks for confirmation, including with `--yes`. After applying the plan, setup immediately verifies the kit artifacts. If verification fails, setup stops without installing the watcher, offering dsh, publishing to the provider or displaying a signature URL. After successful verification, it installs the macOS power watcher, offers the optional dsh plugin and configures the provider. A canceled dsh prompt or provider failure does not skip the verification results. Linux skips the watcher and relies on TTL pruning.
 
 ## Without a global install
 
@@ -64,10 +66,43 @@ bunx @rivus/agent-presence@latest setup
 </TabItem>
 </Tabs>
 
-For agent environments that launch hooks with a restricted `PATH`, install hooks with absolute paths:
+For agent environments that launch hooks with a restricted `PATH`, make the stable hook shim call absolute Node and CLI paths:
 
 ```bash
 agent-presence setup --hook-command absolute
 ```
 
 The default provider is `magic-builder`, so the first `setup` runs the QR login (storing the slot credential) and prompts for a Magic-Builder token. See [Providers](/guide/providers) for the alternative that needs no token.
+
+## Installed locations
+
+These are the default user locations. The plan shows the resolved paths when an agent home is overridden.
+
+| Agent       | Managed artifact                                                                                                                                                                                                                                                   |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Claude Code | Plugin at `~/.claude/skills/agent-presence/`, with `.claude-plugin/plugin.json` and `hooks/hooks.json`; setup does not add hooks to `~/.claude/settings.json`.                                                                                                     |
+| Codex       | With the `codex` CLI available, a marketplace/plugin at `~/.codex/plugins/agent-presence/`, registered through `codex plugin` in `~/.codex/config.toml`; Codex runs its installed cache copy. Without that CLI, hook groups are written to `~/.codex/config.toml`. |
+| Gemini CLI  | Extension at `~/.gemini/extensions/agent-presence/`, with `gemini-extension.json` and `hooks/hooks.json`.                                                                                                                                                          |
+| Grok        | Its own hook file, `~/.grok/hooks/agent-presence.json`.                                                                                                                                                                                                            |
+| opencode    | Bridge at `~/.config/opencode/plugins/agent-presence.js`.                                                                                                                                                                                                          |
+| Pi          | Bridge at `~/.pi/agent/extensions/agent-presence.ts`, discovered from the extension directory.                                                                                                                                                                     |
+
+The dsh plugin and macOS power watcher remain presence-managed steps outside the harness bundle. When dsh is detected, interactive setup offers its plugin at `~/.dsh/plugins/agent-presence.mjs` and registration in `~/.dsh/cordis.patch.yml`.
+
+All harness hooks call `~/.agent-presence/bin/agent-presence`. Setup atomically replaces this shim with a command for the installed package version; `--hook-command absolute` instead stores the resolved Node and CLI paths. The hook command in the agent stays the same in both modes. The default still needs `npx` and its package cache; absolute mode needs the checkout to remain available.
+
+For command hooks, Claude Code, Codex and Grok receive `timeout: 5` in seconds, while Gemini receives `timeout: 5000` in milliseconds. The opencode/Pi bridges use a 5000 ms child-process timeout only for synchronous finish delivery; other events are sent asynchronously without a child-process timeout. Gemini uses `SessionStart`, `BeforeAgent`, `BeforeTool`, `AfterTool`, `AfterAgent` and `SessionEnd`. Claude's plugin placement avoids adding presence hooks to the settings file Cursor also reads; presence does not install a Cursor source.
+
+Switching existing Codex registrations to the shim's `hook --agent` command is expected to require one hook re-trust cycle. Review the prompts listed in the plan and approve through Codex; setup does not alter trust state. Later updates that only replace the shim keep the installed hook definition stable. Real Claude plugin loading, Cursor behavior, Codex trust prompts and Gemini extension loading still need separate real-agent acceptance; isolated artifact checks do not prove those behaviors. The minimum Gemini version with extension support is not yet confirmed.
+
+## Inspect and remove
+
+```bash
+agent-presence doctor
+agent-presence inventory
+agent-presence uninstall
+```
+
+`doctor` checks hook health and the harness ledger; warnings and errors produce a non-zero exit. Its duplicate checks cover command-hook files, not opencode/Pi bridge files, and currently recognize the new installed command rather than previous-release markers. It also checks other tools' hooks, so their warnings can cause exit 1. `inventory` shows the shared kit ledger, including other applications' entries. Both commands accept `--json`; see [Commands](/reference/commands/) for their limits.
+
+`uninstall` reports removed artifacts and every kept location with its reason, then independently removes the shim, dsh plugin and macOS watcher. It preserves credentials, configuration and session state by default. It removes only harness-recorded agent artifacts; previous-release hooks are not imported into that ledger. The previous-release check and upgrade guidance are tracked separately in [Plan 0002](https://github.com/PerfectPan/agent-presence/blob/main/docs/plans/0002-agent-kit-adoption.md#35-setup-through-harness).

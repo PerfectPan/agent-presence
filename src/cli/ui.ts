@@ -1,4 +1,4 @@
-import { cancel, confirm, intro, isCancel, note, outro, spinner, text } from '@clack/prompts';
+import { cancel, confirm, intro, isCancel, note, outro, select, spinner, text } from '@clack/prompts';
 
 interface SpinnerLike {
   start(message?: string): void;
@@ -106,6 +106,18 @@ export async function promptConfirm(message: string, initialValue = true): Promi
   if (isCancel(value)) {
     cancel('cancelled');
     throw new Error('operation cancelled');
+  }
+  return value;
+}
+
+export async function promptSelect(options: {
+  message: string;
+  options: { value: string; label: string }[];
+}): Promise<string | undefined> {
+  const value = await select(options);
+  if (isCancel(value)) {
+    cancel('cancelled');
+    return undefined;
   }
   return value;
 }

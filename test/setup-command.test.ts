@@ -52,7 +52,10 @@ vi.mock('../src/cli/ui.js', () => ({
     error: vi.fn<(message?: string) => void>()
   }),
   finishOutro: vi.fn<typeof import('../src/cli/ui.js').finishOutro>(),
+  isInteractiveTerminal: vi.fn<typeof import('../src/cli/ui.js').isInteractiveTerminal>().mockReturnValue(false),
   promptConfirm: vi.fn<typeof import('../src/cli/ui.js').promptConfirm>(),
+  promptSelect: vi.fn<typeof import('../src/cli/ui.js').promptSelect>(),
+  promptText: vi.fn<typeof import('../src/cli/ui.js').promptText>(),
   showInfo: vi.fn<typeof import('../src/cli/ui.js').showInfo>(),
   showNote: vi.fn<typeof import('../src/cli/ui.js').showNote>(),
   startIntro: vi.fn<typeof import('../src/cli/ui.js').startIntro>()

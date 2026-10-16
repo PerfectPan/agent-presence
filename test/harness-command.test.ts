@@ -30,7 +30,7 @@ let log: ReturnType<typeof vi.spyOn>;
 let error: ReturnType<typeof vi.spyOn>;
 
 beforeEach(async () => {
-  fixture = await createHarnessFixture('presence harness-');
+  fixture = await createHarnessFixture({ homePrefix: 'presence harness-' });
   vi.stubEnv('HOME', fixture.home);
   vi.stubEnv('AGENT_PRESENCE_HOME', undefined);
   vi.stubEnv('AGENT_SIGNATURE_HOME', undefined);

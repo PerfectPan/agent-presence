@@ -1,0 +1,103 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "npx --yes --registry=https://registry.npmjs.org @rivus/agent-presence@0.9.0 hook --source claude --event SessionStart --silent >/dev/null 2>/dev/null || true",
+            "timeout": 5000
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "npx --yes --registry=https://registry.npmjs.org @rivus/agent-presence@0.9.0 hook --source claude --event UserPromptSubmit --silent >/dev/null 2>/dev/null || true",
+            "timeout": 5000
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "npx --yes --registry=https://registry.npmjs.org @rivus/agent-presence@0.9.0 hook --source claude --event PreToolUse --silent >/dev/null 2>/dev/null || true",
+            "timeout": 5000
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "npx --yes --registry=https://registry.npmjs.org @rivus/agent-presence@0.9.0 hook --source claude --event PostToolUse --silent >/dev/null 2>/dev/null || true",
+            "timeout": 5000
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "npx --yes --registry=https://registry.npmjs.org @rivus/agent-presence@0.9.0 hook --source claude --event Stop --silent >/dev/null 2>/dev/null || true",
+            "timeout": 5000
+          }
+        ]
+      }
+    ],
+    "StopFailure": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "npx --yes --registry=https://registry.npmjs.org @rivus/agent-presence@0.9.0 hook --source claude --event StopFailure --silent >/dev/null 2>/dev/null || true",
+            "timeout": 5000
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "npx --yes --registry=https://registry.npmjs.org @rivus/agent-presence@0.9.0 hook --source claude --event SessionEnd --silent >/dev/null 2>/dev/null || true",
+            "timeout": 5000
+          }
+        ]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "npx --yes --registry=https://registry.npmjs.org @rivus/agent-presence@0.9.0 hook --source claude --event SubagentStart --silent >/dev/null 2>/dev/null || true",
+            "timeout": 5000
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "npx --yes --registry=https://registry.npmjs.org @rivus/agent-presence@0.9.0 hook --source claude --event SubagentStop --silent >/dev/null 2>/dev/null || true",
+            "timeout": 5000
+          }
+        ]
+      }
+    ]
+  }
+}
