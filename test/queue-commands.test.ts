@@ -262,16 +262,18 @@ describe('reset during a slow usage refresh (Spec S6)', () => {
     });
     await recordAt(h.home.statePath, T0 + 2_000, eventBody('SessionStart', 's1'));
     const held = h.fake.holdRefreshes();
-    const running = h.pool.start();
+    const holderStarts = h.countingStarts();
+    const running = h.pool.start(1, { startWorker: holderStarts.startWorker });
     const busyWith = await held.started;
     const starts = h.countingStarts();
 
     await reset(['--force', '--silent'], h.takeoverOptions({ startWorker: starts.startWorker }));
     await h.pool.settled();
 
-    // The holder stopped for reset's request and left the refresh owed; the worker it started exits behind reset.
+    // Both holders leave background work owed. A successor may run after reset releases, so count its start instead.
     expect(await running).toBe('stop-request');
     expect(busyWith.source).toBe('codex');
+    expect(busyWith.signal.aborted).toBe(true);
     expect(h.fake.refreshed).toHaveLength(1);
     const state = await readState(h.home.statePath);
     expect(Object.values(state.sessions).map((session) => session.status)).toEqual(['finished', 'finished']);
@@ -279,7 +281,7 @@ describe('reset during a slow usage refresh (Spec S6)', () => {
     expect(publishValueMock).toHaveBeenCalledWith('ZERO');
     expect(h.fake.published).toEqual([]);
     expect((await listQueue(h.home.statePath)).records).toEqual([]);
-    // Reset left the refresh to a worker: it starts one when it leaves (3.6), and the test counts instead of running it.
+    expect(holderStarts.count()).toBe(1);
     expect(starts.count()).toBe(1);
   });
 

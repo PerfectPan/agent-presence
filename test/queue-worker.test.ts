@@ -15,7 +15,7 @@ import {
 import { checkWorkerLock } from '../src/queue/produce.js';
 import { listQueue } from '../src/queue/reader.js';
 import { holdStopRequest, STOP_REQUEST_TOUCH_MS, type Delay } from '../src/queue/stop-request.js';
-import { takeOver } from '../src/queue/takeover.js';
+import { takeOver, TAKEOVER_RETRY_MS } from '../src/queue/takeover.js';
 import {
   STARTED_WORKER_WAIT_MS,
   WORKER_IDLE_MS,
@@ -586,20 +586,30 @@ describe('a command taking over', () => {
     const resumed = new Promise<void>((resolve) => {
       resume = resolve;
     });
-    let first = true;
+    let rounds = 0;
+    let afterStale: { requests: string[]; lockHeld: boolean } | undefined;
+    const prefix = basename(queuePaths(home.statePath).stopRequestPrefix);
     const pool = workers({
-      onBatchStep: async (step) => {
-        if (step === 'read' && first) {
-          first = false;
+      delay: async (ms, signal) => {
+        rounds += 1;
+        if (rounds === 1) {
           pause?.();
           await resumed;
+        } else if (rounds === 2) {
+          // The first post-jump iteration deleted the stale request and kept the lock.
+          const requests = readdirSync(home.dir).filter((name) => name.startsWith(prefix));
+          afterStale = { requests, lockHeld: await lockHeld() };
         }
+        await vt.delay(ms, signal);
       }
     });
     const holder = pool.start();
     await paused;
 
-    const touches = touchesByHand();
+    let commandWaiting: () => void = () => undefined;
+    const waiting = new Promise<void>((resolve) => {
+      commandWaiting = resolve;
+    });
     let ranAt = -1;
     const command = takeOver(
       home.statePath,
@@ -609,23 +619,26 @@ describe('a command taking over', () => {
       {
         clock: vt.clock,
         monotonic: vt.monotonic,
-        delay: touches.delay,
+        delay: (ms, signal) => {
+          // The first lock retry starts after the request's write and mtime update, with its deadline set.
+          if (ms === TAKEOVER_RETRY_MS) {
+            commandWaiting();
+          }
+          return vt.delay(ms, signal);
+        },
         effects: fake.effects,
         startWorker: () => undefined
       }
     );
-    await until(async () => (await requestFiles()).length === 1, 'the request written');
+    await waiting;
     const requestedAt = vt.monotonic.now();
     // The machine slept: the wall clock moved past the age bound while the command waited.
     vt.jump(30_000);
     resume();
 
-    await until(async () => (await requestFiles()).length === 0, 'the holder deleting the stale request');
-    expect(await lockHeld()).toBe(true);
-    touches.tick();
-
     await command;
     expect(await holder).toBe('stop-request');
+    expect(afterStale).toEqual({ requests: [], lockHeld: true });
     expect(ranAt - requestedAt).toBeLessThan(10_000);
     expect(await requestFiles()).toEqual([]);
   });
