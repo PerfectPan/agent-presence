@@ -83,13 +83,14 @@ describe('power watcher artifacts', () => {
     });
   });
 
+  function oversizedLogLines(): string {
+    return Array.from({ length: 6_200 }, (_, index) => `sequence=${index} payload=${'x'.repeat(1_000)}\n`).join('');
+  }
+
   async function useOversizedLog(): Promise<string> {
     tempDir = await mkdtemp(join(tmpdir(), 'agent-presence-power-watch-test-'));
     const logPath = join(tempDir, 'power-watch.log');
-    const lines = Array.from({ length: 6_200 }, (_, index) => `sequence=${index} payload=${'x'.repeat(1_000)}\n`).join(
-      ''
-    );
-    await writeFile(logPath, lines, { mode: 0o600 });
+    await writeFile(logPath, oversizedLogLines(), { mode: 0o600 });
     return logPath;
   }
 
@@ -124,7 +125,7 @@ describe('power watcher artifacts', () => {
   );
 
   it.runIf(process.platform === 'darwin')(
-    'runs generated Swift log retention behavior with the Swift toolchain',
+    'compacts the Swift watcher log in place to recent bytes',
     async ({ signal }) => {
       const directory = await mkdtemp(join(tmpdir(), 'agent-presence-power-watch-test-'));
       tempDir = directory;
@@ -136,12 +137,7 @@ describe('power watcher artifacts', () => {
         return { logPath, contents, before: await stat(logPath) };
       }
 
-      const multiLineLog = await writeLog(
-        'multi-line.log',
-        Buffer.from(
-          Array.from({ length: 6_200 }, (_, index) => `sequence=${index} payload=${'x'.repeat(1_000)}\n`).join('')
-        )
-      );
+      const multiLineLog = await writeLog('multi-line.log', Buffer.from(oversizedLogLines()));
       const singleLineLog = await writeLog('single-line.log', Buffer.alloc(6 * 1024 * 1024, 'x'));
       const unreadableLog = await writeLog('unreadable.log', Buffer.alloc(6 * 1024 * 1024, 'u'));
       const atLimitLog = await writeLog('at-limit.log', Buffer.alloc(5 * 1024 * 1024, 'a'));
