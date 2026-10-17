@@ -74,6 +74,7 @@ afterEach(async () => {
 
 async function install(agents: readonly (typeof PRESENCE_AGENTS)[number][] = PRESENCE_AGENTS) {
   await fixture.writeShim();
+  await mkdir(join(fixture.presenceHome, 'runtime/0.9.0'), { recursive: true });
   const bundle = createPresenceBundle(fixture.presenceHome);
   const plan = await fixture.run(planInstall(bundle, { agents }));
   await fixture.run(applyInstall(plan));
@@ -81,6 +82,22 @@ async function install(agents: readonly (typeof PRESENCE_AGENTS)[number][] = PRE
 }
 
 describe('ledger-backed uninstall', () => {
+  it('keeps the executing runtime available until its uninstall scripts complete', async () => {
+    const runtimeScript = join(fixture.presenceHome, 'runtime/0.9.0/dist/scripts/uninstall-dsh-plugin.js');
+    await mkdir(dirname(runtimeScript), { recursive: true });
+    await writeFile(runtimeScript, 'fixture uninstall script');
+    removals.scripts.mockImplementation(async () => {
+      expect(await readFile(runtimeScript, 'utf8')).toBe('fixture uninstall script');
+      return [];
+    });
+
+    await uninstall([], {}, fixture.layer);
+
+    expect(errors).toEqual([]);
+    expect(removals.scripts).toHaveBeenCalled();
+    expect(existsSync(join(fixture.presenceHome, 'runtime'))).toBe(false);
+    expect(lines).toContain('uninstall: ok');
+  });
   it.each(PRESENCE_AGENTS)(
     '%s installs, verifies, repeats unchanged, and restores unrelated settings and comments',
     async (agent) => {
@@ -276,6 +293,7 @@ describe('ledger-backed uninstall', () => {
       errors.push(parts.join(' '));
     });
     await fixture.writeShim();
+    await mkdir(join(fixture.presenceHome, 'runtime/0.9.0'), { recursive: true });
     const statePath = join(fixture.presenceHome, 'state.json');
     await writeFile(statePath, '{"sessions":{}}');
     const failureLayer = Layer.merge(
@@ -287,6 +305,7 @@ describe('ledger-backed uninstall', () => {
 
     await uninstall(['--all'], { startWorker: () => undefined }, failureLayer);
 
+    expect(existsSync(join(fixture.presenceHome, 'runtime'))).toBe(false);
     expect(errors.join('\n')).toContain('simulated kit failure');
     expect(stderrWhileSpinning).not.toContain(true);
     expect(spinnerActive).toBe(false);
@@ -300,6 +319,20 @@ describe('ledger-backed uninstall', () => {
     expect(JSON.parse(await readFile(join(fixture.presenceHome, 'config.json'), 'utf8'))).not.toHaveProperty('slot_id');
     expect(lines).toContain('uninstall: incomplete');
     expect(lines).not.toContain('uninstall: ok');
+    expect(process.exitCode).toBe(1);
+  });
+
+  it('removes all runtimes even when the independent shim removal fails', async () => {
+    await mkdir(join(fixture.presenceHome, 'bin/agent-presence'), { recursive: true });
+    await mkdir(join(fixture.presenceHome, 'runtime/0.9.0'), { recursive: true });
+    await mkdir(join(fixture.presenceHome, 'runtime/0.8.0'), { recursive: true });
+    removals.scripts.mockResolvedValue([]);
+
+    await uninstall([], {}, fixture.layer);
+
+    expect(existsSync(join(fixture.presenceHome, 'runtime'))).toBe(false);
+    expect(errors.join('\n')).toContain('shim removal failed');
+    expect(removals.scripts).toHaveBeenCalled();
     expect(process.exitCode).toBe(1);
   });
 

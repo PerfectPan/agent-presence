@@ -40,7 +40,7 @@ agent-presence setup
 
 `setup` lists configuration conflicts and their allowed resolutions, re-plans with your choices, then shows the complete changes, commands and expected trust prompts. Review and confirm that plan before it writes agent configuration. Canceling, declining confirmation or encountering a protected target stops setup. Login and local home migration may already have written their own data.
 
-In a non-interactive terminal, `setup --yes` applies a conflict-free plan. It does not resolve conflicts automatically. An interactive terminal always asks for confirmation, including with `--yes`. After applying the plan, setup immediately verifies the kit artifacts. If verification fails, setup stops without installing the watcher, offering dsh, publishing to the provider or displaying a signature URL. After successful verification, it installs the macOS power watcher, offers the optional dsh plugin and configures the provider. A canceled dsh prompt or provider failure does not skip the verification results. Linux skips the watcher and relies on TTL pruning.
+In a non-interactive terminal, `setup --yes` applies a conflict-free plan. It does not resolve conflicts automatically. An interactive terminal always asks for confirmation, including with `--yes`. After confirmation, setup installs or reuses the pinned runtime in `package` mode, writes the shim, applies the plan and immediately verifies the kit artifacts. If runtime installation fails, it removes the temporary install, discards the plan and exits non-zero before writing the shim or any agent target. If verification fails, setup stops without installing the watcher, offering dsh, publishing to the provider or displaying a signature URL. After successful verification, it installs the macOS power watcher, offers the optional dsh plugin and configures the provider. A canceled dsh prompt or provider failure does not skip the verification results. Linux skips the watcher and relies on TTL pruning.
 
 ## Without a global install
 
@@ -68,13 +68,19 @@ bunx @rivus/agent-presence@latest setup
 </TabItem>
 </Tabs>
 
-For agent environments that launch hooks with a restricted `PATH`, make the stable hook shim call absolute Node and CLI paths:
+`--hook-command package` is the default: setup uses npm to install its exact published version into `~/.agent-presence/runtime/<version>/`, then hooks run the installed CLI directly with Node. npm and access to `https://registry.npmjs.org` are needed only when setup installs a missing or invalid runtime; hook execution uses neither npm nor `npx`. `--hook-command npx` remains accepted as an alias for `package`.
+
+To use a local checkout's built CLI without installing a runtime, run:
 
 ```bash
-agent-presence setup --hook-command absolute
+node <checkout>/dist/src/cli.js setup --hook-command absolute
 ```
 
 The default provider is `magic-builder`, so the first `setup` runs the QR login (storing the slot credential) and prompts for a Magic-Builder token. See [Providers](/guide/providers) for the alternative that needs no token.
+
+## Upgrade from 0.10.0
+
+Install this release and run `agent-presence setup`. This installs the pinned runtime and rewrites the shim. The hook commands already installed in agents are unchanged, so no uninstall or additional hook re-trust cycle is needed. dsh and the macOS power watcher also call the shim after setup.
 
 ## Upgrade from 0.9.0 or earlier
 
@@ -124,7 +130,9 @@ These are the default user locations. The plan shows the resolved paths when an 
 
 The dsh plugin and macOS power watcher remain presence-managed steps outside the harness bundle. When dsh is detected, interactive setup offers its plugin at `~/.dsh/plugins/agent-presence.mjs` and registration in `~/.dsh/cordis.patch.yml`.
 
-All harness hooks call `~/.agent-presence/bin/agent-presence`. Setup atomically replaces this shim with a command for the installed package version; `--hook-command absolute` instead stores the resolved Node and CLI paths. The hook command in the agent stays the same in both modes. The default still needs `npx` and its package cache; absolute mode needs the checkout to remain available.
+All harness hooks, the dsh plugin and the macOS power watcher call `~/.agent-presence/bin/agent-presence`. Setup atomically replaces this shim. It uses the Node executable from setup, falling back to `node` on `PATH` if that file disappears. In the default `package` mode, the CLI is `~/.agent-presence/runtime/<version>/node_modules/@rivus/agent-presence/dist/src/cli.js`; `absolute` mode uses the checkout's CLI. The agent hook command stays the same in both modes. Absolute mode needs the checkout to remain available.
+
+Setup reuses a runtime whose package version matches and whose CLI exists. After successful setup it keeps the current runtime and the runtime selected by the previous shim, pruning other versions so the previous worker can keep its files. The standalone checkout scripts `install:dsh-plugin` and `install:shutdown-watcher` keep an existing shim or create an absolute-mode shim when none exists.
 
 For command hooks, Claude Code, Codex and Grok receive `timeout: 5` in seconds, while Gemini receives `timeout: 5000` in milliseconds. The opencode/Pi bridges use a 5000 ms child-process timeout only for synchronous finish delivery; other events are sent asynchronously without a child-process timeout. Gemini uses `SessionStart`, `BeforeAgent`, `BeforeTool`, `AfterTool`, `AfterAgent` and `SessionEnd`. Claude's plugin placement avoids adding presence hooks to the settings file Cursor also reads; presence does not install a Cursor source.
 
@@ -140,4 +148,4 @@ agent-presence uninstall
 
 `doctor` checks hook health and the harness ledger; warnings and errors produce a non-zero exit. Its duplicate checks use both presence-specific previous-release markers and the installed command, and cover command-hook files, not opencode/Pi bridge files. It also checks other tools' hooks, so their warnings can cause exit 1. `inventory` shows the shared kit ledger, including other applications' entries. Both commands accept `--json`; see [Commands](/reference/commands/) for their limits.
 
-`uninstall` reports removed artifacts and every kept location with its reason, then independently removes the shim, dsh plugin and macOS watcher. It preserves credentials, configuration and session state by default. It removes only harness-recorded agent artifacts; previous-release hooks are not imported into that ledger. Follow the upgrade procedure above to remove them with their own release.
+`uninstall` reports removed artifacts and every kept location with its reason, then independently removes the shim, the whole `~/.agent-presence/runtime/` directory, dsh plugin and macOS watcher. It preserves credentials, configuration and session state by default. It removes only harness-recorded agent artifacts; previous-release hooks are not imported into that ledger. Follow the upgrade procedure above to remove them with their own release.

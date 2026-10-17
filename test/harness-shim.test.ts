@@ -1,10 +1,20 @@
-import { chmod, mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { execFile } from 'node:child_process';
+import { chmod, mkdir, mkdtemp, readdir, readFile, rm, stat, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
+import { promisify } from 'node:util';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 import * as z from 'zod/mini';
 import { createPresenceBundle } from '../src/harness/bundle.js';
-import { removePresenceShim, writePresenceShim } from '../src/harness/shim.js';
+import { presenceRuntimeCliPath } from '../src/harness/runtime.js';
+import {
+  readPresenceShimGeneration,
+  readPresenceShimRuntimeVersion,
+  removePresenceShim,
+  resolveHookCommandMode,
+  writePresenceShim
+} from '../src/harness/shim.js';
+import { shellQuote } from '../src/shell-quote.js';
 
 const shimIo = vi.hoisted(() => ({
   failWrite: false,
@@ -32,6 +42,7 @@ let home: string;
 let presenceHome: string;
 let shimPath: string;
 const originalExecPath = process.execPath;
+const execFileAsync = promisify(execFile);
 
 beforeEach(async () => {
   home = await mkdtemp(join(tmpdir(), 'presence-shim-'));
@@ -63,7 +74,7 @@ afterEach(async () => {
 });
 
 describe('presence harness shim', () => {
-  it('writes an executable default-home shim with the pinned registry command and argument forwarding', async () => {
+  it('writes an executable default-home shim pointing at the pinned installed runtime', async () => {
     const pkg = z.parse(
       z.object({ version: z.string() }),
       JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'))
@@ -71,7 +82,7 @@ describe('presence harness shim', () => {
 
     expect(await writePresenceShim()).toBe(shimPath);
     expect(await readFile(shimPath, 'utf8')).toBe(
-      `#!/bin/sh\nexec npx --yes --registry=https://registry.npmjs.org @rivus/agent-presence@${pkg.version} "$@"\n`
+      `#!/bin/sh\n# agent-presence shim-generation: ${await readPresenceShimGeneration()}\n# agent-presence runtime-version: ${pkg.version}\nif [ -f ${shellQuote(originalExecPath)} ]; then\n  exec ${shellQuote(originalExecPath)} ${presenceRuntimeCliPath(pkg.version, presenceHome)} "$@"\nfi\nexec node ${presenceRuntimeCliPath(pkg.version, presenceHome)} "$@"\n`
     );
     expect((await stat(shimPath)).mode & 0o777).toBe(0o755);
     expect(await readdir(dirname(shimPath))).toEqual(['agent-presence']);
@@ -88,12 +99,14 @@ describe('presence harness shim', () => {
     process.execPath = '/work/node bin/node';
     vi.stubEnv('AGENT_PRESENCE_HOOK_COMMAND', 'absolute');
     vi.stubEnv('AGENT_PRESENCE_CLI_PATH', "/work/presence's checkout/$runtime/dist/src/cli.js");
-    const expected = `#!/bin/sh\nexec '/work/node bin/node' '/work/presence'\\''s checkout/$runtime/dist/src/cli.js' "$@"\n`;
+    let expected = '';
     const beforeRename = vi.fn<(source: string, target: string) => Promise<void>>(async (source, target) => {
       expect(dirname(source)).toBe(dirname(shimPath));
       expect(source).not.toBe(shimPath);
       expect(target).toBe(shimPath);
       expect(await readFile(shimPath, 'utf8')).toBe(previous);
+      const generation = /^# agent-presence shim-generation: (\S+)$/m.exec(await readFile(source, 'utf8'))?.[1];
+      expected = `#!/bin/sh\n# agent-presence shim-generation: ${generation}\nif [ -f '/work/node bin/node' ]; then\n  exec '/work/node bin/node' '/work/presence'\\''s checkout/$runtime/dist/src/cli.js' "$@"\nfi\nexec node '/work/presence'\\''s checkout/$runtime/dist/src/cli.js' "$@"\n`;
       expect(await readFile(source, 'utf8')).toBe(expected);
       expect((await stat(source)).mode & 0o777).toBe(0o755);
     });
@@ -105,6 +118,27 @@ describe('presence harness shim', () => {
     expect((await stat(shimPath)).mode & 0o777).toBe(0o755);
     expect(createPresenceBundle()).toEqual(bundleBefore);
     expect(await readdir(dirname(shimPath))).toEqual(['agent-presence']);
+  });
+
+  it('assigns a unique readback generation to every shim write, including the same version', async () => {
+    expect(await readPresenceShimGeneration()).toBeUndefined();
+    await writePresenceShim(undefined, { version: '1.2.3' });
+    const firstGeneration = await readPresenceShimGeneration();
+    expect(z.uuid().safeParse(firstGeneration).success).toBe(true);
+
+    await writePresenceShim(undefined, { version: '1.2.3' });
+    const secondGeneration = await readPresenceShimGeneration();
+    expect(z.uuid().safeParse(secondGeneration).success).toBe(true);
+    expect(secondGeneration).not.toBe(firstGeneration);
+
+    await writePresenceShim(undefined, { mode: 'absolute', cliPath: '/work/checkout/dist/src/cli.js' });
+    const absoluteGeneration = await readPresenceShimGeneration();
+    expect(z.uuid().safeParse(absoluteGeneration).success).toBe(true);
+    expect(absoluteGeneration).not.toBe(secondGeneration);
+    await writeFile(shimPath, '#!/bin/sh\nexec previous "$@"\n');
+    expect(await readPresenceShimGeneration()).toBeUndefined();
+    await writeFile(shimPath, '# agent-presence shim-generation: invalid\n');
+    expect(await readPresenceShimGeneration()).toBeUndefined();
   });
 
   it('preserves the existing shim and removes the temporary file when writing fails', async () => {
@@ -130,5 +164,57 @@ describe('presence harness shim', () => {
     await expect(readFile(shimPath, 'utf8')).rejects.toThrow(/ENOENT/);
     expect(await readFile(unrelated, 'utf8')).toBe('unrelated');
     expect(await readdir(dirname(shimPath))).toEqual(['keep']);
+  });
+
+  it('normalizes package, npx alias and absolute modes and rejects an unsupported mode', async () => {
+    expect(resolveHookCommandMode()).toBe('package');
+    expect(resolveHookCommandMode('package')).toBe('package');
+    expect(resolveHookCommandMode('npx')).toBe('package');
+    expect(resolveHookCommandMode('absolute')).toBe('absolute');
+    expect(() => resolveHookCommandMode('unsupported')).toThrow(/Invalid/);
+    await writePresenceShim(undefined, { mode: 'npx' });
+    expect(await readPresenceShimRuntimeVersion()).toBeDefined();
+    expect(await readFile(shimPath, 'utf8')).not.toContain('npx');
+  });
+
+  it.each(['installed', 'missing'] as const)(
+    'executes the CLI with the baked node %s and forwards shell-sensitive arguments',
+    async (nodeState) => {
+      presenceHome = join(home, "presence's home $runtime");
+      shimPath = join(presenceHome, 'bin', 'agent-presence');
+      const cliPath = presenceRuntimeCliPath('1.2.3', presenceHome);
+      await mkdir(dirname(cliPath), { recursive: true });
+      await writeFile(cliPath, 'process.stdout.write(JSON.stringify(process.argv.slice(2)));\n');
+      const nodeBin = join(home, 'path bin');
+      await mkdir(nodeBin);
+      await symlink(originalExecPath, join(nodeBin, 'node'));
+      const nodePath = join(home, "node's $runtime");
+      if (nodeState === 'installed') {
+        await symlink(originalExecPath, nodePath);
+      }
+      await writePresenceShim(presenceHome, { version: '1.2.3', nodePath });
+
+      const args = ['--help', 'space value', "quote's value", '$runtime', '$(exit 7)'];
+      const result = await execFileAsync('/bin/sh', [shimPath, ...args], {
+        env: { ...process.env, PATH: nodeState === 'installed' ? '' : nodeBin }
+      });
+      expect(JSON.parse(result.stdout)).toEqual(args);
+      expect(result.stderr).toBe('');
+    }
+  );
+
+  it('reads only a runtime version that the previous shim actually points at', async () => {
+    expect(await readPresenceShimRuntimeVersion()).toBeUndefined();
+    await writePresenceShim(undefined, { version: '1.2.3-rc.1' });
+    expect(await readPresenceShimRuntimeVersion()).toBe('1.2.3-rc.1');
+
+    await writePresenceShim(undefined, { mode: 'absolute', cliPath: '/work/checkout/dist/src/cli.js' });
+    expect(await readPresenceShimRuntimeVersion()).toBeUndefined();
+    await writeFile(shimPath, '#!/bin/sh\nexec npx @rivus/agent-presence@0.10.0 "$@"\n');
+    expect(await readPresenceShimRuntimeVersion()).toBeUndefined();
+    await writeFile(shimPath, '# agent-presence runtime-version: 1.2.3\nexec node /work/other/cli.js "$@"\n');
+    expect(await readPresenceShimRuntimeVersion()).toBeUndefined();
+    await writeFile(shimPath, '# agent-presence runtime-version: ../../outside\n');
+    expect(await readPresenceShimRuntimeVersion()).toBeUndefined();
   });
 });

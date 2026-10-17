@@ -51,7 +51,7 @@ The interactive path can use prompts and rich output. The hook path must be fast
 ~/.agent-presence
 ```
 
-The home directory contains local state, config, logs, and the hook shim. It is intentionally outside the package install directory so `npx`, global installs, and local checkouts share the same durable state.
+The home directory contains local state, config, logs, the hook shim, and setup-installed package runtimes. It is intentionally outside the package install directory so `npx`, global installs, and local checkouts share the same durable state.
 
 ```text
 ~/.agent-presence/
@@ -59,6 +59,7 @@ The home directory contains local state, config, logs, and the hook shim. It is 
   config.json              provider/render configuration
   agent-presence.log       hook and command diagnostics
   bin/agent-presence       stable executable hook shim, written by setup
+  runtime/<version>/       pinned package and dependencies, installed by setup
 ```
 
 Credentials are not stored in this directory. They live in Keychain (macOS), libsecret (Linux), or environment variables.
@@ -126,9 +127,21 @@ agent-signature  compatibility alias for older hooks
 
 Setup writes `<presence home>/bin/agent-presence` after install confirmation and before applying the harness plan. `src/harness/shim.ts` writes a temporary file in the same directory, sets mode `0755`, and atomically renames it over the shim on every setup that installs hooks.
 
-The `/bin/sh` script `exec`s the current package's pinned command and forwards `"$@"`. By default that command is `npx --yes --registry=https://registry.npmjs.org @rivus/agent-presence@<version>`. With `--hook-command absolute` or `AGENT_PRESENCE_HOOK_COMMAND=absolute`, it uses the resolved Node executable and checkout CLI path instead. Each command part is shell-quoted. Setup does not copy a runtime into the presence home; the default mode still relies on `npx`, its cache, and an available npm package, while absolute mode requires the checkout to remain available.
+The `/bin/sh` script directly `exec`s Node and the CLI, forwarding `"$@"`. It uses setup's `process.execPath` while that file exists, otherwise `node` on `PATH`. The default `--hook-command package` selects `<presence home>/runtime/<version>/node_modules/@rivus/agent-presence/dist/src/cli.js`. `--hook-command npx` remains an alias for `package`; it does not execute `npx`. With `--hook-command absolute`, the CLI is the checkout's `dist/src/cli.js` and setup installs no runtime. `AGENT_PRESENCE_HOOK_COMMAND` accepts the same modes. Every path is quoted with the shared `shellQuote`. Absolute mode requires the checkout to remain available.
 
-The installed hook command is `<shim> hook --agent {agent} 2>/dev/null || echo '{}'`, with the shim path shell-quoted. Its text is identical in both modes and stays stable across package upgrades; setup rewrites the shim's contents to select the package version or checkout. Uninstall removes the shim after the harness removal step.
+After confirmation, default-mode setup installs its exact published package version into a temporary sibling of `<presence home>/runtime/<version>/` with:
+
+```bash
+npm install --prefix <temporary-runtime-directory> --registry=https://registry.npmjs.org --omit=dev --no-audit --no-fund --ignore-scripts @rivus/agent-presence@<version>
+```
+
+Setup uses `process.env.npm_execpath` when it points to npm's CLI script, otherwise `npm` on `PATH`. A runtime is reused only when its package manifest names the requested version and its `dist/src/cli.js` exists. A new runtime is renamed into place only after installation succeeds. On failure, setup cleans the temporary directory, discards the held harness plan and exits non-zero before writing the shim or any agent target. npm and registry access are setup-time dependencies; the hook path runs the local CLI directly.
+
+After confirmation and before runtime installation, setup reads which runtime the previous shim selected. After the watcher, dsh and provider steps, pruning retains the current version's runtime, if present, and that previous runtime so an already-running worker of the previous version keeps its files; other version directories are removed. Absolute-mode setup also keeps the previous shim's runtime even though it installs no runtime. Provider errors reported by the provider step do not skip pruning. The dsh plugin calls `<shim> hook --source dsh …`, and the macOS power watcher calls `<shim> reset --force --silent`. Their standalone checkout install scripts keep an existing shim or create an absolute-mode shim when none exists.
+
+The installed hook command is `<shim> hook --agent {agent} 2>/dev/null || echo '{}'`, with the shim path shell-quoted. Its text is identical in both modes and stays stable across package upgrades; setup rewrites the shim's contents to select the package version or checkout. Uninstall removes the shim and the entire `<presence home>/runtime/` directory after the harness removal step.
+
+Runtime installation and shim switching share a process lock at `<presence home>/runtime.lock.db` with pruning. Setup releases the lock before applying the harness plan and running watcher, dsh and provider steps, then takes it again to prune only if the shim still carries this setup's unique generation marker. Concurrent setups cannot prune a runtime between its installation and shim switch. The lock file stays outside `runtime/` so runtime removal never deletes it.
 
 ### Configuration
 
@@ -466,19 +479,20 @@ A Linux watcher would be a systemd user unit subscribed to logind's `PrepareForS
 3. Clear any queue tombstone under takeover: delete queued records, increase the epoch, and remove the tombstone. Load configuration and log in when credentials are missing, unless `--skip-login` or `--hooks-only` is passed. `--login` forces fresh authentication unless login is skipped.
 4. Unless `--no-hooks` is passed, call `planInstall` for the bundle. The kit reports conflicts before returning a full plan. Display every conflicting locator, reason and allowed choices; prompt once per locator for one of those choices or cancel, then re-plan with the selected choices. Newly reported locators repeat this process. A target with no allowed choice, including dotfiles-managed or symlinked targets, stops setup without writing an agent target.
 5. Display the full plan's changes, commands, expected trust prompts, notes, dropped hooks and selected resolutions. Ask for explicit confirmation in a TTY. Outside a TTY, a conflict-free plan requires `--yes`; every conflict is refused even with `--yes`. Cancellation or declining confirmation discards any held plan, reports that no agent configuration was written, and exits non-zero.
-6. Write the stable shim, apply the same in-memory plan handle, and report each artifact result. `PlanStale` or `TargetChanged` stops setup with instructions to run it again; setup does not retry application.
+6. Read the previous shim's runtime. In default `package` mode, install or reuse the pinned runtime. If installation fails, clean its temporary directory, discard the plan and exit non-zero before shim or agent-target writes. Write the stable shim, apply the same in-memory plan handle, and report each artifact result. `PlanStale` or `TargetChanged` stops setup with instructions to run it again; setup does not retry application.
 7. Immediately verify the installed bundle with `verify("agent-presence", { bundle, agents })`. Verification checks only kit artifacts; supplying the bundle also finds a desired artifact missing from both disk and ledger. The install harness program ends here, so a later canceled dsh prompt or provider failure cannot skip verification or turn that failure into a harness error dump.
-8. After successful verification, install the macOS power watcher through its existing script. Linux prints the watcher skip message and relies on TTL pruning. Then offer the dsh plugin when detected in an interactive terminal, and publish or resolve the provider's signature URL. Installing the watcher before the dsh prompt keeps it installed if that prompt is canceled. These presence-managed steps run outside Effect with their existing error handling and messages.
+8. After successful verification, install the macOS power watcher through its existing script. Linux prints the watcher skip message and relies on TTL pruning. Then offer the dsh plugin when detected in an interactive terminal, and publish or resolve the provider's signature URL. After the provider step, prune runtimes other than the current version and the version the previous shim selected. A reported provider error does not skip pruning. Installing the watcher before the dsh prompt keeps it installed if that prompt is canceled. These presence-managed steps run outside Effect with their existing error handling and messages.
 
-`--no-hooks` skips the previous-release check, harness, shim, dsh prompt and watcher. Migration, queue recovery, login and provider setup retain their behavior. Credential and home-migration writes may happen before install confirmation; the confirmation protects agent-target installation writes. Harness planning can settle pending ledger operations.
+`--no-hooks` skips the previous-release check, harness, runtime installation, shim, dsh prompt and watcher. Migration, queue recovery, login and provider setup retain their behavior. Credential and home-migration writes may happen before install confirmation; the confirmation protects agent-target installation writes. Harness planning can settle pending ledger operations.
 
-`src/setup.ts` runs only the watcher installer, and its uninstall list contains only dsh and the watcher. The hand-written Claude/Codex/Gemini hook writers and opencode/Pi bridge writers, their per-agent scripts, and the aggregate hook-install scripts are removed; previous-release generators and removal behavior live only in `test/fixtures/previous-release.ts`. Command-building helpers remain shared by the shim, dsh plugin and watcher.
+`src/setup.ts` runs only the watcher installer, and its uninstall list contains only dsh and the watcher. The hand-written Claude/Codex/Gemini hook writers and opencode/Pi bridge writers, their per-agent scripts, and the aggregate hook-install scripts are removed; previous-release generators and removal behavior live only in `test/fixtures/previous-release.ts`. The dsh plugin and watcher invoke the stable shim; their standalone checkout installers create an absolute-mode shim only when no shim exists.
 
 | Area                  | Idempotency rule                                                                                                                                                     |
 | --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Provider login        | Reuse the existing credential and configured slot; force or skip login only when requested.                                                                          |
 | Config                | Merge provider/render settings without deleting unrelated keys.                                                                                                      |
 | Harness artifacts     | Compare the bundle, ledger and targets; require allowed conflict resolutions and confirmation before applying changes, and preserve unrelated settings and comments. |
+| Package runtime       | Reuse a matching package manifest and existing CLI; install into a temporary sibling and rename on success; retain current and previous-shim runtimes.               |
 | Hook shim             | Atomically replace the same executable file on each confirmed setup; switching command modes changes its contents, not the installed hook command.                   |
 | Power watcher         | On macOS, replace the managed LaunchAgent plist and script, then reload the same label. On Linux, skip with a message.                                               |
 | Legacy home migration | Ask before copying known legacy files; never overwrite existing destination files; remove known legacy files after the new home has them; keep unknown files.        |
@@ -492,6 +506,8 @@ npx --yes --registry=https://registry.npmjs.org @rivus/agent-presence@<version> 
 ```
 
 ### Upgrading Previous Installations
+
+From 0.10.0, install this release and run `setup`. Runtime installation and shim replacement keep the installed agent commands unchanged; no uninstall or additional Codex hook re-trust is needed.
 
 Before any previous-release uninstall, move files kept from an earlier removal out of the install locations, or remove them if unwanted; this order also applies when replacement entries are listed beside them. The remaining installation from 0.9.0 or earlier needs that release's own uninstall before upgrading, without `--credentials` or `--all` so credentials, configuration and state stay:
 
@@ -536,7 +552,7 @@ The harness plan lists expected trust prompts before install confirmation. Movin
 
 `src/cli/commands/uninstall.ts` calls `uninstall("agent-presence", { agents })` without legacy markers, reports each artifact removal, and lists every kept locator with its reason. It removes only the harness ledger's artifacts; previous-release entries outside that ledger stay untouched.
 
-After the harness step, uninstall removes the stable shim, dsh plugin and macOS power watcher. These removals run independently: a kit failure is printed and makes the final exit non-zero, but does not prevent the shim, scripts or requested credential/state removals from running. Normal uninstall preserves credentials, provider/render configuration and session state.
+After the harness step, uninstall removes the stable shim, the whole `<presence home>/runtime/` directory, dsh plugin and macOS power watcher. The runtime is removed last so an uninstall invoked from it can still load its scripts and dependencies. These removals run independently: a kit failure is printed and makes the final exit non-zero, but does not prevent the shim, runtime, scripts or requested credential/state removals from running. Normal uninstall preserves credentials, provider/render configuration and session state.
 
 Credential and data removal are explicit:
 
@@ -629,18 +645,19 @@ remote value is wrong but local is correct      -> provider sync path bug or del
 
 ## Failure Model
 
-| Failure                                 | Expected behavior                                                                                                                |
-| --------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| Agent exits without a finish hook       | Session expires after TTL.                                                                                                       |
-| Hook command fails                      | Coding agent continues; Codex receives `{}`.                                                                                     |
-| Provider returns 429                    | Local state remains correct; next non-debounced update can sync.                                                                 |
-| Laptop sleeps or lid closes             | On macOS, power watcher resets local and remote state to 0 when possible. On Linux, TTL pruning clears sessions after expiry.    |
-| Sudden power loss                       | Wake reset (macOS) and TTL clear stale sessions.                                                                                 |
-| Keychain is unavailable                 | Explicit environment variables can supply token and slot id.                                                                     |
-| Linux has no secret-tool                | Credential operations bail with a clear install instruction; env vars still work.                                                |
-| `npx` cache disappears after setup      | The shim reruns the pinned npm command, which may need the registry to rebuild its cache; absolute mode depends on the checkout. |
-| Setup is interrupted halfway            | Agent targets stay unchanged before confirmation; after application starts, rerun setup to inspect and complete partial work.    |
-| Codex hooks are present but not trusted | The install plan lists expected trust prompts; approve the managed hooks in Codex settings.                                      |
+| Failure                                 | Expected behavior                                                                                                             |
+| --------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| Agent exits without a finish hook       | Session expires after TTL.                                                                                                    |
+| Hook command fails                      | Coding agent continues; Codex receives `{}`.                                                                                  |
+| Provider returns 429                    | Local state remains correct; next non-debounced update can sync.                                                              |
+| Laptop sleeps or lid closes             | On macOS, power watcher resets local and remote state to 0 when possible. On Linux, TTL pruning clears sessions after expiry. |
+| Sudden power loss                       | Wake reset (macOS) and TTL clear stale sessions.                                                                              |
+| Keychain is unavailable                 | Explicit environment variables can supply token and slot id.                                                                  |
+| Linux has no secret-tool                | Credential operations bail with a clear install instruction; env vars still work.                                             |
+| Runtime install fails during setup      | Temporary install is removed, the held plan is discarded, and setup exits non-zero before shim or agent-target writes.        |
+| Setup's Node executable disappears      | The shim falls back to `node` on `PATH`; absolute mode also needs the checkout, and package mode needs its installed runtime. |
+| Setup is interrupted halfway            | Agent targets stay unchanged before confirmation; after application starts, rerun setup to inspect and complete partial work. |
+| Codex hooks are present but not trusted | The install plan lists expected trust prompts; approve the managed hooks in Codex settings.                                   |
 
 ## Security Boundaries
 

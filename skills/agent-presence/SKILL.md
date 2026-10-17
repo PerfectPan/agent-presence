@@ -32,6 +32,10 @@ agent-presence update --force
 agent-presence reset --force
 ```
 
+Default setup installs its exact package version with npm under `~/.agent-presence/runtime/<version>/`; hooks, dsh and the macOS watcher invoke the stable shim and run the local CLI directly with setup's Node executable, falling back to `node` on `PATH` if it moves. `--hook-command package` is the default and `npx` is an alias. For runtime repair or removal details, consult the [install guide](https://agent-presence.vercel.app/guide/install/#installed-locations).
+
+Upgrading from 0.10.0: install this release and run `setup`; installed agent commands stay unchanged and need no additional hook re-trust.
+
 Local checkout:
 
 ```bash
@@ -39,7 +43,7 @@ corepack enable
 pnpm install --frozen-lockfile
 pnpm run build
 pnpm link --global
-agent-presence setup
+agent-presence setup --hook-command absolute
 ```
 
 The older direct-preview provider (`--provider feishu-signature`, no Magic-Builder token) is a legacy alternative; Feishu may no longer render it. Its link-preview fields are configured separately (use the slot host's base URL):

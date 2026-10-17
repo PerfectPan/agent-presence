@@ -7,7 +7,19 @@ import { Effect, type Layer } from 'effect';
 import { configSlotId, defaultCommandProviderId, getStatePath } from '../../config.js';
 import { loadValidatedConfig } from '../../config-schema.js';
 import { createPresenceBundle, PRESENCE_AGENTS } from '../../harness/bundle.js';
-import { writePresenceShim } from '../../harness/shim.js';
+import {
+  readPresenceShimGeneration,
+  readPresenceShimRuntimeVersion,
+  resolveHookCommandMode,
+  writePresenceShim
+} from '../../harness/shim.js';
+import {
+  installPresenceRuntime,
+  prunePresenceRuntimes,
+  withPresenceRuntimeLock,
+  type RuntimeInstallOptions
+} from '../../harness/runtime.js';
+import { packageVersion } from '../../package-version.js';
 import { increaseEpoch, isDisabled, removeTombstone } from '../../queue/files.js';
 import { deleteQueueFile, listQueue } from '../../queue/reader.js';
 import { takeOver, type TakeoverOptions } from '../../queue/takeover.js';
@@ -126,7 +138,8 @@ async function publishProvider(
 export async function setup(
   args: string[],
   takeover: TakeoverOptions = {},
-  layer?: Layer.Layer<HarnessServices>
+  layer?: Layer.Layer<HarnessServices>,
+  runtimeOptions: RuntimeInstallOptions = {}
 ): Promise<void> {
   const skipLogin = hasFlag(args, '--skip-login') || hasFlag(args, '--hooks-only');
   const forceLogin = hasFlag(args, '--login') && !skipLogin;
@@ -192,6 +205,9 @@ export async function setup(
   }
 
   const bundle = createPresenceBundle();
+  let previousRuntimeVersion: string | undefined;
+  let currentRuntimeVersion = packageVersion();
+  let shimGeneration: string | undefined;
   const completed = await runHarness(
     Effect.gen(function* () {
       const plan = yield* planSetupInstall(bundle);
@@ -212,7 +228,19 @@ export async function setup(
           process.exitCode = 1;
           return false;
         }
-        yield* Effect.tryPromise(() => writePresenceShim());
+        yield* Effect.tryPromise(() =>
+          withPresenceRuntimeLock(async () => {
+            previousRuntimeVersion = await readPresenceShimRuntimeVersion();
+            const mode = resolveHookCommandMode();
+            const runtime = mode === 'package' ? await installPresenceRuntime(undefined, runtimeOptions) : undefined;
+            currentRuntimeVersion = runtime?.version ?? currentRuntimeVersion;
+            await writePresenceShim(undefined, {
+              mode,
+              ...(runtime ? { cliPath: runtime.cliPath, version: runtime.version } : {})
+            });
+            shimGeneration = await readPresenceShimGeneration();
+          })
+        );
         const applied = yield* applyInstall(plan).pipe(
           Effect.tapError((error) =>
             Effect.sync(() => {
@@ -264,5 +292,10 @@ export async function setup(
   }
   await maybeInstallDshPlugin();
   await publishProvider(config, activeProvider);
+  await withPresenceRuntimeLock(async () => {
+    if ((await readPresenceShimGeneration()) === shimGeneration) {
+      await prunePresenceRuntimes(currentRuntimeVersion, previousRuntimeVersion);
+    }
+  });
   finishOutro('setup: ok');
 }

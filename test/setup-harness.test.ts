@@ -4,10 +4,19 @@ import { dirname, join, relative } from 'node:path';
 import type { InstallPlan, PlanConflict } from '@rivus/agent-kit/harness';
 import { Effect } from 'effect';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test';
-import { setup } from '../src/cli/commands/setup.js';
+import { setup as setupCommand } from '../src/cli/commands/setup.js';
+import { installFixtureRuntime } from './runtime-support.js';
 import { createPresenceBundle, PRESENCE_AGENTS } from '../src/harness/bundle.js';
 import { shellQuote } from '../src/shell-quote.js';
+import { packageVersion } from '../src/package-version.js';
+import { writePresenceShim } from '../src/harness/shim.js';
+import * as runtimeModule from '../src/harness/runtime.js';
+import * as shimModule from '../src/harness/shim.js';
 import { AGENT_HOME_VARIABLES, createHarnessFixture, type HarnessFixture } from './harness-support.js';
+
+const runtimeNpm = vi.fn<typeof installFixtureRuntime>(installFixtureRuntime);
+const setup: typeof setupCommand = (args, takeover, layer, options) =>
+  setupCommand(args, takeover, layer, { runNpm: runtimeNpm, ...options });
 
 const ui = vi.hoisted(() => ({
   isInteractiveTerminal: vi.fn<typeof import('../src/cli/ui.js').isInteractiveTerminal>(),
@@ -99,6 +108,7 @@ beforeEach(async () => {
   previousExitCode = process.exitCode;
   process.exitCode = 0;
   vi.clearAllMocks();
+  runtimeNpm.mockReset().mockImplementation(installFixtureRuntime);
   timeline = [];
   plans = [];
   errors = vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -302,11 +312,35 @@ describe('setup through the harness', () => {
     let watcherCallsAtConfirmation: number | undefined;
     let noteTitlesAtConfirmation: (string | undefined)[] | undefined;
     let shimModeAtApply: number | undefined;
+    let runtimeSection = false;
+    const lock = runtimeModule.withPresenceRuntimeLock;
+    vi.spyOn(runtimeModule, 'withPresenceRuntimeLock').mockImplementation(async function <A>(action: () => Promise<A>) {
+      return lock(async () => {
+        runtimeSection = true;
+        try {
+          return await action();
+        } finally {
+          runtimeSection = false;
+        }
+      });
+    });
+    const writeShim = shimModule.writePresenceShim;
+    vi.spyOn(shimModule, 'writePresenceShim').mockImplementation(async (...args) => {
+      expect(runtimeSection).toBe(true);
+      return writeShim(...args);
+    });
+    const prune = runtimeModule.prunePresenceRuntimes;
+    vi.spyOn(runtimeModule, 'prunePresenceRuntimes').mockImplementation(async (...args) => {
+      expect(runtimeSection).toBe(true);
+      return prune(...args);
+    });
+
     ui.promptConfirm.mockImplementationOnce(async () => {
       targetsAtConfirmation = await snapshotTargets();
       shimExistedAtConfirmation = existsSync(join(fixture.presenceHome, 'bin/agent-presence'));
       watcherCallsAtConfirmation = dependencies.runScripts.mock.calls.length;
       noteTitlesAtConfirmation = ui.showNote.mock.calls.map(([, title]) => title);
+      expect(runtimeNpm).not.toHaveBeenCalled();
       timeline.push('confirm');
       return true;
     });
@@ -314,8 +348,14 @@ describe('setup through the harness', () => {
       timeline.push('dsh');
       return false;
     });
+    runtimeNpm.mockImplementation(async (command, args) => {
+      expect(runtimeSection).toBe(true);
+      timeline.push('runtime');
+      await installFixtureRuntime(command, args);
+    });
     hooks.applyInstall.mockImplementation((plan) =>
       Effect.promise(async () => {
+        expect(runtimeSection).toBe(false);
         shimModeAtApply = (await stat(join(fixture.presenceHome, 'bin/agent-presence'))).mode & 0o777;
         timeline.push('apply');
       }).pipe(Effect.andThen(realHarness.applyInstall(plan)))
@@ -348,8 +388,10 @@ describe('setup through the harness', () => {
       agents: PRESENCE_AGENTS
     });
     expect(
-      timeline.filter((entry) => ['planned', 'confirm', 'apply', 'watcher', 'dsh', 'publish', 'verify'].includes(entry))
-    ).toEqual(['planned', 'confirm', 'apply', 'verify', 'watcher', 'dsh', 'publish']);
+      timeline.filter((entry) =>
+        ['planned', 'confirm', 'runtime', 'apply', 'watcher', 'dsh', 'publish', 'verify'].includes(entry)
+      )
+    ).toEqual(['planned', 'confirm', 'runtime', 'apply', 'verify', 'watcher', 'dsh', 'publish']);
     expect(output()).toContain('setup create:');
     expect(output()).toMatch(/verif/i);
     expect(await snapshotTargets()).not.toEqual(before);
@@ -381,6 +423,88 @@ describe('setup through the harness', () => {
     expect(hooks.discardPlan).toHaveBeenCalledExactlyOnceWith(plans[0]);
     expect(plans[0]?.status).toBe('discarded');
     expect(await snapshotTargets()).toEqual(before);
+  });
+
+  it('discards the plan and leaves targets and shim untouched when the runtime install fails', async () => {
+    await seedSettings();
+    const before = await snapshotTargets();
+    let temporaryDirectory: string | undefined;
+    runtimeNpm.mockImplementation(async (_command, args) => {
+      temporaryDirectory = args[args.indexOf('--prefix') + 1];
+      throw new Error('fixture npm offline');
+    });
+
+    await setup(argumentsForSetup, {}, fixture.layer);
+
+    expectStopped();
+    expect(process.exitCode).toBe(1);
+    expect(errors.mock.calls.flat().join(' ')).toContain('fixture npm offline');
+    expect(hooks.discardPlan).toHaveBeenCalledExactlyOnceWith(plans[0]);
+    expect(plans[0]?.status).toBe('discarded');
+    expect(await snapshotTargets()).toEqual(before);
+    expect(existsSync(join(fixture.presenceHome, 'bin/agent-presence'))).toBe(false);
+    expect(temporaryDirectory).toBeDefined();
+    expect(existsSync(temporaryDirectory!)).toBe(false);
+    expect(await readdir(join(fixture.presenceHome, 'runtime'))).toEqual([]);
+  });
+
+  it('prunes only after successful setup and retains the runtime referenced by the previous shim', async () => {
+    const runtimeHome = join(fixture.presenceHome, 'runtime');
+    for (const version of ['0.8.0', '0.9.0']) {
+      await mkdir(join(runtimeHome, version), { recursive: true });
+    }
+    await writePresenceShim(fixture.presenceHome, { version: '0.9.0', mode: 'package' });
+    dependencies.runScripts.mockImplementation(async () => {
+      expect(await readdir(runtimeHome)).toContain('0.8.0');
+      return [];
+    });
+
+    await setup(argumentsForSetup, {}, fixture.layer);
+
+    expect(process.exitCode).toBe(0);
+    expect((await readdir(runtimeHome)).sort()).toEqual(['0.9.0', packageVersion()].sort());
+  });
+
+  it.each([false, true])(
+    'keeps the latest current and previous runtimes when an earlier setup finishes (return to original version: %s)',
+    async (returnToOriginalVersion) => {
+      const newerVersion = '1.2.0';
+      dependencies.runScripts.mockImplementationOnce(async () => {
+        await setup(argumentsForSetup, {}, fixture.layer, { version: newerVersion });
+        if (returnToOriginalVersion) {
+          await setup(argumentsForSetup, {}, fixture.layer);
+        }
+        return [];
+      });
+
+      await setup(argumentsForSetup, {}, fixture.layer);
+
+      expect(process.exitCode).toBe(0);
+      const newerCli = join(
+        fixture.presenceHome,
+        'runtime',
+        newerVersion,
+        'node_modules/@rivus/agent-presence/dist/src/cli.js'
+      );
+      expect(existsSync(newerCli)).toBe(true);
+      const selectedCli = returnToOriginalVersion ? newerCli.replace(newerVersion, packageVersion()) : newerCli;
+      expect(await readFile(join(fixture.presenceHome, 'bin/agent-presence'), 'utf8')).toContain(
+        shellQuote(selectedCli)
+      );
+      expect((await readdir(join(fixture.presenceHome, 'runtime'))).sort()).toEqual(
+        [packageVersion(), newerVersion].sort()
+      );
+    }
+  );
+
+  it('does not prune old runtimes when setup stops after applying hooks', async () => {
+    const oldRuntime = join(fixture.presenceHome, 'runtime', '0.8.0');
+    await mkdir(oldRuntime, { recursive: true });
+    dependencies.runScripts.mockRejectedValueOnce(new Error('fixture watcher failure'));
+
+    await expect(setup(argumentsForSetup, {}, fixture.layer)).rejects.toThrow('fixture watcher failure');
+
+    expect(existsSync(oldRuntime)).toBe(true);
   });
 
   it('discards the plan without applying when writing the shim fails', async () => {
@@ -760,7 +884,7 @@ describe('setup through the harness', () => {
     }
   );
 
-  it.each(['npx', 'absolute'] as const)(
+  it.each(['package', 'npx', 'absolute'] as const)(
     'rewrites the shim from %s to the other mode without changing installed registrations on repeated setup',
     async (initialMode) => {
       vi.stubEnv('AGENT_PRESENCE_CLI_PATH', '/work/presence/dist/src/cli.js');
@@ -768,26 +892,31 @@ describe('setup through the harness', () => {
       const before = await snapshotTargets();
       const shim = join(fixture.presenceHome, 'bin/agent-presence');
       const initialShim = await readFile(shim, 'utf8');
-      const npxCommand = 'exec npx --yes --registry=https://registry.npmjs.org @rivus/agent-presence@';
-      const absoluteShim = `#!/bin/sh\nexec ${shellQuote(process.execPath)} /work/presence/dist/src/cli.js "$@"\n`;
-      if (initialMode === 'npx') {
-        expect(initialShim).toContain(npxCommand);
-      } else {
-        expect(initialShim).toBe(absoluteShim);
-      }
+      const packageCli = join(
+        fixture.presenceHome,
+        'runtime',
+        packageVersion(),
+        'node_modules/@rivus/agent-presence/dist/src/cli.js'
+      );
+      const expectedCli = initialMode === 'absolute' ? '/work/presence/dist/src/cli.js' : packageCli;
+      expect(initialShim).toContain(`${shellQuote(expectedCli)} "$@"`);
+      expect(initialShim).not.toContain('npx');
+      expect(runtimeNpm).toHaveBeenCalledTimes(initialMode === 'absolute' ? 0 : 1);
+      expect(existsSync(join(fixture.presenceHome, 'runtime'))).toBe(initialMode !== 'absolute');
 
       await setup(
-        [...argumentsForSetup, '--hook-command', initialMode === 'npx' ? 'absolute' : 'npx'],
+        [...argumentsForSetup, '--hook-command', initialMode === 'absolute' ? 'package' : 'absolute'],
         {},
         fixture.layer
       );
 
       expect(process.exitCode).toBe(0);
-      if (initialMode === 'npx') {
-        expect(await readFile(shim, 'utf8')).toBe(absoluteShim);
-      } else {
-        expect(await readFile(shim, 'utf8')).toContain(npxCommand);
-      }
+      const nextShim = await readFile(shim, 'utf8');
+      expect(nextShim).toContain(
+        `${shellQuote(initialMode === 'absolute' ? packageCli : '/work/presence/dist/src/cli.js')} "$@"`
+      );
+      expect(nextShim).not.toContain('npx');
+      expect(runtimeNpm).toHaveBeenCalledOnce();
       expect((await stat(shim)).mode & 0o777).toBe(0o755);
       expect(await snapshotTargets()).toEqual(before);
       expect(plans).toHaveLength(2);

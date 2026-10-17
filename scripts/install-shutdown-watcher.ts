@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+import { existsSync } from 'node:fs';
+import { presenceShimPath } from '../src/harness/shim-path.js';
+import { writePresenceShim } from '../src/harness/shim.js';
 import { chmod, mkdir, rm, writeFile } from 'node:fs/promises';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
@@ -24,6 +27,9 @@ function currentUid(): number {
 
 async function main(): Promise<void> {
   assertMacOS();
+  if (!existsSync(presenceShimPath())) {
+    await writePresenceShim(undefined, { mode: 'absolute' });
+  }
   const home = homedir();
   const scriptPath =
     process.env.AGENT_PRESENCE_POWER_WATCHER_SCRIPT ??

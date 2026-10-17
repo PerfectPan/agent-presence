@@ -1,7 +1,7 @@
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vite-plus/test';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 import {
   DSH_PLUGIN_FILE_NAME,
   DSH_PLUGIN_MARKER,
@@ -20,9 +20,11 @@ describe('installDshPlugin', () => {
     homeDir = await mkdtemp(join(tmpdir(), 'agent-presence-dsh-'));
     pluginPath = join(homeDir, '.dsh', 'plugins', DSH_PLUGIN_FILE_NAME);
     patchPath = join(homeDir, '.dsh', 'cordis.patch.yml');
+    vi.stubEnv('AGENT_PRESENCE_HOME', join(homeDir, "presence's $runtime"));
   });
 
   afterEach(async () => {
+    vi.unstubAllEnvs();
     await rm(homeDir, { recursive: true, force: true });
   });
 
@@ -41,6 +43,20 @@ describe('installDshPlugin', () => {
     expect(patch).toContain('- insert:');
     expect(patch).toContain('id: agent-presence');
     expect(patch).toContain(`name: ${pluginPath}`);
+  });
+
+  it.each(['package', 'npx', 'absolute'])('uses the stable shim in %s mode', async (mode) => {
+    vi.stubEnv('AGENT_PRESENCE_HOOK_COMMAND', mode);
+    vi.stubEnv('AGENT_PRESENCE_CLI_PATH', '/work/checkout/dist/src/cli.js');
+
+    await installDshPlugin({ pluginPath, patchPath });
+
+    const written = await readFile(pluginPath, 'utf8');
+    const shimPath = join(homeDir, "presence's $runtime", 'bin', 'agent-presence');
+    expect(written).toContain(`const CLI_COMMAND = ${JSON.stringify([shimPath])}`);
+    expect(written).toContain('"hook", "--source", SOURCE, "--event", event, "--silent"');
+    expect(written).not.toContain('npx');
+    expect(written).not.toContain('/work/checkout/dist/src/cli.js');
   });
 
   it('is idempotent across repeated installs', async () => {

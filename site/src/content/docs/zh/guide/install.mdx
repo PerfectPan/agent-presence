@@ -40,7 +40,7 @@ agent-presence setup
 
 `setup` 先列出配置冲突和允许的处理方式，按你的选择重新规划，再展示完整变更、命令和预期信任提示。确认计划后才会写入智能体配置。取消、拒绝确认或遇到受保护目标时，setup 会退出。登录和本地目录迁移可能已经写入各自的数据。
 
-非交互终端可用 `setup --yes` 应用无冲突的计划，但它不会自动处理冲突。交互终端始终会请求明确确认，包括传了 `--yes` 时。应用计划后，setup 会立即验证 kit 产物。验证失败时，setup 就此停止，不安装 watcher、不询问 dsh、不发布 provider，也不显示签名 URL。验证成功后，依次安装 macOS 电源 watcher、询问是否安装可选的 dsh 插件，再配置 provider。取消 dsh 提示或 provider 失败不会跳过验证结果。Linux 跳过 watcher，依靠 TTL 清理。
+非交互终端可用 `setup --yes` 应用无冲突的计划，但它不会自动处理冲突。交互终端始终会请求明确确认，包括传了 `--yes` 时。确认后，setup 在 `package` 模式下安装或复用固定版本的 runtime，再写入 shim、应用计划并立即验证 kit 产物。runtime 安装失败时，会清理临时安装目录、丢弃计划，并在写入 shim 或任何智能体目标前以非零状态退出。验证失败时，setup 就此停止，不安装 watcher、不询问 dsh、不发布 provider，也不显示签名 URL。验证成功后，依次安装 macOS 电源 watcher、询问是否安装可选的 dsh 插件，再配置 provider。取消 dsh 提示或 provider 失败不会跳过验证结果。Linux 跳过 watcher，依靠 TTL 清理。
 
 ## 不全局安装
 
@@ -68,13 +68,19 @@ bunx @rivus/agent-presence@latest setup
 </TabItem>
 </Tabs>
 
-如果智能体环境启动 hook 时 `PATH` 很窄，让稳定的 hook shim 调用绝对路径下的 Node 和 CLI：
+`--hook-command package` 是默认模式：setup 用 npm 将自身的固定发布版本安装到 `~/.agent-presence/runtime/<version>/`，随后 hook 直接用 Node 运行已安装的 CLI。只有 setup 安装缺失或损坏的 runtime 时需要 npm 和 `https://registry.npmjs.org` 访问；hook 执行不调用 npm 或 `npx`。`--hook-command npx` 保留为 `package` 的别名。
+
+若要使用本地 checkout 的构建产物，不安装 runtime，运行：
 
 ```bash
-agent-presence setup --hook-command absolute
+node <checkout>/dist/src/cli.js setup --hook-command absolute
 ```
 
 默认 provider 是 `magic-builder`,所以首次 `setup` 会先跑扫码登录(保存 slot 凭据),再提示粘贴一个 Magic-Builder token。无需 token 的备选见 [Provider](/zh/guide/providers)。
+
+## 从 0.10.0 升级
+
+安装本版本后运行 `agent-presence setup` 即可。setup 安装固定版本的 runtime 并重写 shim，智能体中已经安装的 hook 命令保持不变，无需先卸载，也不会增加 hook 重新信任流程。setup 后，dsh 和 macOS 电源 watcher 也通过 shim 调用。
 
 ## 从 0.9.0 或更早版本升级
 
@@ -124,7 +130,9 @@ checkout 路径不含 presence 标记的旧绝对路径 hook 命令无法被检�
 
 dsh 插件和 macOS 电源 watcher 仍由 presence 自行管理，不属于 harness bundle。交互式 setup 检测到 dsh 时，会询问是否安装 `~/.dsh/plugins/agent-presence.mjs` 并在 `~/.dsh/cordis.patch.yml` 中注册。
 
-所有 harness hook 都调用 `~/.agent-presence/bin/agent-presence`。setup 以原子替换方式更新 shim，使其调用当前安装版本的包；`--hook-command absolute` 则保存解析后的 Node 和 CLI 路径。两种模式安装到智能体中的 hook 命令相同。默认模式仍依赖 `npx` 及其包缓存；绝对路径模式要求 checkout 持续可用。
+所有 harness hook、dsh 插件和 macOS 电源 watcher 都调用 `~/.agent-presence/bin/agent-presence`。setup 以原子替换方式更新 shim。shim 使用 setup 当时的 Node 可执行文件，该文件消失时回退到 `PATH` 中的 `node`。默认 `package` 模式下，CLI 位于 `~/.agent-presence/runtime/<version>/node_modules/@rivus/agent-presence/dist/src/cli.js`；`absolute` 模式使用 checkout 中的 CLI。两种模式安装到智能体中的 hook 命令相同；绝对路径模式要求 checkout 持续可用。
+
+包版本匹配且 CLI 存在时，setup 复用已有 runtime。setup 成功后保留当前 runtime 和旧 shim 使用的 runtime，清理其他版本，确保上一版本的 worker 仍能访问自己的文件。独立的 checkout 脚本 `install:dsh-plugin` 和 `install:shutdown-watcher` 保留已有 shim；shim 不存在时创建绝对路径模式的 shim。
 
 命令式 hook 中，Claude Code、Codex 和 Grok 按秒写入 `timeout: 5`，Gemini 按毫秒写入 `timeout: 5000`。opencode/Pi 桥接仅对同步结束事件的交付设置 5000 毫秒子进程超时；其他事件异步发送，不设置子进程超时。Gemini 使用 `SessionStart`、`BeforeAgent`、`BeforeTool`、`AfterTool`、`AfterAgent` 和 `SessionEnd`。Claude 插件位置避免向 Cursor 也会读取的 settings 文件添加 presence hook；presence 不安装 Cursor 源。
 
@@ -140,4 +148,4 @@ agent-presence uninstall
 
 `doctor` 检查 hook 和 harness 安装记录的健康状态；警告或错误会导致非零退出码。重复检查同时使用 presence 专属的旧版本标记和已安装命令，覆盖命令式 hook 文件，不覆盖 opencode/Pi 桥接文件。它也会检查其他工具的 hook，因此其他工具的警告也可能导致退出码 1。`inventory` 展示共享的 kit 安装记录，包含其他应用的条目。两个命令都支持 `--json`，完整限制见[命令](/zh/reference/commands/)。
 
-`uninstall` 报告移除的产物及每个保留位置和原因，再独立移除 shim、dsh 插件和 macOS watcher。默认保留凭据、配置和 session 状态。智能体产物只按 harness 记录移除；旧版本 hook 不会自动加入该记录，应按上面的升级步骤用对应版本移除。
+`uninstall` 报告移除的产物及每个保留位置和原因，再独立移除 shim、整个 `~/.agent-presence/runtime/` 目录、dsh 插件和 macOS watcher。默认保留凭据、配置和 session 状态。智能体产物只按 harness 记录移除；旧版本 hook 不会自动加入该记录，应按上面的升级步骤用对应版本移除。
