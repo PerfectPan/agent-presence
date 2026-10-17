@@ -123,11 +123,14 @@ export async function installPresenceRuntime(
 export async function prunePresenceRuntimes(
   currentVersion: string,
   previousVersion?: string,
-  home = getHomeDir()
+  home = getHomeDir(),
+  selectedVersion?: string
 ): Promise<void> {
   const keep = new Set([versionSchema.parse(currentVersion)]);
-  if (previousVersion !== undefined) {
-    keep.add(versionSchema.parse(previousVersion));
+  for (const version of [previousVersion, selectedVersion]) {
+    if (version !== undefined) {
+      keep.add(versionSchema.parse(version));
+    }
   }
   const runtimeRoot = join(home, 'runtime');
   let entries;
@@ -140,7 +143,7 @@ export async function prunePresenceRuntimes(
     throw error;
   }
   for (const entry of entries) {
-    if (entry.isDirectory() && versionSchema.safeParse(entry.name).success && !keep.has(entry.name)) {
+    if (entry.isDirectory() && !keep.has(entry.name)) {
       await rm(join(runtimeRoot, entry.name), { recursive: true, force: true });
     }
   }

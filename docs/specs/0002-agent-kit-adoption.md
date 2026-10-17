@@ -40,7 +40,8 @@ Out of scope: everything else. See "Unchanged behavior".
 - While an agent target still holds entries that a previous version installed and `setup` can detect (the paired Plan 3.5 lists the ones it cannot), `agent-presence setup` writes nothing to the agent targets: it lists the entries it found and exits with an error asking the user to run the previous version's `agent-presence uninstall` first. It never removes those entries itself.
 - `agent-presence uninstall` removes the artifacts this version installed and reports anything it kept. It leaves entries that a previous version installed; that version's own uninstall removes them.
 - Confirmed default-mode setup prepares the exact published package version before changing the shim or agent targets. Once prepared, hooks, dsh and the macOS watcher execute the local CLI without npm or registry access. A failed package installation exits non-zero and leaves the existing shim and agent targets unchanged.
-- A successful setup retains the current runtime and the runtime selected by the previous shim, so a worker from the previous version keeps its files. Uninstall removes the shim and all installed runtime versions independently of the harness removal result.
+- A successful setup retains its own runtime version, the version selected by the previous shim and the version selected by the shim at cleanup time, so a previous worker or overlapping setup keeps its files. Cleanup removes unused versions and interrupted installation directories. Uninstall removes the shim and all installed runtime versions independently of the harness removal result.
+- Setup recognizes an already-installed presence dsh plugin by its marker and rewrites it to use the shim without prompting, including with `--yes` or in a non-interactive terminal. Only a fresh installation asks for confirmation and is offered only when dsh is detected in an interactive terminal.
 - The kit's SQLite-backed process lock replaces the mkdir-based state lock and the hardlink-based log lock; a crashed process no longer leaves a lock that others must time out or reclaim. Both call sites keep today's bounded waits (about 2 seconds for state writes, about 2.5 seconds for log appends), except that the worker of [Spec 0003](0003-hook-event-queue.md) waits for the log lock before a dsh usage append instead of skipping the append; a handover interrupts that wait and leaves the append to the next worker.
 
 ## Unchanged Behavior
@@ -50,7 +51,7 @@ Everything not listed above stays unchanged, explicitly including:
 - The installed command still carries the `agent-presence hook` marker when the shim path is unquoted. The paired Plan records which previous-release command forms `setup` detects and which it does not.
 - Presence source ids stay `claude`, `codex`, `gemini`, `opencode`, `pi`, `dsh` (plus the new `grok`); persisted state, render templates, and user configuration keep working.
 - The presence state file format is unchanged: this adoption adds no state fields beyond Spec 0003's optional `queueApplied` and `queueOwed`, which older versions drop (usage scans are stateless, as the owner decided in the paired Plan's usage-scan-state decision), and older versions load files this version writes.
-- Render templates, providers, keyring credentials, the power watcher, the dsh plugin flow, and the source-table mechanism.
+- Render templates, providers, keyring credentials, the power watcher, dsh lifecycle and usage reporting, and the source-table mechanism.
 - The hook path stays fast, bounded, non-interactive, and fail-open; Codex hooks still print `{}` — on every event, including successful context events.
 - Presence still expires sessions after the inactivity TTL, still reopens a finished session on a new user prompt, and still falls back to finishing the most recent matching session.
 - An opencode file edit still refreshes the running session, and an opencode `session.error` that names no session still finishes it: from kit 0.13.0 (agent-kit#86) the kit bridge carries the latest session id into such events, as the old bridge did.
@@ -150,7 +151,7 @@ Everything not listed above stays unchanged, explicitly including:
 
 - Given any configuration, state file, and render template valid before this change
 - When this version runs
-- Then source ids, templates, providers, keyring usage, power watcher, dsh plugin flow, TTL expiry, reopen, and fallback-finish behave as before, and old state files load correctly; both command modes install the same shim invocation, carrying `agent-presence hook` when its path is unquoted
+- Then source ids, templates, providers, keyring usage, power watcher, dsh lifecycle and usage reporting, TTL expiry, reopen, and fallback-finish behave as before, and old state files load correctly; both command modes install the same shim invocation, carrying `agent-presence hook` when its path is unquoted
 
 ### S14: Setup prepares a local runtime
 
@@ -174,7 +175,7 @@ Everything not listed above stays unchanged, explicitly including:
 
 - Given the previous shim selects an installed runtime and older runtime versions also exist
 - When default-mode setup succeeds for a new version
-- Then it retains the current and previous-shim runtimes and removes the older versions
+- Then it retains this setup's version, the previous shim's version and the version the shim selects at cleanup time, removes other versions and leftover interrupted-install directories, and does not remove a runtime an overlapping setup selected
 - When absolute-mode setup succeeds
 - Then it keeps the previous shim's runtime even though it installs no runtime
 - When uninstall runs, even if harness removal fails
@@ -189,6 +190,24 @@ Everything not listed above stays unchanged, explicitly including:
 - When setup runs
 - Then it selects the checkout CLI without installing a package runtime
 
+### S17: dsh plugin upgrade and fresh installation
+
+- Given the installed dsh plugin carries presence's marker
+- When setup runs, including with `--yes` or in a non-interactive terminal
+- Then it rewrites the plugin to invoke the stable shim without asking for confirmation
+- Given no installed presence dsh plugin
+- When setup runs in a non-interactive terminal
+- Then it does not install a fresh dsh plugin
+- Given no installed presence dsh plugin and dsh is detected in an interactive terminal
+- When setup reaches the dsh step
+- Then it asks for confirmation before installing a fresh plugin
+
+### S18: Invalid hook-command mode
+
+- Given `--hook-command` has a value outside `package`, `npx` and `absolute`
+- When setup parses its arguments
+- Then it exits non-zero before installation planning with a one-line error listing the allowed values
+
 ## Compatibility And Constraints
 
 - Public API: none (no exported library surface). CLI: `hook`, `setup`, `uninstall`, `update` keep their names and existing flags; `--hook-command` defaults to `package`, accepts `npx` as its alias and retains `absolute`; `setup` gains `--yes`; `doctor` and `inventory` are new.
@@ -200,6 +219,6 @@ Everything not listed above stays unchanged, explicitly including:
 
 ## Acceptance Evidence
 
-- Shim-runtime scenarios S14–S16: `test/harness-runtime.test.ts`, `test/harness-shim.test.ts`, `test/setup-harness.test.ts`, `test/standalone-install-shim.test.ts` and `test/uninstall-harness.test.ts`; execution results belong in the delivery evidence.
+- Shim-runtime and setup scenarios S14–S18: `test/harness-runtime.test.ts`, `test/harness-shim.test.ts`, `test/setup-harness.test.ts`, `test/standalone-install-shim.test.ts` and `test/uninstall-harness.test.ts`; execution results belong in the delivery evidence.
 - Other scenario IDs and corresponding tests: the paired Plan maps each scenario to a batch and test.
 - Runtime or package evidence: not available yet; isolated-`HOME` install/verify/uninstall/downgrade runs and the owner-authorized real-agent checks (Claude, Cursor, Codex, Gemini — completion gates) are defined in the paired Plan.

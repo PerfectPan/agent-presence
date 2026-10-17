@@ -9,6 +9,8 @@ import { installFixtureRuntime } from './runtime-support.js';
 import { createPresenceBundle, PRESENCE_AGENTS } from '../src/harness/bundle.js';
 import { shellQuote } from '../src/shell-quote.js';
 import { packageVersion } from '../src/package-version.js';
+import { DSH_PLUGIN_MARKER, resolveDshPluginPaths } from '../src/installers.js';
+import { errorMessage } from '../src/cli/errors.js';
 import { writePresenceShim } from '../src/harness/shim.js';
 import * as runtimeModule from '../src/harness/runtime.js';
 import * as shimModule from '../src/harness/shim.js';
@@ -101,7 +103,9 @@ beforeEach(async () => {
     'AGENT_PRESENCE_CLI_PATH',
     'CODEX_THREAD_ID',
     'CODEX_SESSION_ID',
-    'DSH_HOME'
+    'DSH_HOME',
+    'DSH_AGENT_PRESENCE_PLUGIN_FILE',
+    'DSH_AGENT_PRESENCE_PATCH_FILE'
   ]) {
     vi.stubEnv(key, undefined);
   }
@@ -109,12 +113,13 @@ beforeEach(async () => {
   process.exitCode = 0;
   vi.clearAllMocks();
   runtimeNpm.mockReset().mockImplementation(installFixtureRuntime);
+  dependencies.installDsh.mockReset();
   timeline = [];
   plans = [];
   errors = vi.spyOn(console, 'error').mockImplementation(() => {});
   vi.spyOn(console, 'log').mockImplementation(() => {});
   ui.isInteractiveTerminal.mockReturnValue(true);
-  ui.promptConfirm.mockResolvedValue(true);
+  ui.promptConfirm.mockReset().mockResolvedValue(true);
   ui.promptSelect.mockResolvedValue('cancel');
   ui.showInfo.mockImplementation((message) => timeline.push(message));
   ui.showNote.mockImplementation((message, title) => timeline.push(`${title}: ${message}`));
@@ -224,6 +229,93 @@ function expectStopped(): void {
 const argumentsForSetup = ['--skip-login', '--provider', 'magic-builder'];
 
 describe('setup through the harness', () => {
+  it.each([['invalid'], [], ['--yes']])(
+    'rejects invalid hook-command arguments %j before planning',
+    async (...value) => {
+      await expect(setup([...argumentsForSetup, '--hook-command', ...value], {}, fixture.layer)).rejects.toSatisfy(
+        (error: unknown) => errorMessage(error) === 'invalid --hook-command: expected package, npx, or absolute'
+      );
+
+      expect(dependencies.cleanup).not.toHaveBeenCalled();
+      expect(hooks.planInstall).not.toHaveBeenCalled();
+      expect(ui.promptConfirm).not.toHaveBeenCalled();
+      expect(runtimeNpm).not.toHaveBeenCalled();
+    }
+  );
+
+  it('rejects an invalid hook-command environment override before planning', async () => {
+    vi.stubEnv('AGENT_PRESENCE_HOOK_COMMAND', 'invalid');
+
+    await expect(setup(argumentsForSetup, {}, fixture.layer)).rejects.toThrow(
+      'invalid --hook-command: expected package, npx, or absolute'
+    );
+
+    expect(dependencies.cleanup).not.toHaveBeenCalled();
+    expect(hooks.planInstall).not.toHaveBeenCalled();
+    expect(ui.promptConfirm).not.toHaveBeenCalled();
+  });
+
+  it.each([false, true])(
+    'updates a managed dsh plugin without a plugin prompt (interactive: %s)',
+    async (interactive) => {
+      const paths = resolveDshPluginPaths();
+      await put(paths.pluginPath, `// ${DSH_PLUGIN_MARKER}\nconst command = "npx @rivus/agent-presence@0.10.0";\n`);
+      const installers = await vi.importActual<typeof import('../src/installers.js')>('../src/installers.js');
+      dependencies.installDsh.mockImplementation(installers.installDshPlugin);
+      ui.isInteractiveTerminal.mockReturnValue(interactive);
+      ui.promptConfirm.mockResolvedValue(false);
+      if (interactive) {
+        ui.promptConfirm.mockResolvedValueOnce(true);
+      }
+
+      await setup([...argumentsForSetup, '--yes'], {}, fixture.layer);
+
+      expect(process.exitCode).toBe(0);
+      expect(ui.promptConfirm.mock.calls).toEqual(interactive ? [['Apply this installation plan?']] : []);
+      const plugin = await readFile(paths.pluginPath, 'utf8');
+      expect(plugin).toContain(join(fixture.presenceHome, 'bin/agent-presence'));
+      expect(plugin).not.toContain('npx');
+    }
+  );
+
+  it.each([
+    { interactive: true, accepted: true },
+    { interactive: true, accepted: false },
+    { interactive: false, accepted: true }
+  ])('installs a fresh dsh plugin only with interactive consent (%j)', async ({ interactive, accepted }) => {
+    await mkdir(join(fixture.home, '.dsh'));
+    const paths = resolveDshPluginPaths();
+    const installers = await vi.importActual<typeof import('../src/installers.js')>('../src/installers.js');
+    dependencies.installDsh.mockImplementation(installers.installDshPlugin);
+    ui.isInteractiveTerminal.mockReturnValue(interactive);
+    ui.promptConfirm.mockResolvedValueOnce(true).mockResolvedValueOnce(accepted);
+
+    await setup([...argumentsForSetup, '--yes'], {}, fixture.layer);
+
+    expect(process.exitCode).toBe(0);
+    expect(ui.promptConfirm.mock.calls).toEqual(
+      interactive
+        ? [['Apply this installation plan?'], ['Install the dsh plugin for presence + token usage reporting?']]
+        : []
+    );
+    expect(existsSync(paths.pluginPath)).toBe(interactive && accepted);
+    expect(dependencies.installDsh).toHaveBeenCalledTimes(interactive && accepted ? 1 : 0);
+  });
+
+  it('preserves an unmarked dsh plugin during non-interactive setup', async () => {
+    const paths = resolveDshPluginPaths();
+    await put(paths.pluginPath, '// user plugin\n');
+    const installers = await vi.importActual<typeof import('../src/installers.js')>('../src/installers.js');
+    dependencies.installDsh.mockImplementation(installers.installDshPlugin);
+    ui.isInteractiveTerminal.mockReturnValue(false);
+
+    await setup([...argumentsForSetup, '--yes'], {}, fixture.layer);
+
+    expect(process.exitCode).toBe(0);
+    expect(dependencies.installDsh).not.toHaveBeenCalled();
+    expect(await readFile(paths.pluginPath, 'utf8')).toBe('// user plugin\n');
+  });
+
   it('shows all file, command, trust, note and dropped-hook fields in the full preview', async () => {
     let preview: InstallPlan | undefined;
     hooks.planInstall.mockImplementation((...args) =>
@@ -465,37 +557,28 @@ describe('setup through the harness', () => {
     expect((await readdir(runtimeHome)).sort()).toEqual(['0.9.0', packageVersion()].sort());
   });
 
-  it.each([false, true])(
-    'keeps the latest current and previous runtimes when an earlier setup finishes (return to original version: %s)',
-    async (returnToOriginalVersion) => {
-      const newerVersion = '1.2.0';
-      dependencies.runScripts.mockImplementationOnce(async () => {
-        await setup(argumentsForSetup, {}, fixture.layer, { version: newerVersion });
-        if (returnToOriginalVersion) {
-          await setup(argumentsForSetup, {}, fixture.layer);
-        }
-        return [];
-      });
+  it('keeps the runtime selected by a newer setup when an earlier setup finishes', async () => {
+    const newerVersion = '1.2.0';
+    dependencies.runScripts.mockImplementationOnce(async () => {
+      await setup(argumentsForSetup, {}, fixture.layer, { version: newerVersion });
+      return [];
+    });
 
-      await setup(argumentsForSetup, {}, fixture.layer);
+    await setup(argumentsForSetup, {}, fixture.layer);
 
-      expect(process.exitCode).toBe(0);
-      const newerCli = join(
-        fixture.presenceHome,
-        'runtime',
-        newerVersion,
-        'node_modules/@rivus/agent-presence/dist/src/cli.js'
-      );
-      expect(existsSync(newerCli)).toBe(true);
-      const selectedCli = returnToOriginalVersion ? newerCli.replace(newerVersion, packageVersion()) : newerCli;
-      expect(await readFile(join(fixture.presenceHome, 'bin/agent-presence'), 'utf8')).toContain(
-        shellQuote(selectedCli)
-      );
-      expect((await readdir(join(fixture.presenceHome, 'runtime'))).sort()).toEqual(
-        [packageVersion(), newerVersion].sort()
-      );
-    }
-  );
+    expect(process.exitCode).toBe(0);
+    const newerCli = join(
+      fixture.presenceHome,
+      'runtime',
+      newerVersion,
+      'node_modules/@rivus/agent-presence/dist/src/cli.js'
+    );
+    expect(existsSync(newerCli)).toBe(true);
+    expect(await readFile(join(fixture.presenceHome, 'bin/agent-presence'), 'utf8')).toContain(shellQuote(newerCli));
+    expect((await readdir(join(fixture.presenceHome, 'runtime'))).sort()).toEqual(
+      [packageVersion(), newerVersion].sort()
+    );
+  });
 
   it('does not prune old runtimes when setup stops after applying hooks', async () => {
     const oldRuntime = join(fixture.presenceHome, 'runtime', '0.8.0');

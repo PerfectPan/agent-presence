@@ -8,7 +8,6 @@ import * as z from 'zod/mini';
 import { createPresenceBundle } from '../src/harness/bundle.js';
 import { presenceRuntimeCliPath } from '../src/harness/runtime.js';
 import {
-  readPresenceShimGeneration,
   readPresenceShimRuntimeVersion,
   removePresenceShim,
   resolveHookCommandMode,
@@ -56,6 +55,8 @@ beforeEach(async () => {
     'AGENT_PRESENCE_CLI_PATH',
     'CLAUDE_CONFIG_DIR',
     'CODEX_HOME',
+    'CODEX_THREAD_ID',
+    'CODEX_SESSION_ID',
     'GEMINI_CLI_HOME',
     'GROK_HOME',
     'XDG_DATA_HOME',
@@ -82,10 +83,10 @@ describe('presence harness shim', () => {
 
     expect(await writePresenceShim()).toBe(shimPath);
     expect(await readFile(shimPath, 'utf8')).toBe(
-      `#!/bin/sh\n# agent-presence shim-generation: ${await readPresenceShimGeneration()}\n# agent-presence runtime-version: ${pkg.version}\nif [ -f ${shellQuote(originalExecPath)} ]; then\n  exec ${shellQuote(originalExecPath)} ${presenceRuntimeCliPath(pkg.version, presenceHome)} "$@"\nfi\nexec node ${presenceRuntimeCliPath(pkg.version, presenceHome)} "$@"\n`
+      `#!/bin/sh\n# agent-presence runtime-version: ${pkg.version}\nif [ -f ${shellQuote(originalExecPath)} ]; then\n  exec ${shellQuote(originalExecPath)} ${presenceRuntimeCliPath(pkg.version, presenceHome)} "$@"\nfi\nexec node ${presenceRuntimeCliPath(pkg.version, presenceHome)} "$@"\n`
     );
     expect((await stat(shimPath)).mode & 0o777).toBe(0o755);
-    expect(await readdir(dirname(shimPath))).toEqual(['agent-presence']);
+    expect((await readdir(dirname(shimPath))).sort()).toEqual(['agent-presence']);
   });
 
   it('atomically replaces the shim in the configured home with shell-quoted absolute parts and a stable bundle command', async () => {
@@ -99,14 +100,12 @@ describe('presence harness shim', () => {
     process.execPath = '/work/node bin/node';
     vi.stubEnv('AGENT_PRESENCE_HOOK_COMMAND', 'absolute');
     vi.stubEnv('AGENT_PRESENCE_CLI_PATH', "/work/presence's checkout/$runtime/dist/src/cli.js");
-    let expected = '';
+    const expected = `#!/bin/sh\nif [ -f '/work/node bin/node' ]; then\n  exec '/work/node bin/node' '/work/presence'\\''s checkout/$runtime/dist/src/cli.js' "$@"\nfi\nexec node '/work/presence'\\''s checkout/$runtime/dist/src/cli.js' "$@"\n`;
     const beforeRename = vi.fn<(source: string, target: string) => Promise<void>>(async (source, target) => {
       expect(dirname(source)).toBe(dirname(shimPath));
       expect(source).not.toBe(shimPath);
       expect(target).toBe(shimPath);
       expect(await readFile(shimPath, 'utf8')).toBe(previous);
-      const generation = /^# agent-presence shim-generation: (\S+)$/m.exec(await readFile(source, 'utf8'))?.[1];
-      expected = `#!/bin/sh\n# agent-presence shim-generation: ${generation}\nif [ -f '/work/node bin/node' ]; then\n  exec '/work/node bin/node' '/work/presence'\\''s checkout/$runtime/dist/src/cli.js' "$@"\nfi\nexec node '/work/presence'\\''s checkout/$runtime/dist/src/cli.js' "$@"\n`;
       expect(await readFile(source, 'utf8')).toBe(expected);
       expect((await stat(source)).mode & 0o777).toBe(0o755);
     });
@@ -117,28 +116,7 @@ describe('presence harness shim', () => {
     expect(await readFile(shimPath, 'utf8')).toBe(expected);
     expect((await stat(shimPath)).mode & 0o777).toBe(0o755);
     expect(createPresenceBundle()).toEqual(bundleBefore);
-    expect(await readdir(dirname(shimPath))).toEqual(['agent-presence']);
-  });
-
-  it('assigns a unique readback generation to every shim write, including the same version', async () => {
-    expect(await readPresenceShimGeneration()).toBeUndefined();
-    await writePresenceShim(undefined, { version: '1.2.3' });
-    const firstGeneration = await readPresenceShimGeneration();
-    expect(z.uuid().safeParse(firstGeneration).success).toBe(true);
-
-    await writePresenceShim(undefined, { version: '1.2.3' });
-    const secondGeneration = await readPresenceShimGeneration();
-    expect(z.uuid().safeParse(secondGeneration).success).toBe(true);
-    expect(secondGeneration).not.toBe(firstGeneration);
-
-    await writePresenceShim(undefined, { mode: 'absolute', cliPath: '/work/checkout/dist/src/cli.js' });
-    const absoluteGeneration = await readPresenceShimGeneration();
-    expect(z.uuid().safeParse(absoluteGeneration).success).toBe(true);
-    expect(absoluteGeneration).not.toBe(secondGeneration);
-    await writeFile(shimPath, '#!/bin/sh\nexec previous "$@"\n');
-    expect(await readPresenceShimGeneration()).toBeUndefined();
-    await writeFile(shimPath, '# agent-presence shim-generation: invalid\n');
-    expect(await readPresenceShimGeneration()).toBeUndefined();
+    expect((await readdir(dirname(shimPath))).sort()).toEqual(['agent-presence']);
   });
 
   it('preserves the existing shim and removes the temporary file when writing fails', async () => {
@@ -150,7 +128,7 @@ describe('presence harness shim', () => {
     await expect(writePresenceShim()).rejects.toThrow('shim write blocked by the test');
     expect(await readFile(shimPath, 'utf8')).toBe(previous);
     expect((await stat(shimPath)).mode & 0o777).toBe(0o600);
-    expect(await readdir(dirname(shimPath))).toEqual(['agent-presence']);
+    expect((await readdir(dirname(shimPath))).sort()).toEqual(['agent-presence']);
   });
 
   it('removes only the shim and accepts an already absent shim', async () => {
@@ -163,18 +141,24 @@ describe('presence harness shim', () => {
 
     await expect(readFile(shimPath, 'utf8')).rejects.toThrow(/ENOENT/);
     expect(await readFile(unrelated, 'utf8')).toBe('unrelated');
-    expect(await readdir(dirname(shimPath))).toEqual(['keep']);
+    expect((await readdir(dirname(shimPath))).sort()).toEqual(['keep']);
   });
 
-  it('normalizes package, npx alias and absolute modes and rejects an unsupported mode', async () => {
+  it('normalizes package, npx alias and absolute modes', async () => {
     expect(resolveHookCommandMode()).toBe('package');
     expect(resolveHookCommandMode('package')).toBe('package');
     expect(resolveHookCommandMode('npx')).toBe('package');
     expect(resolveHookCommandMode('absolute')).toBe('absolute');
-    expect(() => resolveHookCommandMode('unsupported')).toThrow(/Invalid/);
     await writePresenceShim(undefined, { mode: 'npx' });
     expect(await readPresenceShimRuntimeVersion()).toBeDefined();
     expect(await readFile(shimPath, 'utf8')).not.toContain('npx');
+  });
+
+  it('reports an invalid hook command mode in one line naming the allowed values', () => {
+    const expected = /^invalid --hook-command: expected package, npx, or absolute$/;
+    expect(() => resolveHookCommandMode('unsupported')).toThrow(expected);
+    vi.stubEnv('AGENT_PRESENCE_HOOK_COMMAND', 'unsupported');
+    expect(() => resolveHookCommandMode()).toThrow(expected);
   });
 
   it.each(['installed', 'missing'] as const)(

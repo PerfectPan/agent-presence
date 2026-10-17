@@ -7,12 +7,7 @@ import { Effect, type Layer } from 'effect';
 import { configSlotId, defaultCommandProviderId, getStatePath } from '../../config.js';
 import { loadValidatedConfig } from '../../config-schema.js';
 import { createPresenceBundle, PRESENCE_AGENTS } from '../../harness/bundle.js';
-import {
-  readPresenceShimGeneration,
-  readPresenceShimRuntimeVersion,
-  resolveHookCommandMode,
-  writePresenceShim
-} from '../../harness/shim.js';
+import { readPresenceShimRuntimeVersion, resolveHookCommandMode, writePresenceShim } from '../../harness/shim.js';
 import {
   installPresenceRuntime,
   prunePresenceRuntimes,
@@ -23,7 +18,7 @@ import { packageVersion } from '../../package-version.js';
 import { increaseEpoch, isDisabled, removeTombstone } from '../../queue/files.js';
 import { deleteQueueFile, listQueue } from '../../queue/reader.js';
 import { takeOver, type TakeoverOptions } from '../../queue/takeover.js';
-import { installDshPlugin, resolveDshPluginPaths } from '../../installers.js';
+import { hasManagedDshPlugin, installDshPlugin, resolveDshPluginPaths } from '../../installers.js';
 import { cleanupMigratedLegacyHome, hasLegacyHomeToMigrate, migrateLegacyHome } from '../../migration.js';
 import { isMacOS } from '../../platform.js';
 import { readCredential } from '../../secret.js';
@@ -48,23 +43,25 @@ import { login } from './login.js';
 import { resolveSignatureUrl } from './url.js';
 
 /**
- * dsh presence + usage is opt-in: prompt to install the dsh plugin when dsh
- * is detected. Non-interactive terminals skip it (use `pnpm run
- * install:dsh-plugin` for automation).
+ * Existing managed plugins already opted in; only a fresh installation needs
+ * interactive confirmation.
  */
 async function maybeInstallDshPlugin(): Promise<void> {
-  if (!isInteractiveTerminal()) {
-    return;
+  const paths = resolveDshPluginPaths();
+  if (!(await hasManagedDshPlugin(paths))) {
+    if (!isInteractiveTerminal()) {
+      return;
+    }
+    const dshHome = process.env.DSH_HOME?.trim() || join(homedir(), '.dsh');
+    if (!existsSync(dshHome)) {
+      return;
+    }
+    const install = await promptConfirm('Install the dsh plugin for presence + token usage reporting?');
+    if (!install) {
+      return;
+    }
   }
-  const dshHome = process.env.DSH_HOME?.trim() || join(homedir(), '.dsh');
-  if (!existsSync(dshHome)) {
-    return;
-  }
-  const install = await promptConfirm('Install the dsh plugin for presence + token usage reporting?');
-  if (!install) {
-    return;
-  }
-  const result = await installDshPlugin(resolveDshPluginPaths());
+  const result = await installDshPlugin(paths);
   showInfo(`setup installed: dsh plugin (${result.pluginPath})`);
   if (result.patchError) {
     showNote(`could not update dsh patch at ${result.patchPath}: ${result.patchError}`, 'dsh plugin');
@@ -145,6 +142,9 @@ export async function setup(
   const forceLogin = hasFlag(args, '--login') && !skipLogin;
   const skipHooks = hasFlag(args, '--no-hooks');
   const hookCommandMode = optionValue(args, '--hook-command');
+  const mode = resolveHookCommandMode(
+    hasFlag(args, '--hook-command') ? (hookCommandMode ?? '') : process.env.AGENT_PRESENCE_HOOK_COMMAND
+  );
 
   if (hookCommandMode) {
     process.env.AGENT_PRESENCE_HOOK_COMMAND = hookCommandMode;
@@ -207,7 +207,6 @@ export async function setup(
   const bundle = createPresenceBundle();
   let previousRuntimeVersion: string | undefined;
   let currentRuntimeVersion = packageVersion();
-  let shimGeneration: string | undefined;
   const completed = await runHarness(
     Effect.gen(function* () {
       const plan = yield* planSetupInstall(bundle);
@@ -231,14 +230,12 @@ export async function setup(
         yield* Effect.tryPromise(() =>
           withPresenceRuntimeLock(async () => {
             previousRuntimeVersion = await readPresenceShimRuntimeVersion();
-            const mode = resolveHookCommandMode();
             const runtime = mode === 'package' ? await installPresenceRuntime(undefined, runtimeOptions) : undefined;
             currentRuntimeVersion = runtime?.version ?? currentRuntimeVersion;
             await writePresenceShim(undefined, {
               mode,
               ...(runtime ? { cliPath: runtime.cliPath, version: runtime.version } : {})
             });
-            shimGeneration = await readPresenceShimGeneration();
           })
         );
         const applied = yield* applyInstall(plan).pipe(
@@ -293,9 +290,12 @@ export async function setup(
   await maybeInstallDshPlugin();
   await publishProvider(config, activeProvider);
   await withPresenceRuntimeLock(async () => {
-    if ((await readPresenceShimGeneration()) === shimGeneration) {
-      await prunePresenceRuntimes(currentRuntimeVersion, previousRuntimeVersion);
-    }
+    await prunePresenceRuntimes(
+      currentRuntimeVersion,
+      previousRuntimeVersion,
+      undefined,
+      await readPresenceShimRuntimeVersion()
+    );
   });
   finishOutro('setup: ok');
 }

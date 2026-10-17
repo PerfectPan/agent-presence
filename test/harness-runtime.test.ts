@@ -38,6 +38,8 @@ beforeEach(async () => {
     'AGENT_SIGNATURE_HOME',
     'CLAUDE_CONFIG_DIR',
     'CODEX_HOME',
+    'CODEX_THREAD_ID',
+    'CODEX_SESSION_ID',
     'GEMINI_CLI_HOME',
     'GROK_HOME',
     'XDG_DATA_HOME',
@@ -142,7 +144,7 @@ describe('presence runtime', () => {
       reused: false
     });
     expect(runNpm).toHaveBeenCalledOnce();
-    expect(await readdir(dirname(directory))).toEqual([version]);
+    expect((await readdir(dirname(directory))).sort()).toEqual([version]);
     expect(await readFile(presenceRuntimeCliPath(version, presenceHome), 'utf8')).toContain('runtime fixture');
   });
 
@@ -181,7 +183,7 @@ describe('presence runtime', () => {
         version
       });
       expect(await readFile(join(packageRoot, 'dist', 'src', 'cli.js'), 'utf8')).toContain('runtime fixture');
-      expect(await readdir(dirname(directory))).toEqual([version]);
+      expect((await readdir(dirname(directory))).sort()).toEqual([version]);
     }
   );
 
@@ -228,7 +230,7 @@ describe('presence runtime', () => {
     });
 
     await expect(installPresenceRuntime(presenceHome, { version, runNpm })).rejects.toThrow('registry offline');
-    expect(await readdir(join(presenceHome, 'runtime'))).toEqual([version]);
+    expect((await readdir(join(presenceHome, 'runtime'))).sort()).toEqual([version]);
     expect(await readFile(join(directory, 'keep'), 'utf8')).toBe('old incomplete runtime');
     await expect(readFile(join(presenceHome, 'bin', 'agent-presence'))).rejects.toThrow(/ENOENT/);
   });
@@ -240,7 +242,7 @@ describe('presence runtime', () => {
     await expect(installPresenceRuntime(presenceHome, { version, runNpm })).rejects.toThrow(
       'npm did not install a valid'
     );
-    expect(await readdir(join(presenceHome, 'runtime'))).toEqual([]);
+    expect((await readdir(join(presenceHome, 'runtime'))).sort()).toEqual([]);
     runNpm.mockClear();
     await expect(installPresenceRuntime(presenceHome, { version: '../outside', runNpm })).rejects.toThrow(/Invalid/);
     expect(runNpm).not.toHaveBeenCalled();
@@ -251,13 +253,35 @@ describe('presence runtime', () => {
     for (const installedVersion of ['1.2.1', '1.2.2', version]) {
       await createRuntime(join(presenceHome, 'runtime', installedVersion), installedVersion);
     }
-    await mkdir(join(presenceHome, 'runtime', '.install-other'));
     await writeFile(join(presenceHome, 'runtime', 'keep'), 'unrelated');
 
     await prunePresenceRuntimes(version, '1.2.2', presenceHome);
-    expect(await readdir(join(presenceHome, 'runtime'))).toEqual(['.install-other', '1.2.2', version, 'keep']);
+    expect((await readdir(join(presenceHome, 'runtime'))).sort()).toEqual(['1.2.2', version, 'keep']);
     await prunePresenceRuntimes(version, undefined, presenceHome);
-    expect(await readdir(join(presenceHome, 'runtime'))).toEqual(['.install-other', version, 'keep']);
+    expect((await readdir(join(presenceHome, 'runtime'))).sort()).toEqual([version, 'keep']);
+  });
+
+  it('preserves a runtime currently selected by another setup while pruning older versions', async () => {
+    for (const installedVersion of ['1.2.0', '1.2.1', '1.2.2', version]) {
+      await createRuntime(join(presenceHome, 'runtime', installedVersion), installedVersion);
+    }
+
+    await prunePresenceRuntimes('1.2.2', '1.2.1', presenceHome, version);
+
+    expect((await readdir(join(presenceHome, 'runtime'))).sort()).toEqual(['1.2.1', '1.2.2', version]);
+  });
+
+  it('removes interrupted installation directories when pruning runtimes', async () => {
+    await createRuntime(join(presenceHome, 'runtime', version));
+    for (const temporaryName of ['.install-interrupted', '.install-incomplete']) {
+      const temporaryDirectory = join(presenceHome, 'runtime', temporaryName);
+      await mkdir(temporaryDirectory);
+      await writeFile(join(temporaryDirectory, 'package.json'), 'incomplete install');
+    }
+
+    await prunePresenceRuntimes(version, undefined, presenceHome);
+
+    expect((await readdir(join(presenceHome, 'runtime'))).sort()).toEqual([version]);
   });
 
   it('removes the whole runtime independently and accepts absent runtime directories', async () => {

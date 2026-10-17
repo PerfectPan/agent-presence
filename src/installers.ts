@@ -57,6 +57,10 @@ export function resolveDshPluginPaths(): DshPluginPaths {
   };
 }
 
+export async function hasManagedDshPlugin(paths: DshPluginPaths): Promise<boolean> {
+  return (await readManagedExtension(paths.pluginPath, DSH_PLUGIN_MARKER)).status === 'managed';
+}
+
 export interface DshInstallResult {
   status: 'installed';
   pluginPath: string;

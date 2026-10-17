@@ -14,8 +14,11 @@ import { presenceShimPath } from './shim-path.js';
 export type HookCommandMode = 'package' | 'absolute';
 
 export function resolveHookCommandMode(value = process.env.AGENT_PRESENCE_HOOK_COMMAND): HookCommandMode {
-  const mode = z.optional(z.enum(['package', 'npx', 'absolute'])).parse(value);
-  return mode === 'absolute' ? 'absolute' : 'package';
+  const mode = z.optional(z.enum(['package', 'npx', 'absolute'])).safeParse(value);
+  if (!mode.success) {
+    throw new Error('invalid --hook-command: expected package, npx, or absolute');
+  }
+  return mode.data === 'absolute' ? 'absolute' : 'package';
 }
 
 function resolvePresenceCliPath(): string {
@@ -36,19 +39,6 @@ interface PresenceShimOptions {
   cliPath?: string;
   nodePath?: string;
   version?: string;
-}
-
-export async function readPresenceShimGeneration(home = getHomeDir()): Promise<string | undefined> {
-  try {
-    const contents = await readFile(presenceShimPath(home), 'utf8');
-    const generation = /^# agent-presence shim-generation: (\S+)$/m.exec(contents)?.[1];
-    return z.uuid().safeParse(generation).data;
-  } catch (error) {
-    if (hasNodeErrorCode(error, 'ENOENT')) {
-      return undefined;
-    }
-    throw error;
-  }
 }
 
 export async function readPresenceShimRuntimeVersion(home = getHomeDir()): Promise<string | undefined> {
@@ -80,7 +70,7 @@ export async function writePresenceShim(home = getHomeDir(), options: PresenceSh
     options.cliPath ?? (mode === 'absolute' ? resolvePresenceCliPath() : presenceRuntimeCliPath(version, home));
   const nodePath = options.nodePath ?? process.execPath;
   const runtimeMetadata = mode === 'package' ? `# agent-presence runtime-version: ${version}\n` : '';
-  const contents = `#!/bin/sh\n# agent-presence shim-generation: ${randomUUID()}\n${runtimeMetadata}if [ -f ${shellQuote(nodePath)} ]; then\n  exec ${shellQuote(nodePath)} ${shellQuote(cliPath)} "$@"\nfi\nexec node ${shellQuote(cliPath)} "$@"\n`;
+  const contents = `#!/bin/sh\n${runtimeMetadata}if [ -f ${shellQuote(nodePath)} ]; then\n  exec ${shellQuote(nodePath)} ${shellQuote(cliPath)} "$@"\nfi\nexec node ${shellQuote(cliPath)} "$@"\n`;
   await mkdir(dirname(shimPath), { recursive: true, mode: 0o700 });
   const temporaryPath = `${shimPath}.${randomUUID()}.tmp`;
   try {
