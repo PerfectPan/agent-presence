@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.11.0
+
+### Minor Changes
+
+- [#126](https://github.com/PerfectPan/agent-presence/pull/126) [`d517201`](https://github.com/PerfectPan/agent-presence/commit/d5172013fed4e91f17dd5b2926af32bedca7955b) Thanks [@PerfectPan](https://github.com/PerfectPan)! - Install setup hooks only for agents detected through PATH commands or agent-owned session/state and credential-file existence. Bare agent homes, presence hooks, shared settings and MCP configuration do not count; detection runs no agent commands and reads no credential contents. Use `--agents <id,...>` to choose supported agents explicitly. A desktop-app-only installation whose CLI has never run and is absent from PATH requires this override.
+  
+  Keep existing hooks for unselected agents and name them only when presence owns their installation records, with separate update and all-agent uninstall instructions. Verify only selected agents' entries and desired locations through the kit. When no agents are found, still prepare the runtime and shim before watcher, dsh and provider setup.
+
+### Patch Changes
+
+- [#121](https://github.com/PerfectPan/agent-presence/pull/121) [`7702e5b`](https://github.com/PerfectPan/agent-presence/commit/7702e5baef1399e0034d783ef205bd6139474cf5) Thanks [@PerfectPan](https://github.com/PerfectPan)! - Update hook help to show the installed `--agent` form and direct source calls, and only ask users to move kept files during setup refusal when kept files are present.
+
+- [#125](https://github.com/PerfectPan/agent-presence/pull/125) [`e9f9c3b`](https://github.com/PerfectPan/agent-presence/commit/e9f9c3be27f26b9f3a2071581d4f38dfe61e174b) Thanks [@PerfectPan](https://github.com/PerfectPan)! - Run hooks directly with Node through the stable shim instead of invoking npx. Setup installs its exact published version under the presence home's `runtime/<version>/` directory. `--hook-command package` is the default, with `npx` retained as an alias; `absolute` continues to use the checkout CLI. Invalid modes fail before install planning with a one-line error that names `--hook-command` for an explicit flag or `AGENT_PRESENCE_HOOK_COMMAND` for an environment value. Successful setup prunes under the runtime lock, keeping its version and the versions selected by the previous and current shim, and removes only unused version directories and leftover `runtime/.install-*` directories, preserving other directory names. Uninstall removes all runtimes.
+  
+  dsh and the macOS power watcher also use the shim. Setup automatically rewrites an already-installed presence dsh plugin, recognized by its marker, to use the shim without prompting, including with `--yes` or in a non-interactive terminal. Only a fresh dsh plugin install asks for confirmation and is offered only when dsh is detected in an interactive terminal. If the existing plugin cannot be read for its marker, setup prints one note, skips dsh work and continues provider setup and runtime pruning. `--no-hooks` neither inspects nor rewrites the plugin.
+  
+  Upgrading from 0.10.0 only requires installing this release and running setup. The installed agent commands are unchanged, so no uninstall or additional hook re-trust cycle is needed.
+
+- [#124](https://github.com/PerfectPan/agent-presence/pull/124) [`2a2aa3e`](https://github.com/PerfectPan/agent-presence/commit/2a2aa3e4cd012a9eef6ca16ebc7731297a9ca01e) Thanks [@PerfectPan](https://github.com/PerfectPan)! - Show setup's installation plan as readable file changes, commands, trust prompts, notes, dropped hooks, and conflict choices. Shorten home paths to `~` and summarize configuration entries without printing file contents. Explain shared hook registrations and entry removals in plain language, use the kit's agent names, and recognize symlinked home paths and trailing slashes.
+
 ## 0.10.0
 
 ### Minor Changes
