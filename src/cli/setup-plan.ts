@@ -7,7 +7,7 @@ import {
   type PlanConflict
 } from '@rivus/agent-kit/harness';
 import { Effect } from 'effect';
-import { PRESENCE_AGENTS } from '../harness/bundle.js';
+import type { PRESENCE_AGENTS } from '../harness/bundle.js';
 import { isInteractiveTerminal, promptSelect, showInfo, showNote } from './ui.js';
 
 function allowedChoices({ step, choices }: PlanConflict['conflicts'][number]): readonly ConflictChoice[] {
