@@ -72,7 +72,9 @@ Old absolute-path hook commands from a checkout without a presence marker can es
 4. Paste a Magic-Builder token when prompted so setup can publish the preview FaaS — open the 妙笔 bot, send `dev`, copy the token from its reply.
 5. Run `agent-presence url` and paste it into your Feishu profile signature as a custom link preview.
 
-`setup` writes no agent configuration before install confirmation. In a non-interactive terminal, `setup --yes` applies a conflict-free plan; conflicts still cause it to exit, and an interactive terminal still requires explicit confirmation. Setup applies the plan, records installed artifacts in the harness ledger and immediately verifies the kit artifacts. After successful verification, it runs the power-watcher step, offers the optional dsh plugin and configures the provider.
+`setup` detects Claude Code, Codex, Gemini CLI, Grok, opencode and Pi, then installs hooks only for agents found on the machine. Use `setup --agents claude-code,codex` to choose explicitly instead; supported ids are `claude-code`, `codex`, `gemini-cli`, `grok`, `opencode` and `pi`, and other ids are rejected. Existing artifacts for agents omitted by detection or `--agents` stay installed. If none are detected, setup skips hooks and continues with the watcher, dsh and provider steps.
+
+`setup` writes no agent configuration before install confirmation. In a non-interactive terminal, `setup --yes` applies a conflict-free plan; conflicts still cause it to exit, and an interactive terminal still requires explicit confirmation. Setup applies the plan, records installed artifacts in the harness ledger and immediately verifies the kit artifacts selected for this run. After successful verification, it runs the power-watcher step, offers the optional dsh plugin and configures the provider. Previous-release checks, `doctor` and `uninstall` still cover all six agents, including ones no longer detected.
 
 The installed hooks use a stable shim at `~/.agent-presence/bin/agent-presence`. Setup updates its pinned package command, or its Node/CLI paths in absolute mode, without changing the agents' hook commands. Claude Code, Codex, Gemini CLI and Grok command hooks use a five-second timeout in each agent's native unit. The opencode/Pi bridges limit synchronous finish delivery to five seconds; other events are sent asynchronously without a child-process timeout. Gemini uses its own event names. Claude hooks live in a plugin instead of the shared settings file that Cursor also reads. Changing to the shim command is expected to require one Codex hook review; later shim-only updates keep the installed command stable. See [installed locations and checks](https://agent-presence.vercel.app/guide/install/#installed-locations).
 
@@ -120,7 +122,7 @@ agent-presence config render \
 ## Commands
 
 ```bash
-agent-presence setup            # also: --login --skip-login --no-hooks --hook-command absolute --yes
+agent-presence setup            # also: --agents claude-code,codex --login --skip-login --no-hooks --hook-command absolute --yes
 agent-presence url
 agent-presence status           # --remote inspects the published preview
 agent-presence usage            # --days N / --json

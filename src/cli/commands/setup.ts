@@ -1,12 +1,12 @@
 import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import { applyInstall, discardPlan, verify, type HarnessServices } from '@rivus/agent-kit/harness';
+import { applyInstall, discardPlan, type HarnessServices } from '@rivus/agent-kit/harness';
 import { Effect, type Layer } from 'effect';
 
 import { configSlotId, defaultCommandProviderId, getStatePath } from '../../config.js';
 import { loadValidatedConfig } from '../../config-schema.js';
-import { createPresenceBundle, PRESENCE_AGENTS } from '../../harness/bundle.js';
+import { createPresenceBundle } from '../../harness/bundle.js';
 import { writePresenceShim } from '../../harness/shim.js';
 import { increaseEpoch, isDisabled, removeTombstone } from '../../queue/files.js';
 import { deleteQueueFile, listQueue } from '../../queue/reader.js';
@@ -20,7 +20,9 @@ import { hasFlag, optionValue } from '../args.js';
 import { hasCredential } from '../credential.js';
 import { runHarness } from '../harness.js';
 import { checkPreviousRelease, warnPreviousReleaseOverrides } from '../setup-legacy.js';
+import { parseSetupAgents, selectSetupAgents } from '../setup-agents.js';
 import { planSetupInstall } from '../setup-plan.js';
+import { verifySetupInstall } from '../setup-verify.js';
 import { MAGIC_TOKEN_HELP, publishMagicBuilderFaas } from '../magic-builder-setup.js';
 import {
   createSpinner,
@@ -128,6 +130,7 @@ export async function setup(
   takeover: TakeoverOptions = {},
   layer?: Layer.Layer<HarnessServices>
 ): Promise<void> {
+  const agentOverride = parseSetupAgents(args);
   const skipLogin = hasFlag(args, '--skip-login') || hasFlag(args, '--hooks-only');
   const forceLogin = hasFlag(args, '--login') && !skipLogin;
   const skipHooks = hasFlag(args, '--no-hooks');
@@ -194,7 +197,14 @@ export async function setup(
   const bundle = createPresenceBundle();
   const completed = await runHarness(
     Effect.gen(function* () {
-      const plan = yield* planSetupInstall(bundle);
+      const agents = yield* selectSetupAgents(agentOverride);
+      if (agents.length === 0) {
+        showInfo(
+          'No agents detected; setup installed no hooks. Install an agent and run setup again, or use --agents.'
+        );
+        return true;
+      }
+      const plan = yield* planSetupInstall(bundle, agents);
       if (!plan) {
         return false;
       }
@@ -227,7 +237,7 @@ export async function setup(
             `setup ${step.action}: ${step.locator.path}${step.locator.pointer ? `#${step.locator.pointer}` : ''}`
           );
         }
-        const verified = yield* verify('agent-presence', { bundle, agents: PRESENCE_AGENTS });
+        const verified = yield* verifySetupInstall(bundle, agents);
         for (const artifact of verified.artifacts) {
           showInfo(
             `verify ${artifact.status}: ${artifact.locator.path}${artifact.locator.pointer ? `#${artifact.locator.pointer}` : ''}`

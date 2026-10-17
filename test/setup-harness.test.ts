@@ -1,6 +1,7 @@
 import { existsSync } from 'node:fs';
 import { mkdir, readdir, readFile, readlink, realpath, stat, symlink, writeFile } from 'node:fs/promises';
 import { dirname, join, relative } from 'node:path';
+import * as discovery from '@rivus/agent-kit/discovery';
 import type { InstallPlan, PlanConflict } from '@rivus/agent-kit/harness';
 import { Effect } from 'effect';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test';
@@ -41,6 +42,10 @@ vi.mock('@rivus/agent-kit/harness', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@rivus/agent-kit/harness')>()),
   ...hooks
 }));
+vi.mock('@rivus/agent-kit/discovery', async (importOriginal) => {
+  const original = await importOriginal<typeof import('@rivus/agent-kit/discovery')>();
+  return { ...original, detectAgents: vi.fn<typeof original.detectAgents>(original.detectAgents) };
+});
 vi.mock('../src/cli/ui.js', () => ({
   ...ui,
   startIntro: vi.fn<typeof import('../src/cli/ui.js').startIntro>(),
@@ -211,7 +216,8 @@ function expectStopped(): void {
   expect(dependencies.publish).not.toHaveBeenCalled();
 }
 
-const argumentsForSetup = ['--skip-login', '--provider', 'magic-builder'];
+const detectedSetupArguments = ['--skip-login', '--provider', 'magic-builder'];
+const argumentsForSetup = [...detectedSetupArguments, '--agents', PRESENCE_AGENTS.join(',')];
 
 describe('setup through the harness', () => {
   it('shows all file, command, trust, note and dropped-hook fields in the full preview', async () => {
@@ -278,7 +284,7 @@ describe('setup through the harness', () => {
       return false;
     });
 
-    await setup(['--provider', 'magic-builder'], {}, fixture.layer);
+    await setup(['--provider', 'magic-builder', '--agents', PRESENCE_AGENTS.join(',')], {}, fixture.layer);
 
     expectStopped();
     expect(dependencies.migrate).toHaveBeenCalledOnce();
@@ -638,7 +644,13 @@ describe('setup through the harness', () => {
       throw failure;
     });
 
-    await expect(setup(['--skip-login', '--provider', 'feishu-signature'], {}, fixture.layer)).rejects.toBe(failure);
+    await expect(
+      setup(
+        ['--skip-login', '--provider', 'feishu-signature', '--agents', PRESENCE_AGENTS.join(',')],
+        {},
+        fixture.layer
+      )
+    ).rejects.toBe(failure);
 
     expect(process.exitCode).toBe(0);
     expect(errors).not.toHaveBeenCalled();
@@ -796,4 +808,176 @@ describe('setup through the harness', () => {
       expect(hooks.verify).toHaveBeenCalledTimes(2);
     }
   );
+});
+
+describe('setup agent selection', () => {
+  it('detects only Claude Code and Codex on the injected PATH and installs and verifies only them', async () => {
+    await put(join(fixture.binPath, 'claude'), 'fixture command; never execute\n');
+    await put(join(fixture.binPath, 'codex'), 'fixture command; never execute\n');
+    const detected = vi.mocked(discovery.detectAgents);
+
+    await setup(detectedSetupArguments, {}, fixture.layer);
+
+    expect(process.exitCode).toBe(0);
+    expect(detected).toHaveBeenCalledExactlyOnceWith(fixture.platform, {
+      agents: PRESENCE_AGENTS,
+      versionProbe: false,
+      recipes: expect.any(Object)
+    });
+    expect(plans).toHaveLength(1);
+    expect(new Set(plans[0]?.steps.flatMap(({ agents }) => agents))).toEqual(new Set(['claude-code', 'codex']));
+    expect(hooks.verify).toHaveBeenCalledExactlyOnceWith('agent-presence', {
+      bundle: expect.any(Object),
+      agents: ['claude-code', 'codex']
+    });
+    expect(existsSync(join(fixture.home, '.claude/skills/agent-presence'))).toBe(true);
+    expect(existsSync(join(fixture.home, '.codex/plugins/agent-presence'))).toBe(true);
+    for (const path of ['.grok', '.gemini', '.config/opencode', '.pi']) {
+      expect(existsSync(join(fixture.home, path))).toBe(false);
+    }
+    for (const agent of ['gemini-cli', 'grok', 'opencode', 'pi']) {
+      expect(ui.showInfo).toHaveBeenCalledWith(`${agent}: not found; install it and run setup again`);
+    }
+    expect(output()).toContain(
+      'Existing artifacts for unselected agents are left unchanged; run uninstall to remove them.'
+    );
+    expect(fixture.processCalls).toEqual([]);
+  });
+
+  it('counts configuration-only evidence without running version commands or reading credential files', async () => {
+    const credential = join(fixture.home, '.codex/auth.json');
+    await put(credential, '{"fixture":"must not be read"}\n');
+    await mkdir(join(fixture.home, '.claude'));
+    const read = vi.spyOn(fixture.platform.fs, 'read');
+
+    await setup(detectedSetupArguments, {}, fixture.layer);
+
+    expect(process.exitCode).toBe(0);
+    expect(new Set(plans[0]?.steps.flatMap(({ agents }) => agents))).toEqual(new Set(['claude-code', 'codex']));
+    expect(read.mock.calls.map(([path]) => path)).not.toContain(credential);
+    expect(fixture.processCalls).toEqual([]);
+    expect(await readFile(credential, 'utf8')).toBe('{"fixture":"must not be read"}\n');
+  });
+
+  it('lets a deduplicated canonical override bypass discovery and select absent agents', async () => {
+    const detected = vi.mocked(discovery.detectAgents);
+
+    await setup([...detectedSetupArguments, '--agents', ' grok, pi, grok '], {}, fixture.layer);
+
+    expect(process.exitCode).toBe(0);
+    expect(detected).not.toHaveBeenCalled();
+    expect(new Set(plans[0]?.steps.flatMap(({ agents }) => agents))).toEqual(new Set(['grok', 'pi']));
+    expect(hooks.planInstall.mock.calls[0]?.[1]?.agents).toEqual(['grok', 'pi']);
+    expect(hooks.verify).toHaveBeenCalledExactlyOnceWith('agent-presence', {
+      bundle: expect.any(Object),
+      agents: ['grok', 'pi']
+    });
+    expect(existsSync(join(fixture.home, '.grok/hooks/agent-presence.json'))).toBe(true);
+    expect(existsSync(join(fixture.home, '.pi/agent/extensions/agent-presence.ts'))).toBe(true);
+    for (const path of ['.claude', '.codex', '.gemini', '.config/opencode']) {
+      expect(existsSync(join(fixture.home, path))).toBe(false);
+    }
+    expect(output()).not.toContain('not found;');
+  });
+
+  it.each([
+    { value: ['not-an-agent'], message: 'unsupported setup agent: not-an-agent' },
+    { value: ['cursor'], message: 'unsupported setup agent: cursor' },
+    { value: ['claude'], message: 'unsupported setup agent: claude' },
+    { value: [''], message: 'empty agent id' },
+    { value: ['  '], message: 'empty agent id' },
+    { value: ['codex,'], message: 'empty agent id' },
+    { value: [], message: 'requires a comma-separated list' },
+    { value: ['--yes'], message: 'requires a comma-separated list' }
+  ])('rejects invalid --agents $value before migration, login or writes', async ({ value, message }) => {
+    const before = await snapshotTargets();
+    const detected = vi.mocked(discovery.detectAgents);
+
+    await expect(
+      setup(['--agents', ...value, '--no-hooks', '--hook-command', 'absolute'], {}, fixture.layer)
+    ).rejects.toThrow(message);
+
+    expect(dependencies.cleanup).not.toHaveBeenCalled();
+    expect(dependencies.hasLegacy).not.toHaveBeenCalled();
+    expect(dependencies.login).not.toHaveBeenCalled();
+    expect(dependencies.hasCredential).not.toHaveBeenCalled();
+    expect(dependencies.runScripts).not.toHaveBeenCalled();
+    expect(dependencies.readCredential).not.toHaveBeenCalled();
+    expect(hooks.planInstall).not.toHaveBeenCalled();
+    expect(hooks.applyInstall).not.toHaveBeenCalled();
+    expect(detected).not.toHaveBeenCalled();
+    expect(process.env.AGENT_PRESENCE_HOOK_COMMAND).toBeUndefined();
+    expect(await snapshotTargets()).toEqual(before);
+    expect(await readdir(fixture.home)).toEqual([]);
+  });
+
+  it('prints each missing or unknown agent on one line with failed checks and an override', async () => {
+    const path = join(fixture.home, '.grok');
+    const originalStat = fixture.platform.fs.stat.bind(fixture.platform.fs);
+    vi.spyOn(fixture.platform.fs, 'stat').mockImplementation((target, options) =>
+      target === path
+        ? Promise.reject(Object.assign(new Error('fixture permission denied'), { code: 'EACCES' }))
+        : originalStat(target, options)
+    );
+
+    await setup(detectedSetupArguments, {}, fixture.layer);
+
+    expect(process.exitCode).toBe(0);
+    expect(ui.showInfo).toHaveBeenCalledWith(
+      `grok: detection unknown (${path}: EACCES); use --agents grok to install explicitly`
+    );
+    expect(timeline.filter((line) => line.startsWith('grok:'))).toHaveLength(1);
+    for (const agent of PRESENCE_AGENTS.filter((id) => id !== 'grok')) {
+      expect(timeline.filter((line) => line === `${agent}: not found; install it and run setup again`)).toHaveLength(1);
+    }
+    expect(hooks.planInstall).not.toHaveBeenCalled();
+    expect(fixture.processCalls).toEqual([]);
+  });
+
+  it('skips hook planning, shim, confirmation and verification when nothing is found and continues independent steps', async () => {
+    await mkdir(join(fixture.home, '.dsh'));
+    ui.promptConfirm.mockResolvedValue(false);
+
+    await setup(detectedSetupArguments, {}, fixture.layer);
+
+    expect(process.exitCode).toBe(0);
+    expect(hooks.planInstall).not.toHaveBeenCalled();
+    expect(hooks.applyInstall).not.toHaveBeenCalled();
+    expect(hooks.verify).not.toHaveBeenCalled();
+    expect(hooks.discardPlan).not.toHaveBeenCalled();
+    expect(ui.promptConfirm).toHaveBeenCalledExactlyOnceWith(
+      'Install the dsh plugin for presence + token usage reporting?'
+    );
+    expect(existsSync(join(fixture.presenceHome, 'bin/agent-presence'))).toBe(false);
+    expect(dependencies.runScripts).toHaveBeenCalledOnce();
+    expect(dependencies.publish).toHaveBeenCalledOnce();
+    expect(output()).toContain('No agents detected; setup installed no hooks.');
+    expect(ui.finishOutro).toHaveBeenCalledExactlyOnceWith('setup: ok');
+    expect(timeline.filter((entry) => ['watcher', 'publish'].includes(entry))).toEqual(['watcher', 'publish']);
+  });
+
+  it('leaves earlier unselected artifacts and their ledger records untouched during setup verification', async () => {
+    await setup([...detectedSetupArguments, '--agents', 'pi'], {}, fixture.layer);
+    const path = join(fixture.home, '.pi/agent/extensions/agent-presence.ts');
+    await writeFile(path, '// user change must remain untouched\n');
+    const before = (await fixture.run(realHarness.inventory())).entries.filter((entry) => entry.agents.includes('pi'));
+    timeline = [];
+    hooks.verify.mockClear();
+
+    await setup([...detectedSetupArguments, '--agents', 'grok'], {}, fixture.layer);
+
+    expect(process.exitCode).toBe(0);
+    expect(await readFile(path, 'utf8')).toBe('// user change must remain untouched\n');
+    expect((await fixture.run(realHarness.inventory())).entries.filter((entry) => entry.agents.includes('pi'))).toEqual(
+      before
+    );
+    expect(hooks.verify).toHaveBeenCalledExactlyOnceWith('agent-presence', {
+      bundle: expect.any(Object),
+      agents: ['grok']
+    });
+    expect(output()).not.toContain(`verify drift: ${path}`);
+    expect(output()).toContain(
+      'Existing artifacts for unselected agents are left unchanged; run uninstall to remove them.'
+    );
+  });
 });

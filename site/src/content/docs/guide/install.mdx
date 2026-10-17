@@ -38,9 +38,19 @@ agent-presence setup
 </TabItem>
 </Tabs>
 
+`setup` detects the six supported agents: `claude-code`, `codex`, `gemini-cli`, `grok`, `opencode` and `pi`. It selects agents reported as `found` or `runnable`. Detection checks only whether commands on `PATH`, applications, configuration paths or MCP configuration paths exist; it does not run agent commands or read credentials. A remaining configuration directory also counts as `found`, even after the executable is removed; use `--agents` to limit installation explicitly.
+
+For a missing agent, setup asks you to install it and run setup again. If a check cannot complete and nothing establishes that the agent is present, setup skips it as `unknown`, names the failed checks and points to `--agents`. Override detection with a comma-separated list of supported kit ids:
+
+```bash
+agent-presence setup --agents claude-code,codex
+```
+
+Unknown ids and kit ids without presence support are errors. Existing artifacts for agents omitted by detection or `--agents` remain installed. Install an agent later and rerun setup to add its hooks. If no agent is detected and `--agents` is absent, setup reports that it will install no hooks and continues with the watcher, dsh and provider steps.
+
 `setup` lists configuration conflicts and their allowed resolutions, re-plans with your choices, then shows the complete changes, commands and expected trust prompts. Review and confirm that plan before it writes agent configuration. Canceling, declining confirmation or encountering a protected target stops setup. Login and local home migration may already have written their own data.
 
-In a non-interactive terminal, `setup --yes` applies a conflict-free plan. It does not resolve conflicts automatically. An interactive terminal always asks for confirmation, including with `--yes`. After applying the plan, setup immediately verifies the kit artifacts. If verification fails, setup stops without installing the watcher, offering dsh, publishing to the provider or displaying a signature URL. After successful verification, it installs the macOS power watcher, offers the optional dsh plugin and configures the provider. A canceled dsh prompt or provider failure does not skip the verification results. Linux skips the watcher and relies on TTL pruning.
+In a non-interactive terminal, `setup --yes` applies a conflict-free plan. It does not resolve conflicts automatically. An interactive terminal always asks for confirmation, including with `--yes`. After applying the plan, setup immediately verifies the kit artifacts selected for this run. If verification fails, setup stops without installing the watcher, offering dsh, publishing to the provider or displaying a signature URL. After successful verification, or when no agent was selected, it installs the macOS power watcher, offers the optional dsh plugin and configures the provider. A canceled dsh prompt or provider failure does not skip the verification results. Linux skips the watcher and relies on TTL pruning.
 
 ## Without a global install
 
@@ -86,7 +96,7 @@ npx --yes @rivus/agent-presence@<previous-version> uninstall
 
 Run the uninstall for each distinct version pinned in replacement hook commands. Also run `0.9.0`, the last release before the harness migration, whenever any replacement entry is not a hook command with a pinned version. Bridge files and opencode config references need this fallback even when other entries pin versions; an older pinned release may not know those later artifacts. For a checkout installation, run `node <checkout>/dist/src/cli.js uninstall` before updating that checkout. Then install this release and run `agent-presence setup` again. Do not use an unpinned uninstall: this version removes only agent artifacts in its harness ledger and leaves previous-release entries outside it untouched. Later upgrades update that ledger in place through setup, without an uninstall.
 
-When setup detects previous-release entries or files kept from an earlier removal, it lists their agent, path and kind, plus the event and command for hooks, and exits non-zero before queue recovery, login or install confirmation. Agent targets and queue files remain unchanged; an approved legacy-home migration can already have run. `--no-hooks` skips this check.
+The previous-release check covers all six supported agents regardless of detection or `--agents`. When setup detects previous-release entries or files kept from an earlier removal, it lists their agent, path and kind, plus the event and command for hooks, and exits non-zero before queue recovery, login or install confirmation. Agent targets and queue files remain unchanged; an approved legacy-home migration can already have run. `--no-hooks` skips this check.
 
 - Entries marked for replacement need the previous release's uninstall above. A renamed plugin copy or hand-edited entry that uninstall leaves must be removed by hand at the listed path.
 - Files marked as kept from an earlier removal belong to you, including files installed by this version. Move or remove them by hand; do not use the old uninstall for them, because it would delete your kept file.
@@ -111,7 +121,7 @@ The old uninstall also removes the dsh plugin and macOS watcher; setup offers ds
 
 ## Installed locations
 
-These are the default user locations. The plan shows the resolved paths when an agent home is overridden.
+These are the default user locations for selected agents. The plan shows the resolved paths when an agent home is overridden.
 
 | Agent       | Managed artifact                                                                                                                                                                                                                                                   |
 | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -138,6 +148,6 @@ agent-presence inventory
 agent-presence uninstall
 ```
 
-`doctor` checks hook health and the harness ledger; warnings and errors produce a non-zero exit. Its duplicate checks use both presence-specific previous-release markers and the installed command, and cover command-hook files, not opencode/Pi bridge files. It also checks other tools' hooks, so their warnings can cause exit 1. `inventory` shows the shared kit ledger, including other applications' entries. Both commands accept `--json`; see [Commands](/reference/commands/) for their limits.
+`doctor` checks hook health and the harness ledger for all six supported agents, even if they are no longer detected; warnings and errors produce a non-zero exit. Its duplicate checks use both presence-specific previous-release markers and the installed command, and cover command-hook files, not opencode/Pi bridge files. It also checks other tools' hooks, so their warnings can cause exit 1. `inventory` shows the shared kit ledger, including other applications' entries. Both commands accept `--json`; see [Commands](/reference/commands/) for their limits.
 
-`uninstall` reports removed artifacts and every kept location with its reason, then independently removes the shim, dsh plugin and macOS watcher. It preserves credentials, configuration and session state by default. It removes only harness-recorded agent artifacts; previous-release hooks are not imported into that ledger. Follow the upgrade procedure above to remove them with their own release.
+`uninstall` covers all six supported agents, including agents no longer detected. It reports removed artifacts and every kept location with its reason, then independently removes the shim, dsh plugin and macOS watcher. It preserves credentials, configuration and session state by default. It removes only harness-recorded agent artifacts; previous-release hooks are not imported into that ledger. Follow the upgrade procedure above to remove them with their own release.
