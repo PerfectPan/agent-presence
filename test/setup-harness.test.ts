@@ -322,6 +322,80 @@ describe('setup through the harness', () => {
     expect(ui.showNote.mock.calls).toEqual(readablePreview(false, true));
   });
 
+  it('previews TOML hook removals and plugin registration when the Codex CLI becomes available', async () => {
+    await put(join(fixture.home, '.codex/config.toml'), '# keep this comment\nmodel = "fixture-model"\n');
+    await fixture.writeShim();
+    const bundle = createPresenceBundle(fixture.presenceHome);
+    const fallbackPlan = await Effect.runPromise(
+      realHarness.planInstall(bundle, { agents: PRESENCE_AGENTS }).pipe(Effect.provide(withoutAgentCli()))
+    );
+    await Effect.runPromise(realHarness.applyInstall(fallbackPlan).pipe(Effect.provide(withoutAgentCli())));
+    const before = await snapshotTargets();
+    ui.promptConfirm.mockResolvedValue(false);
+
+    await setup(argumentsForSetup, {}, fixture.layer);
+
+    expectStopped();
+    expect(ui.showNote.mock.calls).toEqual([
+      [
+        [
+          'create ~/.codex/plugins/agent-presence/.agents/plugins/marketplace.json',
+          'create ~/.codex/plugins/agent-presence/plugins/agent-presence/.codex-plugin/plugin.json',
+          'create ~/.codex/plugins/agent-presence/plugins/agent-presence/hooks/hooks.json',
+          'update ~/.codex/config.toml: hooks PreToolUse (remove), SessionStart (remove), Stop (remove), UserPromptSubmit (remove)'
+        ].join('\n'),
+        'Planned changes'
+      ],
+      [
+        [
+          'codex plugin marketplace add ~/.codex/plugins/agent-presence',
+          'codex plugin add agent-presence@agent-presence'
+        ].join('\n'),
+        'Planned commands'
+      ],
+      ['Codex will ask you to review hooks in ~/.codex/plugins/agent-presence', 'Expected trust prompts'],
+      ['none', 'Notes'],
+      ['none', 'Dropped hooks'],
+      ['none', 'Conflict choices']
+    ]);
+    expect(await snapshotTargets()).toEqual(before);
+    expect(fixture.cliCalls).toEqual([]);
+    expect(fixture.processCalls).toEqual([]);
+  });
+
+  it('labels entry removals and restores while excluding noop, kept and released entries', async () => {
+    const path = join(fixture.home, '.codex/config.toml');
+    previewFixture({
+      changes: [{ path, before: 'before-marker', after: 'after-marker' }],
+      steps: (
+        [
+          { event: 'DeletedHook', action: 'remove', removal: 'delete' },
+          { event: 'RestoredHook', action: 'remove', removal: 'restore-pre-image' },
+          { event: 'DefaultRemovalHook', action: 'remove', removal: undefined },
+          { event: 'NoopHook', action: 'noop', removal: undefined },
+          { event: 'KeptHook', action: 'remove', removal: 'keep' },
+          { event: 'ReleasedHook', action: 'remove', removal: 'release' }
+        ] as const
+      ).map(({ event, action, removal }) => ({
+        locator: { kind: 'toml-entry', path, pointer: `/hooks/${event}` },
+        agents: [],
+        precondition: { absent: true },
+        capturePreImage: false,
+        action,
+        removal
+      }))
+    });
+    ui.promptConfirm.mockResolvedValue(false);
+
+    await setup(argumentsForSetup, {}, fixture.layer);
+
+    expectStopped();
+    expect(ui.showNote).toHaveBeenCalledWith(
+      'update ~/.codex/config.toml: hooks DefaultRemovalHook (remove), DeletedHook (remove), RestoredHook (restore)',
+      'Planned changes'
+    );
+  });
+
   it('shows file actions without contents and distinguishes absent files from empty files', async () => {
     previewFixture({
       changes: [
@@ -387,6 +461,66 @@ describe('setup through the harness', () => {
     );
   });
 
+  it.each([
+    { name: 'a symlinked HOME', suffix: '' },
+    { name: 'a symlinked HOME with a trailing slash', suffix: '/' }
+  ])('shortens canonical and alias paths and commands under $name', async ({ suffix }) => {
+    const canonicalHome = join(await realpath(fixture.home), 'canonical-home');
+    const aliasHome = join(fixture.home, 'alias-home');
+    await mkdir(canonicalHome);
+    await symlink(canonicalHome, aliasHome);
+    vi.stubEnv('HOME', `${aliasHome}${suffix}`);
+    const outsideCanonical = `${canonicalHome}-outside/file.txt`;
+    const outsideAlias = `${aliasHome}-outside/file.txt`;
+    previewFixture({
+      changes: [
+        { path: join(canonicalHome, 'canonical.txt'), after: '' },
+        { path: join(aliasHome, 'alias.txt'), after: '' },
+        { path: outsideCanonical, after: '' },
+        { path: outsideAlias, after: '' },
+        { path: '/work/outside.txt', after: '' }
+      ],
+      commands: [
+        {
+          agent: 'codex',
+          command: join(aliasHome, 'bin/agent tool'),
+          args: [
+            join(canonicalHome, 'plugins/canonical'),
+            join(aliasHome, 'plugins/alias'),
+            canonicalHome,
+            aliasHome,
+            outsideCanonical,
+            outsideAlias,
+            '/work/outside.txt'
+          ],
+          purpose: 'register',
+          locator: { kind: 'cli-registration', path: join(aliasHome, '.codex/config.toml'), pointer: '/marketplaces' }
+        }
+      ]
+    });
+    ui.promptConfirm.mockResolvedValue(false);
+
+    await setup(argumentsForSetup, {}, fixture.layer);
+
+    expectStopped();
+    expect(ui.showNote).toHaveBeenCalledWith(
+      [
+        'create ~/canonical.txt',
+        'create ~/alias.txt',
+        `create ${outsideCanonical}`,
+        `create ${outsideAlias}`,
+        'create /work/outside.txt'
+      ].join('\n'),
+      'Planned changes'
+    );
+    expect(ui.showNote).toHaveBeenCalledWith(
+      `~/'bin/agent tool' ~/plugins/canonical ~/plugins/alias ~ ~ ${shellQuote(outsideCanonical)} ${shellQuote(outsideAlias)} /work/outside.txt`,
+      'Planned commands'
+    );
+    expect(fixture.cliCalls).toEqual([]);
+    expect(fixture.processCalls).toEqual([]);
+  });
+
   it('explains plugin consent and folder trust prompts by agent and path', async () => {
     previewFixture({
       expectedTrustPrompts: [
@@ -411,6 +545,31 @@ describe('setup through the harness', () => {
       [
         'Claude Code will ask you to enable the plugin in ~/.claude/skills/agent-presence',
         'Gemini CLI will ask you to trust /work/project'
+      ].join('\n'),
+      'Expected trust prompts'
+    );
+  });
+
+  it('uses catalog display names and preserves an unknown agent id in trust prompts', async () => {
+    previewFixture({
+      expectedTrustPrompts: [
+        { agent: 'pi', kind: 'folder-trust', locator: { kind: 'dir', path: '/work/pi' } },
+        { agent: 'opencode', kind: 'folder-trust', locator: { kind: 'dir', path: '/work/opencode' } },
+        { agent: 'cursor', kind: 'folder-trust', locator: { kind: 'dir', path: '/work/cursor' } },
+        { agent: 'custom-agent', kind: 'folder-trust', locator: { kind: 'dir', path: '/work/custom' } }
+      ]
+    });
+    ui.promptConfirm.mockResolvedValue(false);
+
+    await setup(argumentsForSetup, {}, fixture.layer);
+
+    expectStopped();
+    expect(ui.showNote).toHaveBeenCalledWith(
+      [
+        'Pi will ask you to trust /work/pi',
+        'opencode will ask you to trust /work/opencode',
+        'Cursor will ask you to trust /work/cursor',
+        'custom-agent will ask you to trust /work/custom'
       ].join('\n'),
       'Expected trust prompts'
     );
@@ -443,15 +602,15 @@ describe('setup through the harness', () => {
     );
   });
 
-  it('explains which agent, event and file already fires an omitted hook', async () => {
+  it("explains that the dropped agent runs another agent's registration from a kit-style path", async () => {
     previewFixture({
       droppedHooks: [
         {
-          agent: 'pi',
+          agent: 'grok',
           firedBy: {
-            agent: 'opencode',
-            event: 'session.idle',
-            file: join(fixture.home, '.config/opencode/plugins/agent-presence.js')
+            agent: 'claude-code',
+            event: 'Stop',
+            file: '~/.claude/settings.json'
           }
         }
       ]
@@ -462,7 +621,7 @@ describe('setup through the harness', () => {
 
     expectStopped();
     expect(ui.showNote).toHaveBeenCalledWith(
-      'Pi session.idle: omitted because opencode already fires it from ~/.config/opencode/plugins/agent-presence.js',
+      "Grok: no hook of its own for Stop; Grok runs Claude Code's Stop hook in ~/.claude/settings.json",
       'Dropped hooks'
     );
   });

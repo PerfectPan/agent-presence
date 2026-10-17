@@ -1,6 +1,7 @@
 import { realpathSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { sep } from 'node:path';
+import { resolve, sep } from 'node:path';
+import { builtinCodingAgents, isBuiltinCodingAgentId } from '@rivus/agent-kit/catalog';
 import {
   CONFLICT_CHOICES,
   locatorKey,
@@ -23,7 +24,7 @@ interface ConflictSelection {
 }
 
 function homePathFormatter(): (path: string) => string {
-  const home = homedir();
+  const home = resolve(homedir());
   const homes = [home];
   try {
     // Kit locators resolve parent symlinks; command arguments can retain the original home spelling.
@@ -58,7 +59,9 @@ function entrySummary(plan: InstallPlan, path: string): string {
     const name = segments.pop()!;
     const group = locator.kind === 'managed-block' ? 'block' : segments.join('/');
     const entries = groups.get(group) ?? new Set<string>();
-    entries.add(`${name}${step.action === 'remove' ? ` (${step.removal ?? 'remove'})` : ''}`);
+    entries.add(
+      `${name}${step.action === 'remove' ? ` (${step.removal === 'restore-pre-image' ? 'restore' : 'remove'})` : ''}`
+    );
     groups.set(group, entries);
   }
   return [...groups]
@@ -67,15 +70,7 @@ function entrySummary(plan: InstallPlan, path: string): string {
 }
 
 function agentName(agent: TrustPrompt['agent']): string {
-  const names: Partial<Record<TrustPrompt['agent'], string>> = {
-    'claude-code': 'Claude Code',
-    codex: 'Codex',
-    'gemini-cli': 'Gemini CLI',
-    grok: 'Grok',
-    opencode: 'opencode',
-    pi: 'Pi'
-  };
-  return names[agent] ?? agent;
+  return isBuiltinCodingAgentId(agent) ? builtinCodingAgents[agent].displayName : agent;
 }
 
 function trustLines(prompts: InstallPlan['expectedTrustPrompts'], path: (value: string) => string): string[] {
@@ -136,7 +131,7 @@ function showPlan(plan: InstallPlan, selections: readonly ConflictSelection[]): 
       'Dropped hooks',
       plan.droppedHooks.map(
         ({ agent, firedBy }) =>
-          `${agentName(agent)} ${firedBy.event}: omitted because ${agentName(firedBy.agent)} already fires it from ${path(firedBy.file)}`
+          `${agentName(agent)}: no hook of its own for ${firedBy.event}; ${agentName(agent)} runs ${agentName(firedBy.agent)}'s ${firedBy.event} hook in ${path(firedBy.file)}`
       )
     ],
     ['Conflict choices', selections.map((selection) => `${selection.choice} ${location(selection)}`)]
