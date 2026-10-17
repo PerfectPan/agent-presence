@@ -83,13 +83,14 @@ describe('power watcher artifacts', () => {
     });
   });
 
+  function oversizedLogLines(): string {
+    return Array.from({ length: 6_200 }, (_, index) => `sequence=${index} payload=${'x'.repeat(1_000)}\n`).join('');
+  }
+
   async function useOversizedLog(): Promise<string> {
     tempDir = await mkdtemp(join(tmpdir(), 'agent-presence-power-watch-test-'));
     const logPath = join(tempDir, 'power-watch.log');
-    const lines = Array.from({ length: 6_200 }, (_, index) => `sequence=${index} payload=${'x'.repeat(1_000)}\n`).join(
-      ''
-    );
-    await writeFile(logPath, lines, { mode: 0o600 });
+    await writeFile(logPath, oversizedLogLines(), { mode: 0o600 });
     return logPath;
   }
 
@@ -125,53 +126,75 @@ describe('power watcher artifacts', () => {
 
   it.runIf(process.platform === 'darwin')(
     'compacts the Swift watcher log in place to recent bytes',
-    async () => {
-      const logPath = await useOversizedLog();
-      const before = await stat(logPath);
-      const swift = buildPowerEventWatcherSwift({ logPath });
-      const maintenanceEnd = swift.indexOf('func resetPresence');
-      expect(maintenanceEnd).toBeGreaterThan(0);
-      const sourcePath = join(tempDir!, 'prune-log.swift');
-      await writeFile(sourcePath, `${swift.slice(0, maintenanceEnd)}pruneWatcherLog()\n`);
+    async ({ signal }) => {
+      const directory = await mkdtemp(join(tmpdir(), 'agent-presence-power-watch-test-'));
+      tempDir = directory;
+      const retainedBytes = 1024 * 1024;
 
-      await execFileAsync('/usr/bin/swift', [sourcePath]);
+      async function writeLog(name: string, contents: Buffer) {
+        const logPath = join(directory, name);
+        await writeFile(logPath, contents, { mode: 0o600 });
+        return { logPath, contents, before: await stat(logPath) };
+      }
 
-      const after = await stat(logPath);
-      const contents = await readFile(logPath, 'utf8');
-      expect(after.ino).toBe(before.ino);
-      expect(after.size).toBeLessThan(2 * 1024 * 1024);
-      expect(contents).not.toContain('sequence=0 ');
-      expect(contents).toContain('sequence=6199 ');
+      const multiLineLog = await writeLog('multi-line.log', Buffer.from(oversizedLogLines()));
+      const singleLineLog = await writeLog('single-line.log', Buffer.alloc(6 * 1024 * 1024, 'x'));
+      const unreadableLog = await writeLog('unreadable.log', Buffer.alloc(6 * 1024 * 1024, 'u'));
+      const atLimitLog = await writeLog('at-limit.log', Buffer.alloc(5 * 1024 * 1024, 'a'));
+      const missingLogPath = join(directory, 'missing.log');
+      const scenarios = [
+        multiLineLog.logPath,
+        singleLineLog.logPath,
+        unreadableLog.logPath,
+        missingLogPath,
+        atLimitLog.logPath
+      ].map((logPath) => {
+        const swift = buildPowerEventWatcherSwift({ logPath });
+        const maintenanceStart = swift.indexOf('let watcherLogPath');
+        const maintenanceEnd = swift.indexOf('func resetPresence');
+        expect(maintenanceStart).toBeGreaterThan(0);
+        expect(maintenanceEnd).toBeGreaterThan(maintenanceStart);
+        return `do {\n${swift.slice(maintenanceStart, maintenanceEnd)}pruneWatcherLog()\n}\n`;
+      });
+      const sourcePath = join(directory, 'prune-logs.swift');
+      // The Swift toolchain verifies actual file I/O; maintenance only needs Foundation, so avoid compiling AppKit.
+      await writeFile(sourcePath, `import Foundation\n${scenarios.join('\n')}`);
 
-      await writeFile(logPath, 'x'.repeat(6 * 1024 * 1024));
-      const singleLineBefore = await stat(logPath);
-      await execFileAsync('/usr/bin/swift', [sourcePath]);
-      const singleLineAfter = await stat(logPath);
-      expect(singleLineAfter.ino).toBe(singleLineBefore.ino);
-      expect(singleLineAfter.size).toBe(1024 * 1024);
-      expect(await readFile(logPath, 'utf8')).toBe('x'.repeat(1024 * 1024));
+      await chmod(unreadableLog.logPath, 0o000);
+      try {
+        await execFileAsync('/usr/bin/swift', [sourcePath], { signal, killSignal: 'SIGKILL' });
+      } finally {
+        await chmod(unreadableLog.logPath, unreadableLog.before.mode & 0o777);
+      }
+
+      for (const log of [multiLineLog, singleLineLog]) {
+        const after = await stat(log.logPath);
+        expect(after.ino).toBe(log.before.ino);
+        expect(after.size).toBe(retainedBytes);
+        expect((await readFile(log.logPath)).equals(log.contents.subarray(-retainedBytes))).toBe(true);
+      }
+      for (const log of [unreadableLog, atLimitLog]) {
+        const after = await stat(log.logPath);
+        expect(after.ino).toBe(log.before.ino);
+        expect(after.size).toBe(log.before.size);
+        expect((await readFile(log.logPath)).equals(log.contents)).toBe(true);
+      }
+      await expect(stat(missingLogPath)).rejects.toMatchObject({ code: 'ENOENT' });
     },
     20_000
   );
 
   it.runIf(process.platform === 'darwin')(
-    'leaves the watcher log untouched when retention cannot read it',
+    'leaves the shell watcher log untouched when retention cannot read it',
     async () => {
       const logPath = await useOversizedLog();
       const original = await stat(logPath);
       const script = buildPowerWatcherScript({ logPath });
       const preambleEnd = script.indexOf('watcher_pid=""');
       expect(preambleEnd).toBeGreaterThan(0);
-      const swift = buildPowerEventWatcherSwift({ logPath });
-      const maintenanceEnd = swift.indexOf('func resetPresence');
-      expect(maintenanceEnd).toBeGreaterThan(0);
-      const sourcePath = join(tempDir!, 'prune-unreadable-log.swift');
-      await writeFile(sourcePath, `${swift.slice(0, maintenanceEnd)}pruneWatcherLog()\n`);
-
       await chmod(logPath, 0o000);
       try {
         await execFileAsync('/bin/zsh', ['-c', `${script.slice(0, preambleEnd)}prune_log\n`]);
-        await execFileAsync('/usr/bin/swift', [sourcePath]);
         expect((await stat(logPath)).size).toBe(original.size);
       } finally {
         await chmod(logPath, 0o600);
@@ -181,7 +204,7 @@ describe('power watcher artifacts', () => {
   );
 
   it.runIf(process.platform === 'darwin')(
-    'treats a missing watcher log as a no-op',
+    'treats a missing shell watcher log as a no-op',
     async () => {
       tempDir = await mkdtemp(join(tmpdir(), 'agent-presence-power-watch-test-'));
       const logPath = join(tempDir, 'missing.log');
@@ -189,13 +212,6 @@ describe('power watcher artifacts', () => {
       const preambleEnd = script.indexOf('watcher_pid=""');
       expect(preambleEnd).toBeGreaterThan(0);
       await execFileAsync('/bin/zsh', ['-c', `${script.slice(0, preambleEnd)}prune_log\n`]);
-
-      const swift = buildPowerEventWatcherSwift({ logPath });
-      const maintenanceEnd = swift.indexOf('func resetPresence');
-      expect(maintenanceEnd).toBeGreaterThan(0);
-      const sourcePath = join(tempDir, 'prune-missing-log.swift');
-      await writeFile(sourcePath, `${swift.slice(0, maintenanceEnd)}pruneWatcherLog()\n`);
-      await execFileAsync('/usr/bin/swift', [sourcePath]);
 
       await expect(stat(logPath)).rejects.toMatchObject({ code: 'ENOENT' });
     },
