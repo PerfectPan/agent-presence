@@ -40,8 +40,8 @@ Out of scope: everything else. See "Unchanged behavior".
 - While an agent target still holds entries that a previous version installed and `setup` can detect (the paired Plan 3.5 lists the ones it cannot), `agent-presence setup` writes nothing to the agent targets: it lists the entries it found and exits with an error asking the user to run the previous version's `agent-presence uninstall` first. It never removes those entries itself.
 - `agent-presence uninstall` removes the artifacts this version installed and reports anything it kept. It leaves entries that a previous version installed; that version's own uninstall removes them.
 - Confirmed default-mode setup prepares the exact published package version before changing the shim or agent targets. Once prepared, hooks, dsh and the macOS watcher execute the local CLI without npm or registry access. A failed package installation exits non-zero and leaves the existing shim and agent targets unchanged.
-- A successful setup retains its own runtime version, the version selected by the previous shim and the version selected by the shim at cleanup time, so a previous worker or overlapping setup keeps its files. Cleanup removes unused versions and interrupted installation directories. Uninstall removes the shim and all installed runtime versions independently of the harness removal result.
-- Setup recognizes an already-installed presence dsh plugin by its marker and rewrites it to use the shim without prompting, including with `--yes` or in a non-interactive terminal. Only a fresh installation asks for confirmation and is offered only when dsh is detected in an interactive terminal.
+- A successful setup retains its own runtime version, the version selected by the previous shim and the version selected by the shim at cleanup time, so a previous worker or overlapping setup keeps its files. Cleanup removes only unused version directories and `.install-*` interrupted installation directories, preserving directories with other names. Uninstall removes the shim and all installed runtime versions independently of the harness removal result.
+- Setup recognizes an already-installed presence dsh plugin by its marker and rewrites it to use the shim without prompting, including with `--yes` or in a non-interactive terminal. Only a fresh installation asks for confirmation and is offered only when dsh is detected in an interactive terminal. If the plugin cannot be read to inspect its marker, setup prints one note and skips dsh work while provider setup and runtime pruning continue. `--no-hooks` neither reads nor rewrites the plugin.
 - The kit's SQLite-backed process lock replaces the mkdir-based state lock and the hardlink-based log lock; a crashed process no longer leaves a lock that others must time out or reclaim. Both call sites keep today's bounded waits (about 2 seconds for state writes, about 2.5 seconds for log appends), except that the worker of [Spec 0003](0003-hook-event-queue.md) waits for the log lock before a dsh usage append instead of skipping the append; a handover interrupts that wait and leaves the append to the next worker.
 
 ## Unchanged Behavior
@@ -175,7 +175,7 @@ Everything not listed above stays unchanged, explicitly including:
 
 - Given the previous shim selects an installed runtime and older runtime versions also exist
 - When default-mode setup succeeds for a new version
-- Then it retains this setup's version, the previous shim's version and the version the shim selects at cleanup time, removes other versions and leftover interrupted-install directories, and does not remove a runtime an overlapping setup selected
+- Then it retains this setup's version, the previous shim's version and the version the shim selects at cleanup time, removes only other version directories and leftover `.install-*` directories, preserves directories with other names, and does not remove a runtime an overlapping setup selected
 - When absolute-mode setup succeeds
 - Then it keeps the previous shim's runtime even though it installs no runtime
 - When uninstall runs, even if harness removal fails
@@ -201,12 +201,21 @@ Everything not listed above stays unchanged, explicitly including:
 - Given no installed presence dsh plugin and dsh is detected in an interactive terminal
 - When setup reaches the dsh step
 - Then it asks for confirmation before installing a fresh plugin
+- Given the existing plugin path cannot be read to inspect its marker
+- When setup reaches the dsh step
+- Then it prints one note, skips dsh work and continues provider setup and runtime pruning
+- Given an installed marked presence dsh plugin
+- When setup runs with `--no-hooks`
+- Then it neither reads nor rewrites the plugin
 
 ### S18: Invalid hook-command mode
 
 - Given `--hook-command` has a value outside `package`, `npx` and `absolute`
 - When setup parses its arguments
-- Then it exits non-zero before installation planning with a one-line error listing the allowed values
+- Then it exits non-zero before installation planning with a one-line error naming `--hook-command` and listing the allowed values
+- Given no explicit flag and an invalid `AGENT_PRESENCE_HOOK_COMMAND` value
+- When setup resolves the mode
+- Then it exits non-zero with a one-line error naming `AGENT_PRESENCE_HOOK_COMMAND` and listing the allowed values
 
 ## Compatibility And Constraints
 

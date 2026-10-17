@@ -25,6 +25,7 @@ import { readCredential } from '../../secret.js';
 import { LINUX_WATCHER_SKIP_MESSAGE, runSetupScripts } from '../../setup.js';
 import { hasFlag, optionValue } from '../args.js';
 import { hasCredential } from '../credential.js';
+import { errorMessage } from '../errors.js';
 import { runHarness } from '../harness.js';
 import { checkPreviousRelease, warnPreviousReleaseOverrides } from '../setup-legacy.js';
 import { planSetupInstall } from '../setup-plan.js';
@@ -48,7 +49,14 @@ import { resolveSignatureUrl } from './url.js';
  */
 async function maybeInstallDshPlugin(): Promise<void> {
   const paths = resolveDshPluginPaths();
-  if (!(await hasManagedDshPlugin(paths))) {
+  let managed: boolean;
+  try {
+    managed = await hasManagedDshPlugin(paths);
+  } catch (error) {
+    showNote(`could not read dsh plugin at ${paths.pluginPath}: ${errorMessage(error)}`, 'dsh plugin');
+    return;
+  }
+  if (!managed) {
     if (!isInteractiveTerminal()) {
       return;
     }
@@ -142,8 +150,10 @@ export async function setup(
   const forceLogin = hasFlag(args, '--login') && !skipLogin;
   const skipHooks = hasFlag(args, '--no-hooks');
   const hookCommandMode = optionValue(args, '--hook-command');
+  const hasHookCommand = hasFlag(args, '--hook-command');
   const mode = resolveHookCommandMode(
-    hasFlag(args, '--hook-command') ? (hookCommandMode ?? '') : process.env.AGENT_PRESENCE_HOOK_COMMAND
+    hasHookCommand ? (hookCommandMode ?? '') : process.env.AGENT_PRESENCE_HOOK_COMMAND,
+    hasHookCommand ? '--hook-command' : 'AGENT_PRESENCE_HOOK_COMMAND'
   );
 
   if (hookCommandMode) {

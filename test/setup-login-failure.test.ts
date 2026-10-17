@@ -152,8 +152,13 @@ afterEach(async () => {
 });
 
 describe('setup failures at the CLI entry', () => {
-  it.each(['invalid', undefined])('prints one hook-command error before setup starts (%s)', async (value) => {
-    process.argv = [...previousArgv.slice(0, 2), 'setup', '--hook-command', ...(value ? [value] : [])];
+  it.each([
+    { args: ['--hook-command', 'invalid'], source: '--hook-command' },
+    { args: ['--hook-command'], source: '--hook-command' },
+    { args: [], source: 'AGENT_PRESENCE_HOOK_COMMAND' }
+  ])('prints one hook-command error before setup starts (%j)', async ({ args, source }) => {
+    process.argv = [...previousArgv.slice(0, 2), 'setup', ...args];
+    vi.stubEnv('AGENT_PRESENCE_HOOK_COMMAND', 'invalid');
     const reported = new Promise<void>((resolve) => {
       error.mockImplementation(() => resolve());
     });
@@ -162,7 +167,7 @@ describe('setup failures at the CLI entry', () => {
     await reported;
 
     expect(process.exitCode).toBe(1);
-    expect(error.mock.calls).toEqual([['invalid --hook-command: expected package, npx, or absolute']]);
+    expect(error.mock.calls).toEqual([[`invalid ${source}: expected package, npx, or absolute`]]);
     expect(stdout).not.toHaveBeenCalled();
     expect(stderr).not.toHaveBeenCalled();
     expect(timeline).toEqual([]);

@@ -13,10 +13,13 @@ import { presenceShimPath } from './shim-path.js';
 
 export type HookCommandMode = 'package' | 'absolute';
 
-export function resolveHookCommandMode(value = process.env.AGENT_PRESENCE_HOOK_COMMAND): HookCommandMode {
+export function resolveHookCommandMode(
+  value = process.env.AGENT_PRESENCE_HOOK_COMMAND,
+  source: '--hook-command' | 'AGENT_PRESENCE_HOOK_COMMAND' = 'AGENT_PRESENCE_HOOK_COMMAND'
+): HookCommandMode {
   const mode = z.optional(z.enum(['package', 'npx', 'absolute'])).safeParse(value);
   if (!mode.success) {
-    throw new Error('invalid --hook-command: expected package, npx, or absolute');
+    throw new Error(`invalid ${source}: expected package, npx, or absolute`);
   }
   return mode.data === 'absolute' ? 'absolute' : 'package';
 }

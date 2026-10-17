@@ -143,7 +143,11 @@ export async function prunePresenceRuntimes(
     throw error;
   }
   for (const entry of entries) {
-    if (entry.isDirectory() && !keep.has(entry.name)) {
+    if (
+      entry.isDirectory() &&
+      (versionSchema.safeParse(entry.name).success || entry.name.startsWith('.install-')) &&
+      !keep.has(entry.name)
+    ) {
       await rm(join(runtimeRoot, entry.name), { recursive: true, force: true });
     }
   }

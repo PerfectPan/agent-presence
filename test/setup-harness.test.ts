@@ -14,6 +14,7 @@ import { errorMessage } from '../src/cli/errors.js';
 import { writePresenceShim } from '../src/harness/shim.js';
 import * as runtimeModule from '../src/harness/runtime.js';
 import * as shimModule from '../src/harness/shim.js';
+import * as installersModule from '../src/installers.js';
 import { AGENT_HOME_VARIABLES, createHarnessFixture, type HarnessFixture } from './harness-support.js';
 
 const runtimeNpm = vi.fn<typeof installFixtureRuntime>(installFixtureRuntime);
@@ -247,7 +248,7 @@ describe('setup through the harness', () => {
     vi.stubEnv('AGENT_PRESENCE_HOOK_COMMAND', 'invalid');
 
     await expect(setup(argumentsForSetup, {}, fixture.layer)).rejects.toThrow(
-      'invalid --hook-command: expected package, npx, or absolute'
+      'invalid AGENT_PRESENCE_HOOK_COMMAND: expected package, npx, or absolute'
     );
 
     expect(dependencies.cleanup).not.toHaveBeenCalled();
@@ -314,6 +315,48 @@ describe('setup through the harness', () => {
     expect(process.exitCode).toBe(0);
     expect(dependencies.installDsh).not.toHaveBeenCalled();
     expect(await readFile(paths.pluginPath, 'utf8')).toBe('// user plugin\n');
+  });
+
+  it.each(['EISDIR', 'EACCES'])(
+    'continues publishing and pruning after a dsh plugin read failure (%s)',
+    async (code) => {
+      const paths = resolveDshPluginPaths();
+      const failure = Object.assign(new Error(`${code}: fixture plugin read failed`), { code });
+      vi.spyOn(installersModule, 'hasManagedDshPlugin').mockRejectedValueOnce(failure);
+      const staleRuntime = join(fixture.presenceHome, 'runtime', '0.8.0');
+      await mkdir(staleRuntime, { recursive: true });
+
+      await expect(setup(argumentsForSetup, {}, fixture.layer)).resolves.toBeUndefined();
+
+      expect(process.exitCode).toBe(0);
+      expect(errors).not.toHaveBeenCalled();
+      expect(ui.showNote.mock.calls.filter(([, title]) => title === 'dsh plugin')).toEqual([
+        [`could not read dsh plugin at ${paths.pluginPath}: ${failure.message}`, 'dsh plugin']
+      ]);
+      expect(ui.promptConfirm.mock.calls).toEqual([['Apply this installation plan?']]);
+      expect(dependencies.installDsh).not.toHaveBeenCalled();
+      expect(dependencies.publish).toHaveBeenCalledOnce();
+      expect(existsSync(staleRuntime)).toBe(false);
+      expect(ui.finishOutro).toHaveBeenCalledExactlyOnceWith('setup: ok');
+    }
+  );
+
+  it('neither reads nor rewrites a marked dsh plugin with --no-hooks', async () => {
+    const paths = resolveDshPluginPaths();
+    const original = `// ${DSH_PLUGIN_MARKER}\nconst command = "npx @rivus/agent-presence@0.10.0";\n`;
+    await put(paths.pluginPath, original);
+    const inspect = vi.spyOn(installersModule, 'hasManagedDshPlugin');
+    const installers = await vi.importActual<typeof import('../src/installers.js')>('../src/installers.js');
+    dependencies.installDsh.mockImplementation(installers.installDshPlugin);
+
+    await setup([...argumentsForSetup, '--no-hooks'], {}, fixture.layer);
+
+    expect(process.exitCode).toBe(0);
+    expect(inspect).not.toHaveBeenCalled();
+    expect(dependencies.installDsh).not.toHaveBeenCalled();
+    expect(await readFile(paths.pluginPath, 'utf8')).toBe(original);
+    expect(existsSync(paths.patchPath)).toBe(false);
+    expect(dependencies.publish).toHaveBeenCalledOnce();
   });
 
   it('shows all file, command, trust, note and dropped-hook fields in the full preview', async () => {

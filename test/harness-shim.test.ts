@@ -154,11 +154,17 @@ describe('presence harness shim', () => {
     expect(await readFile(shimPath, 'utf8')).not.toContain('npx');
   });
 
-  it('reports an invalid hook command mode in one line naming the allowed values', () => {
+  it('reports an invalid flag mode in one line naming the flag and allowed values', () => {
     const expected = /^invalid --hook-command: expected package, npx, or absolute$/;
-    expect(() => resolveHookCommandMode('unsupported')).toThrow(expected);
+    expect(() => resolveHookCommandMode('unsupported', '--hook-command')).toThrow(expected);
+  });
+
+  it('reports invalid environment modes for default resolver and shim callers', async () => {
+    const expected = /^invalid AGENT_PRESENCE_HOOK_COMMAND: expected package, npx, or absolute$/;
     vi.stubEnv('AGENT_PRESENCE_HOOK_COMMAND', 'unsupported');
     expect(() => resolveHookCommandMode()).toThrow(expected);
+    await expect(writePresenceShim()).rejects.toThrow(expected);
+    await expect(readFile(shimPath, 'utf8')).rejects.toThrow(/ENOENT/);
   });
 
   it.each(['installed', 'missing'] as const)(

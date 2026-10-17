@@ -284,6 +284,21 @@ describe('presence runtime', () => {
     expect((await readdir(join(presenceHome, 'runtime'))).sort()).toEqual([version]);
   });
 
+  it('preserves unrecognized directories while pruning managed runtime and install directories', async () => {
+    await createRuntime(join(presenceHome, 'runtime', version));
+    await createRuntime(join(presenceHome, 'runtime', '1.2.2'), '1.2.2');
+    for (const directoryName of ['.install-incomplete', '.install', 'cache', 'v1.2.3']) {
+      await mkdir(join(presenceHome, 'runtime', directoryName));
+    }
+    const cacheFile = join(presenceHome, 'runtime', 'cache', 'keep');
+    await writeFile(cacheFile, 'unrelated data');
+
+    await prunePresenceRuntimes(version, undefined, presenceHome);
+
+    expect((await readdir(join(presenceHome, 'runtime'))).sort()).toEqual(['.install', version, 'cache', 'v1.2.3']);
+    expect(await readFile(cacheFile, 'utf8')).toBe('unrelated data');
+  });
+
   it('removes the whole runtime independently and accepts absent runtime directories', async () => {
     await prunePresenceRuntimes(version, undefined, presenceHome);
     await createRuntime(join(presenceHome, 'runtime', version));
