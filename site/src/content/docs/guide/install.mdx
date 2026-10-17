@@ -40,7 +40,7 @@ agent-presence setup
 
 ## Agent detection
 
-`setup` detects the six supported agents: `claude-code`, `codex`, `gemini-cli`, `grok`, `opencode` and `pi`. It selects agents reported as `found` or `runnable`. Detection checks only whether commands on `PATH`, known application paths, or agent-owned session/state stores and credential files exist. It does not run agent commands or read credential contents, so detection alone cannot establish `runnable`.
+`setup` detects the six supported agents: `claude-code`, `codex`, `gemini-cli`, `grok`, `opencode` and `pi`. It selects agents reported as `found` or `runnable`. Detection checks only whether commands on `PATH` or agent-owned session/state stores and credential files exist. It does not run agent commands or read credential contents, so detection alone cannot establish `runnable`.
 
 The default agent-owned evidence paths are:
 
@@ -57,7 +57,7 @@ The default agent-owned evidence paths are:
 
 An empty session store counts, and retained agent-owned state can establish `found` after the executable is removed. An agent home alone, presence hooks/plugins, shared settings and MCP configuration do not count, so running presence setup does not make an otherwise missing agent detectable.
 
-For a missing agent, setup asks you to install it and run setup again. If a check cannot complete and nothing establishes that the agent is present, setup skips it as `unknown`, names the failed checks and points to `--agents`. Use this override for an agent installed but never run and absent from `PATH`, or to limit the selection. It accepts a comma-separated list of supported kit ids:
+For a missing agent, setup asks you to install it and run setup again. If a check cannot complete and nothing establishes that the agent is present, setup skips it as `unknown`, names the failed checks and points to `--agents`. A desktop-app-only installation whose CLI has never run and is absent from `PATH` requires this override. You can also use it to limit the selection. It accepts a comma-separated list of supported kit ids:
 
 ```bash
 agent-presence setup --agents claude-code,codex

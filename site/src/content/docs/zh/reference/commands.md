@@ -43,9 +43,9 @@ agent-presence uninstall --credentials
 agent-presence uninstall --all
 ```
 
-`setup` 检测 `claude-code`、`codex`、`gemini-cli`、`grok`、`opencode` 和 `pi`，只为状态为 `found` 或 `runnable` 的智能体安装 hook。检测检查 `PATH` 中的命令、已知应用路径，或智能体自身的会话、状态存储和凭据文件是否存在，不运行智能体命令，也不读取凭据内容。智能体 home 目录本身、presence hook 或插件、共享 settings、MCP 配置都不算证据，完整路径见[智能体检测](/zh/guide/install/#智能体检测)。未找到智能体时会提示先安装、再运行 setup；`unknown` 结果会列出失败的检查并提示使用 `--agents`。
+`setup` 检测 `claude-code`、`codex`、`gemini-cli`、`grok`、`opencode` 和 `pi`，只为状态为 `found` 或 `runnable` 的智能体安装 hook。检测检查 `PATH` 中的命令，或智能体自身的会话、状态存储和凭据文件是否存在，不运行智能体命令，也不读取凭据内容。智能体 home 目录本身、presence hook 或插件、共享 settings、MCP 配置都不算证据，完整路径见[智能体检测](/zh/guide/install/#智能体检测)。未找到智能体时会提示先安装、再运行 setup；`unknown` 结果会列出失败的检查并提示使用 `--agents`。
 
-`--agents <id,...>` 接收逗号分隔的上述六个 kit id，覆盖检测结果，包括已安装但从未运行、且不在 `PATH` 中的智能体；未知 id 和 presence 不支持的 kit id 会被拒绝。未被检测选中或未列入 `--agents` 的智能体，其 hook 保持不变。只有 harness 安装记录中存在属于 `agent-presence` 的未选中智能体条目时，setup 才会列出这些智能体，并提示用 `agent-presence setup --agents <id,...>` 更新它们。`agent-presence uninstall` 会移除所有智能体的 presence hook。没有检测到智能体且未覆盖选择时，setup 跳过智能体安装计划、确认、应用和校验，但仍按所选 `--hook-command` 模式准备 shim：`package` 安装或复用固定版本 runtime，`absolute` 使用 checkout 的 CLI。准备成功后才继续 watcher、dsh 和 provider 步骤。
+`--agents <id,...>` 接收逗号分隔的上述六个 kit id，覆盖检测结果。仅安装桌面应用、从未运行 CLI 且命令不在 `PATH` 中时，需要此参数。未知 id 和 presence 不支持的 kit id 会被拒绝。未被检测选中或未列入 `--agents` 的智能体，其 hook 保持不变。只有 harness 安装记录中存在属于 `agent-presence` 的未选中智能体条目时，setup 才会列出这些智能体，并提示用 `agent-presence setup --agents <id,...>` 更新它们。`agent-presence uninstall` 会移除所有智能体的 presence hook。没有检测到智能体且未覆盖选择时，setup 跳过智能体安装计划、确认、应用和校验，但仍按所选 `--hook-command` 模式准备 shim：`package` 安装或复用固定版本 runtime，`absolute` 使用 checkout 的 CLI。准备成功后才继续 watcher、dsh 和 provider 步骤。
 
 `setup` 在队列恢复和登录前检查全部六个智能体的旧版本项目和此前卸载时保留的文件，不受检测结果或 `--agents` 影响。它列出这些项目（也可能由本版本安装），并拒绝继续，直到这些项目被移走或移除，见[升级指引](/zh/guide/install/#从-090-或更早版本升级)。需要替换的项目应对每个固定的 hook 版本分别卸载；只要有一个需要替换的项目不是固定版本的 hook 命令，就额外运行 `0.9.0`。运行这些卸载命令前，先手动处理保留文件。随后列出每个配置冲突的位置、原因和允许的处理方式，按你的选择重新规划，展示完整计划后请求确认。没有可选处理方式的目标（如 dotfiles 管理或符号链接目标）会使 setup 退出。取消或拒绝确认会丢弃已有计划并以非零退出码结束，不写入智能体配置；本地迁移和登录可能已完成。
 
