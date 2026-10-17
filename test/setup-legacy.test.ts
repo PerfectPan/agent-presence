@@ -74,7 +74,7 @@ const OVERRIDES = [
   'PI_AGENT_PRESENCE_EXTENSION_FILE',
   'PI_AGENT_PRESENCE_EXTENSION_DIR'
 ];
-const ARGS = ['--provider', 'feishu-signature'];
+const ARGS = ['--provider', 'feishu-signature', '--agents', PRESENCE_AGENTS.join(',')];
 let fixture: HarnessFixture;
 let previousExitCode: typeof process.exitCode;
 let log: ReturnType<typeof vi.spyOn>;

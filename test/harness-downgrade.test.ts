@@ -193,7 +193,20 @@ async function seedUnrelatedSettings(): Promise<void> {
 async function installCurrent(mode: PreviousReleaseCommandMode): Promise<Bundle> {
   vi.stubEnv('AGENT_PRESENCE_CLI_PATH', '/work/presence/dist/src/cli.js');
   await seedUnrelatedSettings();
-  await setup(['--skip-login', '--provider', 'feishu-signature', '--yes', '--hook-command', mode], {}, fixture.layer);
+  await setup(
+    [
+      '--skip-login',
+      '--provider',
+      'feishu-signature',
+      '--yes',
+      '--hook-command',
+      mode,
+      '--agents',
+      PRESENCE_AGENTS.join(',')
+    ],
+    {},
+    fixture.layer
+  );
   expect(errors).toEqual([]);
   expect(boundary.finish).toHaveBeenLastCalledWith('setup: ok');
   expect(boundary.setupScripts).toHaveBeenCalledOnce();

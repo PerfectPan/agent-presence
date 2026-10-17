@@ -32,7 +32,8 @@ export async function createHarnessFixture(
 ) {
   const home = await mkdtemp(join(tmpdir(), options.homePrefix ?? 'presence-harness-'));
   const presenceHome = join(home, '.agent-presence');
-  const node = createNodePlatform({ home, env: { HOME: home, PATH: '' } });
+  const binPath = join(home, 'bin');
+  const node = createNodePlatform({ home, env: { HOME: home, PATH: binPath } });
   const cliCalls: AgentCommand[] = [];
   const availableCalls: string[] = [];
   const processCalls: string[] = [];
@@ -100,6 +101,7 @@ export async function createHarnessFixture(
 
   const platform = {
     ...node,
+    os: 'linux' as const,
     clock: { now: () => HARNESS_NOW, monotonic: () => 1_000 },
     process: {
       ...node.process,
@@ -143,6 +145,8 @@ export async function createHarnessFixture(
   return {
     home,
     presenceHome,
+    binPath,
+    platform,
     layer,
     cliCalls,
     availableCalls,

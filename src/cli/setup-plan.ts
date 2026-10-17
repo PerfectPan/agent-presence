@@ -13,7 +13,7 @@ import {
   type TrustPrompt
 } from '@rivus/agent-kit/harness';
 import { Effect } from 'effect';
-import { PRESENCE_AGENTS } from '../harness/bundle.js';
+import type { PRESENCE_AGENTS } from '../harness/bundle.js';
 import { shellQuote } from '../shell-quote.js';
 import { isInteractiveTerminal, promptSelect, showInfo, showNote } from './ui.js';
 
@@ -148,14 +148,14 @@ function allowedChoices({ step, choices }: PlanConflict['conflicts'][number]): r
   return choices.filter((choice) => CONFLICT_CHOICES[reason].includes(choice));
 }
 
-export function planSetupInstall(bundle: Bundle) {
+export function planSetupInstall(bundle: Bundle, agents: readonly (typeof PRESENCE_AGENTS)[number][]) {
   return Effect.gen(function* () {
     const choices: Record<string, ConflictChoice> = {};
     const selections: ConflictSelection[] = [];
     const asked = new Set<string>();
 
     while (true) {
-      const attempt = yield* planInstall(bundle, { agents: PRESENCE_AGENTS, choices }).pipe(
+      const attempt = yield* planInstall(bundle, { agents, choices }).pipe(
         Effect.map((plan) => ({ plan, conflicts: undefined })),
         Effect.catchTag('PlanConflict', (error) => Effect.succeed({ plan: undefined, conflicts: error.conflicts }))
       );

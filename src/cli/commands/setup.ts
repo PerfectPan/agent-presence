@@ -6,7 +6,7 @@ import { Effect, type Layer } from 'effect';
 
 import { configSlotId, defaultCommandProviderId, getStatePath } from '../../config.js';
 import { loadValidatedConfig } from '../../config-schema.js';
-import { createPresenceBundle, PRESENCE_AGENTS } from '../../harness/bundle.js';
+import { createPresenceBundle } from '../../harness/bundle.js';
 import { readPresenceShimRuntimeVersion, resolveHookCommandMode, writePresenceShim } from '../../harness/shim.js';
 import {
   installPresenceRuntime,
@@ -28,6 +28,7 @@ import { hasCredential } from '../credential.js';
 import { errorMessage } from '../errors.js';
 import { runHarness } from '../harness.js';
 import { checkPreviousRelease, warnPreviousReleaseOverrides } from '../setup-legacy.js';
+import { parseSetupAgents, selectSetupAgents } from '../setup-agents.js';
 import { planSetupInstall } from '../setup-plan.js';
 import { MAGIC_TOKEN_HELP, publishMagicBuilderFaas } from '../magic-builder-setup.js';
 import {
@@ -146,6 +147,7 @@ export async function setup(
   layer?: Layer.Layer<HarnessServices>,
   runtimeOptions: RuntimeInstallOptions = {}
 ): Promise<void> {
+  const agentOverride = parseSetupAgents(args);
   const skipLogin = hasFlag(args, '--skip-login') || hasFlag(args, '--hooks-only');
   const forceLogin = hasFlag(args, '--login') && !skipLogin;
   const skipHooks = hasFlag(args, '--no-hooks');
@@ -217,9 +219,28 @@ export async function setup(
   const bundle = createPresenceBundle();
   let previousRuntimeVersion: string | undefined;
   let currentRuntimeVersion = packageVersion();
+  async function prepareRuntime(): Promise<void> {
+    await withPresenceRuntimeLock(async () => {
+      previousRuntimeVersion = await readPresenceShimRuntimeVersion();
+      const runtime = mode === 'package' ? await installPresenceRuntime(undefined, runtimeOptions) : undefined;
+      currentRuntimeVersion = runtime?.version ?? currentRuntimeVersion;
+      await writePresenceShim(undefined, {
+        mode,
+        ...(runtime ? { cliPath: runtime.cliPath, version: runtime.version } : {})
+      });
+    });
+  }
   const completed = await runHarness(
     Effect.gen(function* () {
-      const plan = yield* planSetupInstall(bundle);
+      const agents = yield* selectSetupAgents(agentOverride);
+      if (agents.length === 0) {
+        showInfo(
+          'No agents detected; setup installed no hooks. Install an agent and run setup again, or use --agents.'
+        );
+        yield* Effect.tryPromise(prepareRuntime);
+        return true;
+      }
+      const plan = yield* planSetupInstall(bundle, agents);
       if (!plan) {
         return false;
       }
@@ -237,17 +258,7 @@ export async function setup(
           process.exitCode = 1;
           return false;
         }
-        yield* Effect.tryPromise(() =>
-          withPresenceRuntimeLock(async () => {
-            previousRuntimeVersion = await readPresenceShimRuntimeVersion();
-            const runtime = mode === 'package' ? await installPresenceRuntime(undefined, runtimeOptions) : undefined;
-            currentRuntimeVersion = runtime?.version ?? currentRuntimeVersion;
-            await writePresenceShim(undefined, {
-              mode,
-              ...(runtime ? { cliPath: runtime.cliPath, version: runtime.version } : {})
-            });
-          })
-        );
+        yield* Effect.tryPromise(prepareRuntime);
         const applied = yield* applyInstall(plan).pipe(
           Effect.tapError((error) =>
             Effect.sync(() => {
@@ -262,7 +273,7 @@ export async function setup(
             `setup ${step.action}: ${step.locator.path}${step.locator.pointer ? `#${step.locator.pointer}` : ''}`
           );
         }
-        const verified = yield* verify('agent-presence', { bundle, agents: PRESENCE_AGENTS });
+        const verified = yield* verify('agent-presence', { bundle, agents });
         for (const artifact of verified.artifacts) {
           showInfo(
             `verify ${artifact.status}: ${artifact.locator.path}${artifact.locator.pointer ? `#${artifact.locator.pointer}` : ''}`

@@ -1,6 +1,7 @@
 import { existsSync } from 'node:fs';
 import { mkdir, readFile, realpath, rm, stat, symlink, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
+import { builtinProbeRecipes, detectAgents } from '@rivus/agent-kit/discovery';
 import { ExternalOwner, applyInstall, doctor, planInstall, verify, type Bundle } from '@rivus/agent-kit/harness';
 import { Effect, Layer } from 'effect';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test';
@@ -82,6 +83,31 @@ async function install(agents: readonly (typeof PRESENCE_AGENTS)[number][] = PRE
 }
 
 describe('ledger-backed uninstall', () => {
+  it('removes installed Grok artifacts after discovery no longer finds the agent', async () => {
+    const command = join(fixture.binPath, 'grok');
+    await mkdir(fixture.binPath, { recursive: true });
+    await writeFile(command, 'fixture command; never execute\n');
+    const { plan } = await install(['grok']);
+    await rm(command);
+    await expect(stat(command)).rejects.toMatchObject({ code: 'ENOENT' });
+    const detected = await detectAgents(fixture.platform, {
+      agents: ['grok'],
+      versionProbe: false,
+      recipes: { grok: { ...builtinProbeRecipes.grok, auth: {} } }
+    });
+    expect(detected.map(({ status }) => status)).toEqual(['missing']);
+
+    await uninstall([], {}, fixture.layer);
+
+    for (const { locator } of plan.steps) {
+      await expect(stat(locator.path)).rejects.toMatchObject({ code: 'ENOENT' });
+      expect(lines.some((line) => line.includes(`remove (delete): ${locator.path}`))).toBe(true);
+    }
+    expect(lines).toContain('uninstall: ok');
+    expect(errors).toEqual([]);
+    expect(fixture.processCalls).toEqual([]);
+  });
+
   it('keeps the executing runtime available until its uninstall scripts complete', async () => {
     const runtimeScript = join(fixture.presenceHome, 'runtime/0.9.0/dist/scripts/uninstall-dsh-plugin.js');
     await mkdir(dirname(runtimeScript), { recursive: true });
@@ -98,6 +124,7 @@ describe('ledger-backed uninstall', () => {
     expect(existsSync(join(fixture.presenceHome, 'runtime'))).toBe(false);
     expect(lines).toContain('uninstall: ok');
   });
+
   it.each(PRESENCE_AGENTS)(
     '%s installs, verifies, repeats unchanged, and restores unrelated settings and comments',
     async (agent) => {
