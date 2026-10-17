@@ -5,6 +5,7 @@ import { getConfigPath, getStatePath, saveConfig } from '../../config.js';
 import { loadValidatedConfig } from '../../config-schema.js';
 import { PRESENCE_AGENTS } from '../../harness/bundle.js';
 import { removePresenceShim } from '../../harness/shim.js';
+import { removePresenceRuntime } from '../../harness/runtime.js';
 import { queuePaths, writeTombstone } from '../../queue/files.js';
 import { deleteStopRequests } from '../../queue/stop-request.js';
 import { takeOver, type TakeoverOptions } from '../../queue/takeover.js';
@@ -122,5 +123,7 @@ export async function uninstall(
     });
   }
 
+  // Uninstall may itself be running from this runtime, including its removal scripts.
+  await remove('runtime removal failed', () => removePresenceRuntime());
   finishOutro(failed ? 'uninstall: incomplete' : 'uninstall: ok');
 }

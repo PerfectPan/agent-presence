@@ -33,7 +33,10 @@ vi.mock('../src/cli/setup-legacy.js', () => ({
   warnPreviousReleaseOverrides: vi.fn<typeof import('../src/cli/setup-legacy.js').warnPreviousReleaseOverrides>()
 }));
 vi.mock('../src/cli/setup-plan.js', () => ({ planSetupInstall: dependencies.planInstall }));
-vi.mock('../src/harness/shim.js', () => ({ writePresenceShim: dependencies.writeShim }));
+vi.mock('../src/harness/shim.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../src/harness/shim.js')>()),
+  writePresenceShim: dependencies.writeShim
+}));
 vi.mock('../src/migration.js', () => ({
   cleanupMigratedLegacyHome: vi
     .fn<typeof import('../src/migration.js').cleanupMigratedLegacyHome>()
@@ -148,7 +151,30 @@ afterEach(async () => {
   await fixture.dispose();
 });
 
-describe('setup login failure at the CLI entry', () => {
+describe('setup failures at the CLI entry', () => {
+  it.each([
+    { args: ['--hook-command', 'invalid'], source: '--hook-command' },
+    { args: ['--hook-command'], source: '--hook-command' },
+    { args: [], source: 'AGENT_PRESENCE_HOOK_COMMAND' }
+  ])('prints one hook-command error before setup starts (%j)', async ({ args, source }) => {
+    process.argv = [...previousArgv.slice(0, 2), 'setup', ...args];
+    vi.stubEnv('AGENT_PRESENCE_HOOK_COMMAND', 'invalid');
+    const reported = new Promise<void>((resolve) => {
+      error.mockImplementation(() => resolve());
+    });
+
+    await import('../src/cli.js');
+    await reported;
+
+    expect(process.exitCode).toBe(1);
+    expect(error.mock.calls).toEqual([[`invalid ${source}: expected package, npx, or absolute`]]);
+    expect(stdout).not.toHaveBeenCalled();
+    expect(stderr).not.toHaveBeenCalled();
+    expect(timeline).toEqual([]);
+    expect(dependencies.planInstall).not.toHaveBeenCalled();
+    expect(dependencies.login).not.toHaveBeenCalled();
+  });
+
   it.each([false, true])('prints one message and exits 1 with --no-hooks=%s', async (noHooks) => {
     process.argv = [...previousArgv.slice(0, 2), 'setup', ...(noHooks ? ['--no-hooks'] : [])];
     const reported = new Promise<void>((resolve) => {
