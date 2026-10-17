@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import { applyInstall, discardPlan, type HarnessServices } from '@rivus/agent-kit/harness';
+import { applyInstall, discardPlan, verify, type HarnessServices } from '@rivus/agent-kit/harness';
 import { Effect, type Layer } from 'effect';
 
 import { configSlotId, defaultCommandProviderId, getStatePath } from '../../config.js';
@@ -30,7 +30,6 @@ import { runHarness } from '../harness.js';
 import { checkPreviousRelease, warnPreviousReleaseOverrides } from '../setup-legacy.js';
 import { parseSetupAgents, selectSetupAgents } from '../setup-agents.js';
 import { planSetupInstall } from '../setup-plan.js';
-import { verifySetupInstall } from '../setup-verify.js';
 import { MAGIC_TOKEN_HELP, publishMagicBuilderFaas } from '../magic-builder-setup.js';
 import {
   createSpinner,
@@ -274,7 +273,7 @@ export async function setup(
             `setup ${step.action}: ${step.locator.path}${step.locator.pointer ? `#${step.locator.pointer}` : ''}`
           );
         }
-        const verified = yield* verifySetupInstall(bundle, agents);
+        const verified = yield* verify('agent-presence', { bundle, agents });
         for (const artifact of verified.artifacts) {
           showInfo(
             `verify ${artifact.status}: ${artifact.locator.path}${artifact.locator.pointer ? `#${artifact.locator.pointer}` : ''}`

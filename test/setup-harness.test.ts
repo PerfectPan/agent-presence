@@ -2,7 +2,15 @@ import { existsSync } from 'node:fs';
 import { mkdir, readdir, readFile, readlink, realpath, stat, symlink, writeFile } from 'node:fs/promises';
 import { dirname, join, relative } from 'node:path';
 import * as discovery from '@rivus/agent-kit/discovery';
-import { AgentCli, type Bundle, type InstallPlan, type PlanConflict } from '@rivus/agent-kit/harness';
+import {
+  AgentCli,
+  ArtifactFiles,
+  LedgerRepository,
+  type Bundle,
+  type InstallPlan,
+  type LedgerScope,
+  type PlanConflict
+} from '@rivus/agent-kit/harness';
 import { Effect, Layer } from 'effect';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 import { setup as setupCommand } from '../src/cli/commands/setup.js';
@@ -234,6 +242,20 @@ function expectStopped(): void {
 
 const detectedSetupArguments = ['--skip-login', '--provider', 'magic-builder'];
 const argumentsForSetup = [...detectedSetupArguments, '--agents', PRESENCE_AGENTS.join(',')];
+const ledgerScope: LedgerScope = { key: 'user', scope: 'user' };
+
+function snapshotLedger() {
+  return fixture.run(
+    Effect.gen(function* () {
+      const repository = yield* LedgerRepository;
+      const snapshot = yield* repository.load(ledgerScope);
+      if (!snapshot) {
+        throw new Error('Expected an installed ledger');
+      }
+      return snapshot;
+    })
+  );
+}
 
 function readablePreview(codexAvailable: boolean, codexConfigExists = false): [string, string][] {
   return [
@@ -1459,6 +1481,9 @@ describe('setup agent selection', () => {
       versionProbe: false,
       recipes: expect.any(Object)
     });
+    expect(Object.values(detected.mock.calls[0]?.[1]?.recipes ?? {}).map((recipe) => recipe?.auth)).toEqual(
+      PRESENCE_AGENTS.map(() => ({}))
+    );
     expect(plans).toHaveLength(1);
     expect(new Set(plans[0]?.steps.flatMap(({ agents }) => agents))).toEqual(new Set(['claude-code', 'codex']));
     expect(ui.showNote.mock.calls).toEqual([
@@ -1506,6 +1531,75 @@ describe('setup agent selection', () => {
 
     expect(process.exitCode).toBe(0);
     expect(output()).not.toContain('unselected agents');
+    expect(fixture.processCalls).toEqual([]);
+  });
+
+  it('detects every agent as missing after an all-agent setup with an empty PATH and installs no further hooks', async () => {
+    Object.assign(fixture.platform, { env: { HOME: fixture.home, PATH: '' } });
+    ui.isInteractiveTerminal.mockReturnValue(false);
+    await setup([...argumentsForSetup, '--yes'], {}, fixture.layer);
+    expect(process.exitCode).toBe(0);
+    expect(new Set(plans[0]?.steps.flatMap(({ agents }) => agents))).toEqual(new Set(PRESENCE_AGENTS));
+    const targets = await snapshotTargets();
+    const ledger = await snapshotLedger();
+    const writes = vi.spyOn(fixture.platform.fs, 'writeAtomic');
+    vi.clearAllMocks();
+    fixture.cliCalls.length = 0;
+    timeline = [];
+
+    await setup([...detectedSetupArguments, '--yes'], {}, fixture.layer);
+
+    expect(process.exitCode).toBe(0);
+    const detected = vi.mocked(discovery.detectAgents);
+    const installations: Awaited<ReturnType<typeof discovery.detectAgents>> = await detected.mock.results[0]?.value;
+    expect(installations.map(({ agent, status }) => ({ agent, status }))).toEqual(
+      PRESENCE_AGENTS.map((agent) => ({ agent, status: 'missing' }))
+    );
+    expect(hooks.planInstall).not.toHaveBeenCalled();
+    expect(hooks.applyInstall).not.toHaveBeenCalled();
+    expect(hooks.verify).not.toHaveBeenCalled();
+    expect(ui.promptConfirm).not.toHaveBeenCalled();
+    expect(
+      writes.mock.calls.filter(([path]) => /\/(?:\.claude|\.codex|\.gemini|\.grok|\.config|\.pi)\//.test(path))
+    ).toEqual([]);
+    expect(await snapshotTargets()).toEqual(targets);
+    expect(await snapshotLedger()).toEqual(ledger);
+    expect(output()).toContain('No agents detected; setup installed no hooks.');
+    expect(fixture.cliCalls).toEqual([]);
+    expect(fixture.processCalls).toEqual([]);
+  });
+
+  it('selects only Claude Code when its session store is added after an all-agent setup with an empty PATH', async () => {
+    Object.assign(fixture.platform, { env: { HOME: fixture.home, PATH: '' } });
+    ui.isInteractiveTerminal.mockReturnValue(false);
+    await setup([...argumentsForSetup, '--yes'], {}, fixture.layer);
+    expect(process.exitCode).toBe(0);
+    expect(new Set(plans[0]?.steps.flatMap(({ agents }) => agents))).toEqual(new Set(PRESENCE_AGENTS));
+    await mkdir(join(fixture.home, '.claude/projects'), { recursive: true });
+    const targets = await snapshotTargets();
+    const unselected = (await snapshotLedger()).entries;
+    vi.clearAllMocks();
+    fixture.cliCalls.length = 0;
+    timeline = [];
+    plans = [];
+
+    await setup([...detectedSetupArguments, '--yes'], {}, fixture.layer);
+
+    expect(process.exitCode).toBe(0);
+    const detected = vi.mocked(discovery.detectAgents);
+    const installations: Awaited<ReturnType<typeof discovery.detectAgents>> = await detected.mock.results[0]?.value;
+    expect(installations.map(({ agent, status }) => ({ agent, status }))).toEqual(
+      PRESENCE_AGENTS.map((agent) => ({ agent, status: agent === 'claude-code' ? 'found' : 'missing' }))
+    );
+    expect(hooks.planInstall.mock.calls[0]?.[1]?.agents).toEqual(['claude-code']);
+    expect(hooks.applyInstall).toHaveBeenCalledOnce();
+    expect(hooks.verify).toHaveBeenCalledExactlyOnceWith('agent-presence', {
+      bundle: expect.any(Object),
+      agents: ['claude-code']
+    });
+    expect(await snapshotTargets()).toEqual(targets);
+    expect((await snapshotLedger()).entries).toEqual(unselected);
+    expect(fixture.cliCalls).toEqual([]);
     expect(fixture.processCalls).toEqual([]);
   });
 
@@ -1585,10 +1679,10 @@ describe('setup agent selection', () => {
     expect(fixture.processCalls).toEqual([]);
   });
 
-  it('counts configuration-only evidence without running version commands or reading credential files', async () => {
+  it('counts agent-owned evidence without running version commands or reading credential files', async () => {
     const credential = join(fixture.home, '.codex/auth.json');
     await put(credential, '{"fixture":"must not be read"}\n');
-    await mkdir(join(fixture.home, '.claude'));
+    await mkdir(join(fixture.home, '.claude/projects'), { recursive: true });
     const read = vi.spyOn(fixture.platform.fs, 'read');
 
     await setup(detectedSetupArguments, {}, fixture.layer);
@@ -1653,8 +1747,8 @@ describe('setup agent selection', () => {
   });
 
   it('prints each missing or unknown agent on one line with failed checks and an override', async () => {
-    const path = join(fixture.home, '.grok');
-    const canonicalPath = join(await realpath(fixture.home), '.grok');
+    const path = join(fixture.home, '.grok/sessions');
+    const canonicalPath = join(await realpath(fixture.home), '.grok/sessions');
     const originalStat = fixture.platform.fs.stat.bind(fixture.platform.fs);
     // Discovery follows links; legacy target checks must still inspect the actual ancestors.
     vi.spyOn(fixture.platform.fs, 'stat').mockImplementation((target, options) =>
@@ -1773,28 +1867,126 @@ describe('setup agent selection', () => {
     expect(fixture.processCalls).toEqual([]);
   });
 
-  it('leaves earlier unselected artifacts and their ledger records untouched during setup verification', async () => {
-    await setup([...detectedSetupArguments, '--agents', 'pi'], {}, fixture.layer);
-    const path = join(fixture.home, '.pi/agent/extensions/agent-presence.ts');
-    await writeFile(path, '// user change must remain untouched\n');
-    const before = (await fixture.run(realHarness.inventory())).entries.filter((entry) => entry.agents.includes('pi'));
+  it('leaves earlier Grok files and ledger entries byte-identical and reports no Grok verification after Claude-only setup', async () => {
+    await setup([...detectedSetupArguments, '--agents', 'grok'], {}, fixture.layer);
+    const path = join(await realpath(fixture.home), '.grok/hooks/agent-presence.json');
+    await writeFile(path, '{"hooks":{},"fixture":"user change must remain untouched"}\n');
+    const bytes = await readFile(path);
+    const before = JSON.stringify(
+      Object.entries((await snapshotLedger()).entries).filter(([, entry]) => entry.agents.includes('grok'))
+    );
+    const reads: string[] = [];
     timeline = [];
     hooks.verify.mockClear();
+    hooks.verify.mockImplementation((...args) =>
+      Effect.gen(function* () {
+        const files = yield* ArtifactFiles;
+        return yield* realHarness.verify(...args).pipe(
+          Effect.provideService(ArtifactFiles, {
+            ...files,
+            read: (locator) => {
+              reads.push(locator.path);
+              if (locator.path === path) {
+                return Effect.fail({
+                  _tag: 'ArtifactIoFailure' as const,
+                  path,
+                  operation: 'read' as const,
+                  message: 'Unselected Grok artifact is unreadable'
+                });
+              }
+              return files.read(locator);
+            }
+          })
+        );
+      })
+    );
 
-    await setup([...detectedSetupArguments, '--agents', 'grok'], {}, fixture.layer);
+    await setup([...detectedSetupArguments, '--agents', 'claude-code'], {}, fixture.layer);
 
     expect(process.exitCode).toBe(0);
-    expect(await readFile(path, 'utf8')).toBe('// user change must remain untouched\n');
-    expect((await fixture.run(realHarness.inventory())).entries.filter((entry) => entry.agents.includes('pi'))).toEqual(
-      before
-    );
+    expect(await readFile(path)).toEqual(bytes);
+    expect(
+      JSON.stringify(
+        Object.entries((await snapshotLedger()).entries).filter(([, entry]) => entry.agents.includes('grok'))
+      )
+    ).toBe(before);
     expect(hooks.verify).toHaveBeenCalledExactlyOnceWith('agent-presence', {
       bundle: expect.any(Object),
-      agents: ['grok']
+      agents: ['claude-code']
     });
-    expect(output()).not.toContain(`verify drift: ${path}`);
+    expect(reads).not.toContain(path);
+    expect(timeline.filter((line) => line.startsWith('verify ')).every((line) => !line.includes('/.grok/'))).toBe(true);
+    expect(output()).toContain('verify in-sync:');
     expect(output()).toContain(
-      'Existing hooks for unselected agents (pi) are left unchanged; run agent-presence setup --agents pi to update them. agent-presence uninstall removes presence hooks for all agents.'
+      'Existing hooks for unselected agents (grok) are left unchanged; run agent-presence setup --agents grok to update them. agent-presence uninstall removes presence hooks for all agents.'
     );
+  });
+
+  it('fails setup when native recovery cannot read a pending operation and leaves files and ledger unchanged', async () => {
+    await setup([...detectedSetupArguments, '--agents', 'grok'], {}, fixture.layer);
+    const installed = await snapshotLedger();
+    const entry = Object.values(installed.entries).find((value) => value.agents.includes('grok'))!;
+    await fixture.run(
+      Effect.gen(function* () {
+        const repository = yield* LedgerRepository;
+        yield* repository.save(
+          ledgerScope,
+          {
+            ...installed,
+            revision: installed.revision + 1,
+            pending: [
+              {
+                planId: 'fixture-plan',
+                owner: 'agent-presence',
+                bundleVersion: '1.0.0',
+                toolVersion: '1.0.0',
+                locator: entry.locator,
+                action: 'remove',
+                agents: ['grok'],
+                precondition: { hash: entry.contentHash },
+                removal: 'delete',
+                startedAt: new Date(fixture.platform.clock.now()).toISOString()
+              }
+            ]
+          },
+          installed.revision
+        );
+      })
+    );
+    const ledger = await snapshotLedger();
+    const targets = await snapshotTargets();
+    vi.clearAllMocks();
+    timeline = [];
+    hooks.planInstall.mockImplementation((...args) =>
+      Effect.gen(function* () {
+        const files = yield* ArtifactFiles;
+        return yield* realHarness.planInstall(...args).pipe(
+          Effect.provideService(ArtifactFiles, {
+            ...files,
+            read: (locator) =>
+              locator.path === entry.locator.path
+                ? Effect.fail({
+                    _tag: 'ArtifactIoFailure' as const,
+                    path: locator.path,
+                    operation: 'read' as const,
+                    message: 'Pending operation artifact is unreadable'
+                  })
+                : files.read(locator)
+          })
+        );
+      })
+    );
+
+    await setup([...detectedSetupArguments, '--agents', 'claude-code'], {}, fixture.layer);
+
+    expectStopped();
+    expect(hooks.planInstall).toHaveBeenCalledOnce();
+    expect(ui.promptConfirm).not.toHaveBeenCalled();
+    expect(ui.finishOutro).not.toHaveBeenCalled();
+    expect(output()).toContain('ArtifactIoFailure');
+    expect(output()).toContain('Pending operation artifact is unreadable');
+    expect(await snapshotTargets()).toEqual(targets);
+    expect(await snapshotLedger()).toEqual(ledger);
+    expect(fixture.processCalls).toEqual([]);
   });
 });

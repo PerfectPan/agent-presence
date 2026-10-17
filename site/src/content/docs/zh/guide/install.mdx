@@ -38,9 +38,26 @@ agent-presence setup
 </TabItem>
 </Tabs>
 
-`setup` 检测六个受支持的智能体：`claude-code`、`codex`、`gemini-cli`、`grok`、`opencode` 和 `pi`，选择状态为 `found` 或 `runnable` 的智能体。检测只检查 `PATH` 中的命令、应用、配置路径或 MCP 配置路径是否存在，不运行智能体命令，也不读取凭据。即使可执行文件已被移除，残留的配置目录也会被视为 `found`；可以用 `--agents` 明确限制安装范围。
+## 智能体检测
 
-未找到智能体时，setup 会提示先安装它，再运行 setup。如果某项检查未能完成，且没有其他证据能确认智能体存在，setup 将其记为 `unknown` 并跳过，列出失败的检查并提示使用 `--agents`。可用逗号分隔的受支持 kit id 覆盖检测结果：
+`setup` 检测六个受支持的智能体：`claude-code`、`codex`、`gemini-cli`、`grok`、`opencode` 和 `pi`，选择状态为 `found` 或 `runnable` 的智能体。检测只检查 `PATH` 中的命令、已知应用路径，或智能体自身的会话、状态存储和凭据文件是否存在，不运行智能体命令，也不读取凭据内容，因此仅凭检测不能确认 `runnable`。
+
+智能体自身的默认检测路径如下：
+
+| 智能体      | 检测路径                                                                                                               |
+| ----------- | ---------------------------------------------------------------------------------------------------------------------- |
+| Claude Code | `~/.claude/projects/`、`~/.claude/.credentials.json`                                                                   |
+| Codex       | `~/.codex/sessions/`、`~/.codex/archived_sessions/`、`~/.codex/auth.json`                                              |
+| Gemini CLI  | `~/.gemini/tmp/`、`~/.gemini/oauth_creds.json`                                                                         |
+| Grok        | `~/.grok/sessions/`、`~/.grok/auth.json`                                                                               |
+| opencode    | `~/.local/share/opencode/opencode.db`、`~/.local/share/opencode/storage/message/`、`~/.local/share/opencode/auth.json` |
+| Pi          | `~/.pi/agent/sessions/`                                                                                                |
+
+`CLAUDE_CONFIG_DIR`、`CODEX_HOME`、`GROK_HOME` 和 `PI_CODING_AGENT_DIR` 会替换对应的默认 home。`GEMINI_CLI_HOME` 替换 Gemini 的父目录，因此检测路径位于 `$GEMINI_CLI_HOME/.gemini/` 下。设置 `XDG_DATA_HOME` 时，opencode 使用 `$XDG_DATA_HOME/opencode/`；检测检查数据目录，不检查插件或配置目录。
+
+空会话存储也算证据；即使可执行文件已被移除，保留的智能体自身状态仍可使结果为 `found`。智能体 home 目录本身、presence hook 或插件、共享 settings、MCP 配置都不算证据，因此运行 presence setup 不会让原本缺失的智能体变为可检测。
+
+未找到智能体时，setup 会提示先安装它，再运行 setup。如果某项检查未能完成，且没有其他证据能确认智能体存在，setup 将其记为 `unknown` 并跳过，列出失败的检查并提示使用 `--agents`。已安装但从未运行、且不在 `PATH` 中的智能体也可用此参数明确选择，或用它限制安装范围。参数接收逗号分隔的受支持 kit id：
 
 ```bash
 agent-presence setup --agents claude-code,codex

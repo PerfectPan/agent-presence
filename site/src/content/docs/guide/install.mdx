@@ -38,9 +38,26 @@ agent-presence setup
 </TabItem>
 </Tabs>
 
-`setup` detects the six supported agents: `claude-code`, `codex`, `gemini-cli`, `grok`, `opencode` and `pi`. It selects agents reported as `found` or `runnable`. Detection checks only whether commands on `PATH`, applications, configuration paths or MCP configuration paths exist; it does not run agent commands or read credentials. A remaining configuration directory also counts as `found`, even after the executable is removed; use `--agents` to limit installation explicitly.
+## Agent detection
 
-For a missing agent, setup asks you to install it and run setup again. If a check cannot complete and nothing establishes that the agent is present, setup skips it as `unknown`, names the failed checks and points to `--agents`. Override detection with a comma-separated list of supported kit ids:
+`setup` detects the six supported agents: `claude-code`, `codex`, `gemini-cli`, `grok`, `opencode` and `pi`. It selects agents reported as `found` or `runnable`. Detection checks only whether commands on `PATH`, known application paths, or agent-owned session/state stores and credential files exist. It does not run agent commands or read credential contents, so detection alone cannot establish `runnable`.
+
+The default agent-owned evidence paths are:
+
+| Agent       | Evidence paths                                                                                                         |
+| ----------- | ---------------------------------------------------------------------------------------------------------------------- |
+| Claude Code | `~/.claude/projects/`, `~/.claude/.credentials.json`                                                                   |
+| Codex       | `~/.codex/sessions/`, `~/.codex/archived_sessions/`, `~/.codex/auth.json`                                              |
+| Gemini CLI  | `~/.gemini/tmp/`, `~/.gemini/oauth_creds.json`                                                                         |
+| Grok        | `~/.grok/sessions/`, `~/.grok/auth.json`                                                                               |
+| opencode    | `~/.local/share/opencode/opencode.db`, `~/.local/share/opencode/storage/message/`, `~/.local/share/opencode/auth.json` |
+| Pi          | `~/.pi/agent/sessions/`                                                                                                |
+
+`CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `GROK_HOME` and `PI_CODING_AGENT_DIR` replace the corresponding default homes. `GEMINI_CLI_HOME` replaces Gemini's parent directory, so its evidence lives under `$GEMINI_CLI_HOME/.gemini/`. opencode uses `$XDG_DATA_HOME/opencode/` when set; detection checks this data home, not its plugin/config home.
+
+An empty session store counts, and retained agent-owned state can establish `found` after the executable is removed. An agent home alone, presence hooks/plugins, shared settings and MCP configuration do not count, so running presence setup does not make an otherwise missing agent detectable.
+
+For a missing agent, setup asks you to install it and run setup again. If a check cannot complete and nothing establishes that the agent is present, setup skips it as `unknown`, names the failed checks and points to `--agents`. Use this override for an agent installed but never run and absent from `PATH`, or to limit the selection. It accepts a comma-separated list of supported kit ids:
 
 ```bash
 agent-presence setup --agents claude-code,codex

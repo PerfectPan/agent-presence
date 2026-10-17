@@ -29,7 +29,7 @@ describe('harness runtime boundary', () => {
       .parse(JSON.parse(readFileSync(join(repoRoot, 'package.json'), 'utf8')));
     const version = kit.version;
     const peer = kit.peerDependencies.effect;
-    expect(version).toBe('0.18.0');
+    expect(version).toBe('0.19.0');
     expect(peer).toBe('4.0.3');
     expect(pkg.dependencies['@rivus/agent-kit']).toBe(version);
     expect(pkg.dependencies['@rivus/agent-kit-collab']).toBe(version);

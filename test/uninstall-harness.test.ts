@@ -90,13 +90,6 @@ describe('ledger-backed uninstall', () => {
     const { plan } = await install(['grok']);
     await rm(command);
     await expect(stat(command)).rejects.toMatchObject({ code: 'ENOENT' });
-    const originalStat = fixture.platform.fs.stat.bind(fixture.platform.fs);
-    // Model missing discovery evidence while leaving the recorded hook available for removal.
-    vi.spyOn(fixture.platform.fs, 'stat').mockImplementation((path, options) =>
-      path === join(fixture.home, '.grok') && options?.followSymlinks
-        ? Promise.resolve(undefined)
-        : originalStat(path, options)
-    );
     const detected = await detectAgents(fixture.platform, {
       agents: ['grok'],
       versionProbe: false,

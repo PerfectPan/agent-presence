@@ -60,8 +60,8 @@
   },
   "dependencies": {
     "@clack/prompts": "1.8.1",
-    "@rivus/agent-kit": "0.18.0",
-    "@rivus/agent-kit-collab": "0.18.0",
+    "@rivus/agent-kit": "0.19.0",
+    "@rivus/agent-kit-collab": "0.19.0",
     "effect": "4.0.3",
     "zod": "^4.6.5"
   }
