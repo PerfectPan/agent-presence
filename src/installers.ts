@@ -1,10 +1,8 @@
-import { existsSync } from 'node:fs';
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { hasNodeErrorCode } from './json-file.js';
-import { packageVersion } from './package-version.js';
+import { presenceShimPath } from './harness/shim-path.js';
 import { shellQuote } from './shell-quote.js';
 
 async function readManagedExtension(
@@ -57,6 +55,10 @@ export function resolveDshPluginPaths(): DshPluginPaths {
     pluginPath: process.env.DSH_AGENT_PRESENCE_PLUGIN_FILE ?? join(dshHome, 'plugins', DSH_PLUGIN_FILE_NAME),
     patchPath: process.env.DSH_AGENT_PRESENCE_PATCH_FILE ?? join(dshHome, 'cordis.patch.yml')
   };
+}
+
+export async function hasManagedDshPlugin(paths: DshPluginPaths): Promise<boolean> {
+  return (await readManagedExtension(paths.pluginPath, DSH_PLUGIN_MARKER)).status === 'managed';
 }
 
 export interface DshInstallResult {
@@ -152,31 +154,7 @@ export async function uninstallDshPlugin(paths: DshPluginPaths): Promise<DshUnin
   return { status, pluginPath: paths.pluginPath, patchPath: paths.patchPath, patchUpdated, patchError };
 }
 
-function resolveCliPath(): string {
-  if (process.env.AGENT_PRESENCE_CLI_PATH) {
-    return process.env.AGENT_PRESENCE_CLI_PATH;
-  }
-  for (const url of [
-    new URL('./cli.js', import.meta.url),
-    new URL('../cli.js', import.meta.url),
-    new URL('../dist/src/cli.js', import.meta.url)
-  ]) {
-    const resolved = fileURLToPath(url);
-    if (existsSync(resolved)) {
-      return resolved;
-    }
-  }
-  throw new Error('unable to resolve @rivus/agent-presence CLI path');
-}
-
-function agentPresenceCommandParts(): string[] {
-  if (process.env.AGENT_PRESENCE_HOOK_COMMAND === 'absolute') {
-    return [process.execPath, resolveCliPath()];
-  }
-  return ['npx', '--yes', '--registry=https://registry.npmjs.org', `@rivus/agent-presence@${packageVersion()}`];
-}
-
-function buildDshPluginSource(commandParts = agentPresenceCommandParts()): string {
+function buildDshPluginSource(commandParts = [presenceShimPath()]): string {
   return `// ${DSH_PLUGIN_MARKER}
 //
 // Bridges dsh (DeepSeek harness) lifecycle and token usage into
@@ -320,5 +298,5 @@ export async function installDshPlugin(paths: DshPluginPaths): Promise<DshInstal
 }
 
 export function buildAgentPresenceShellCommand(args: string[]): string {
-  return [...agentPresenceCommandParts(), ...args].map(shellQuote).join(' ');
+  return [presenceShimPath(), ...args].map(shellQuote).join(' ');
 }

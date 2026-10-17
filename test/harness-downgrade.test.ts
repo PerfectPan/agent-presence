@@ -5,7 +5,8 @@ import { doctor, inventory, verify, type Bundle } from '@rivus/agent-kit/harness
 import { transformWithOxc } from 'vite-plus';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 import * as z from 'zod/mini';
-import { setup } from '../src/cli/commands/setup.js';
+import { setup as setupCommand } from '../src/cli/commands/setup.js';
+import { installFixtureRuntime } from './runtime-support.js';
 import { uninstall } from '../src/cli/commands/uninstall.js';
 import { createPresenceBundle, PRESENCE_AGENTS } from '../src/harness/bundle.js';
 import { isDisabled, readWorkerVersion } from '../src/queue/files.js';
@@ -20,6 +21,9 @@ import {
 } from './fixtures/previous-release.js';
 import { AGENT_HOME_VARIABLES, createHarnessFixture, HARNESS_NOW, type HarnessFixture } from './harness-support.js';
 import { eventBody, fakeEffects, readState, recordAt, virtualTime } from './queue-support.js';
+
+const setup: typeof setupCommand = (args, takeover, layer, options) =>
+  setupCommand(args, takeover, layer, { runNpm: installFixtureRuntime, ...options });
 
 const boundary = vi.hoisted(() => ({
   process: vi.fn<() => never>(() => {

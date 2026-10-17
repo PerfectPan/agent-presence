@@ -1,4 +1,5 @@
 import { builtinProbeRecipes, detectAgents, type ProbeProblem } from '@rivus/agent-kit/discovery';
+import { inventory } from '@rivus/agent-kit/harness';
 import { PlatformService } from '@rivus/agent-kit/platform/effect';
 import { Effect } from 'effect';
 import { PRESENCE_AGENTS } from '../harness/bundle.js';
@@ -73,8 +74,19 @@ export function selectSetupAgents(override?: readonly PresenceAgent[]) {
         )
       );
     }
-    if (selected.length < PRESENCE_AGENTS.length) {
-      showInfo('Existing artifacts for unselected agents are left unchanged; run uninstall to remove them.');
+    const installed = yield* inventory();
+    const unselected = [
+      ...new Set(
+        installed.entries
+          .filter((entry) => entry.owners.includes('agent-presence'))
+          .flatMap((entry) => entry.agents)
+          .filter((agent) => !selected.some((id) => id === agent))
+      )
+    ].sort();
+    if (unselected.length > 0) {
+      showInfo(
+        `Existing hooks for unselected agents (${unselected.join(', ')}) are left unchanged; run agent-presence setup --agents ${unselected.join(',')} to update them. agent-presence uninstall removes presence hooks for all agents.`
+      );
     }
     return selected;
   });

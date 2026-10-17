@@ -11,7 +11,8 @@ agent-presence setup --login         # 强制重新扫码登录
 agent-presence setup --skip-login    # 跳过登录，保留 hook 和 provider 设置步骤
 agent-presence setup --no-hooks
 agent-presence setup --agents claude-code,codex  # 覆盖检测结果
-agent-presence setup --hook-command absolute
+agent-presence setup --hook-command package  # 默认模式；npx 是其别名
+agent-presence setup --hook-command absolute # 使用 checkout 的 CLI
 agent-presence setup --yes           # 非交互终端应用无冲突的安装计划
 
 agent-presence url                   # 打印签名 URL
@@ -42,11 +43,13 @@ agent-presence uninstall --credentials
 agent-presence uninstall --all
 ```
 
-`setup` 检测 `claude-code`、`codex`、`gemini-cli`、`grok`、`opencode` 和 `pi`，只为状态为 `found` 或 `runnable` 的智能体安装 hook。检测检查 `PATH` 中的命令、应用、配置路径和 MCP 配置路径是否存在，不运行智能体命令，也不读取凭据。未找到智能体时会提示先安装、再运行 setup；`unknown` 结果会列出失败的检查并提示使用 `--agents`。`--agents <id,...>` 接收逗号分隔的上述六个 kit id，覆盖检测结果；未知 id 和 presence 不支持的 kit id 会被拒绝。未被检测选中或未列入 `--agents` 的智能体，其已有产物会保留。没有检测到智能体且未覆盖选择时，setup 跳过 hook，继续 watcher、dsh 和 provider 步骤。
+`setup` 检测 `claude-code`、`codex`、`gemini-cli`、`grok`、`opencode` 和 `pi`，只为状态为 `found` 或 `runnable` 的智能体安装 hook。检测检查 `PATH` 中的命令、应用、配置路径和 MCP 配置路径是否存在，不运行智能体命令，也不读取凭据。未找到智能体时会提示先安装、再运行 setup；`unknown` 结果会列出失败的检查并提示使用 `--agents`。`--agents <id,...>` 接收逗号分隔的上述六个 kit id，覆盖检测结果；未知 id 和 presence 不支持的 kit id 会被拒绝。未被检测选中或未列入 `--agents` 的智能体，其 hook 保持不变。只有 harness 安装记录中存在属于 `agent-presence` 的未选中智能体条目时，setup 才会列出这些智能体，并提示用 `agent-presence setup --agents <id,...>` 更新它们。`agent-presence uninstall` 会移除所有智能体的 presence hook。没有检测到智能体且未覆盖选择时，setup 跳过智能体安装计划、确认、应用和校验，但仍按所选 `--hook-command` 模式准备 shim：`package` 安装或复用固定版本 runtime，`absolute` 使用 checkout 的 CLI。准备成功后才继续 watcher、dsh 和 provider 步骤。
 
 `setup` 在队列恢复和登录前检查全部六个智能体的旧版本项目和此前卸载时保留的文件，不受检测结果或 `--agents` 影响。它列出这些项目（也可能由本版本安装），并拒绝继续，直到这些项目被移走或移除，见[升级指引](/zh/guide/install/#从-090-或更早版本升级)。需要替换的项目应对每个固定的 hook 版本分别卸载；只要有一个需要替换的项目不是固定版本的 hook 命令，就额外运行 `0.9.0`。运行这些卸载命令前，先手动处理保留文件。随后列出每个配置冲突的位置、原因和允许的处理方式，按你的选择重新规划，展示完整计划后请求确认。没有可选处理方式的目标（如 dotfiles 管理或符号链接目标）会使 setup 退出。取消或拒绝确认会丢弃已有计划并以非零退出码结束，不写入智能体配置；本地迁移和登录可能已完成。
 
-非交互终端必须传 `--yes` 才会应用无冲突的计划；有冲突时无论是否传 `--yes` 都会退出。交互终端始终需要明确确认。确认后 setup 写入稳定的 hook shim、应用计划并立即验证本次选中的 kit 产物，再依次运行电源 watcher 步骤、询问是否安装可选的 dsh 插件，并设置 provider；取消 dsh 提示或 provider 失败不会跳过验证结果。`--no-hooks` 跳过旧版本检查、harness、shim、dsh 和 watcher；`--skip-login`（也可用 `--hooks-only`）跳过登录。`--hook-command absolute` 只改变 shim 调用的程序，安装到智能体中的命令保持不变。
+非交互终端必须传 `--yes` 才会应用无冲突的计划；有冲突时无论是否传 `--yes` 都会退出。交互终端始终需要明确确认。确认后 setup 在默认 `package` 模式下安装或复用 runtime，再写入稳定的 hook shim、应用计划并立即验证本次选中的 kit 产物。runtime 安装失败时，setup 清理临时目录、丢弃计划，并在写入 shim 或智能体目标前以非零状态退出；验证成功后，再依次运行电源 watcher 步骤、将已有且带 presence 标记的 dsh 插件自动重写为调用 shim（无需询问，包括 `--yes` 或非交互终端），或仅在交互终端检测到 dsh 时询问是否首次安装，并设置 provider；取消 dsh 提示或 provider 失败不会跳过验证结果。如果无法读取 dsh 插件来检查标记，setup 只显示一条提示，跳过 dsh 操作，继续 provider 设置和 runtime 清理。`--no-hooks` 跳过旧版本检查、harness、runtime 安装、shim、dsh 和 watcher，既不检查也不重写 dsh 插件；`--skip-login`（也可用 `--hooks-only`）跳过登录。`--hook-command package` 是默认模式，`npx` 保留为它的别名。setup 用 npm 将自身的固定发布版本安装到 `~/.agent-presence/runtime/<version>/`；仅安装时需要 npm 和 registry 访问。shim 直接用 setup 当时的 Node 可执行文件运行已安装的 CLI，该文件消失时回退到 `PATH` 中的 `node`。`--hook-command absolute` 使用 checkout 的 CLI，不安装 runtime。两种模式安装到智能体中的命令相同，hook 执行从不调用 `npx`。`AGENT_PRESENCE_HOOK_COMMAND` 接受相同的模式。无效模式会在安装规划前以单行错误退出，列出允许的模式。错误按值的来源命名：显式参数为 `--hook-command`，环境变量为 `AGENT_PRESENCE_HOOK_COMMAND`。
+
+setup 成功后在 runtime 锁内清理，保留本次版本、旧 shim 指向的版本和清理时 shim 指向的版本，删除其他版本及残留的 `runtime/.install-*` 目录。dsh 和 macOS 电源 watcher 也通过 shim 调用。从 0.10.0 升级只需安装本版本并运行 `setup`；已安装的命令保持不变，无需先卸载，也不会增加 hook 重新信任流程。见[从 0.10.0 升级](/zh/guide/install/#从-0100-升级)。
 
 完整路径见[安装位置](/zh/guide/install/#安装位置)：Claude Code 使用插件，避免写入 Cursor 也会读取的 settings 文件；Gemini 使用扩展及其原生事件名；Codex 使用插件或 `config.toml`；Grok 使用独立 hook 文件；opencode/Pi 使用桥接文件。Claude Code、Codex、Gemini CLI 和 Grok 的命令式 hook 按各自的原生单位设置五秒超时。opencode/Pi 桥接仅对同步结束事件的交付设置五秒超时，其他事件异步发送，不设置子进程超时。切换到 shim 的 `hook --agent` 命令预计需要在 Codex 中重新信任一次 hook，后续只更新 shim 时会保留 hook 定义。真实智能体验收与隔离环境中的安装检查分开进行。
 
@@ -63,4 +66,4 @@ setup 安装 `--agent` 形式，读取智能体的原生 hook payload。直接�
 
 `inventory` 打印 harness 安装记录的修订号、已安装条目和待完成操作。两个命令都支持 `--json`。setup 通过 harness 安装的产物会出现在记录中；旧版本安装的 hook 不会自动记入记录。`inventory` 包含共享安装记录中所有 kit 应用的条目，不限于 presence。
 
-`uninstall` 覆盖全部六个受支持的智能体，包括已无法检测到的智能体。它只移除 harness 记录的产物，逐项报告移除结果和保留位置及原因，然后移除 shim、dsh 插件和 macOS watcher。harness 失败时仍会继续这些独立清理步骤，并以非零退出码结束；旧版本留下的产物需要用该版本的 uninstall 移除。默认保留凭据、配置和状态；`--credentials` 清除凭据及配置中的 slot 标识，`--all` 还会清除 session 状态、队列记录和已安装的源插件，同时保留防止旧进程恢复状态的队列 tombstone。其他配置字段会保留。
+`uninstall` 覆盖全部六个受支持的智能体，包括已无法检测到的智能体。它只移除 harness 记录的产物，逐项报告移除结果和保留位置及原因，然后移除 shim、整个 `~/.agent-presence/runtime/` 目录、dsh 插件和 macOS watcher。harness 失败时仍会继续这些独立清理步骤，并以非零退出码结束；旧版本留下的产物需要用该版本的 uninstall 移除。默认保留凭据、配置和状态；`--credentials` 清除凭据及配置中的 slot 标识，`--all` 还会清除 session 状态、队列记录和已安装的源插件，同时保留防止旧进程恢复状态的队列 tombstone。其他配置字段会保留。

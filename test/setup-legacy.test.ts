@@ -3,7 +3,8 @@ import { dirname, join, relative } from 'node:path';
 import * as harness from '@rivus/agent-kit/harness';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 import { doctor } from '../src/cli/commands/doctor.js';
-import { setup } from '../src/cli/commands/setup.js';
+import { setup as setupCommand } from '../src/cli/commands/setup.js';
+import { installFixtureRuntime } from './runtime-support.js';
 import * as harnessRoot from '../src/cli/harness.js';
 import { PREVIOUS_RELEASE_MARKERS } from '../src/cli/setup-legacy.js';
 import { createPresenceBundle, PRESENCE_AGENTS } from '../src/harness/bundle.js';
@@ -15,6 +16,9 @@ import {
   uninstallPreviousRelease
 } from './fixtures/previous-release.js';
 import { AGENT_HOME_VARIABLES, createHarnessFixture, HARNESS_NOW, type HarnessFixture } from './harness-support.js';
+
+const setup: typeof setupCommand = (args, takeover, layer, options) =>
+  setupCommand(args, takeover, layer, { runNpm: installFixtureRuntime, ...options });
 
 const ui = vi.hoisted(() => ({
   isInteractiveTerminal: vi.fn<typeof import('../src/cli/ui.js').isInteractiveTerminal>(() => true),

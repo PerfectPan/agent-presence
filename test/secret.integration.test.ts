@@ -13,8 +13,7 @@ const macOs = process.platform === 'darwin';
 const linux = process.platform === 'linux';
 // The libsecret case talks to the developer's real keyring, so it only runs on
 // explicit opt-in. The macOS case never touches the login keychain: it uses a
-// dedicated temporary keychain file. Set PRESENCE_SECRET_INTEGRATION=0 when
-// validation must avoid all keychain commands, including temporary keychains.
+// dedicated temporary keychain file, so it is safe to run everywhere.
 const secretIntegration = process.env.PRESENCE_SECRET_INTEGRATION === '1';
 
 const credentialEnvKeys = [
@@ -100,42 +99,39 @@ describe('credential storage integration', () => {
   const updatedSlotId = 'integration-test-slot-updated';
 
   describe('macOS Keychain backend', () => {
-    it.skipIf(!macOs || process.env.PRESENCE_SECRET_INTEGRATION === '0')(
-      'writes, reads, updates, and deletes credentials in a temporary keychain',
-      async () => {
-        const savedEnv = saveCredentialEnv();
-        const dir = await mkdtemp(join(tmpdir(), 'agent-presence-keychain-'));
-        const keychainPath = join(dir, 'test.keychain');
-        const keychainPassword = randomBytes(24).toString('hex');
-        const keychainService = `agent-presence-test:${uniqueSuffix()}`;
-        const keychainLegacyService = `agent-presence-test-legacy:${uniqueSuffix()}`;
+    it.skipIf(!macOs)('writes, reads, updates, and deletes credentials in a temporary keychain', async () => {
+      const savedEnv = saveCredentialEnv();
+      const dir = await mkdtemp(join(tmpdir(), 'agent-presence-keychain-'));
+      const keychainPath = join(dir, 'test.keychain');
+      const keychainPassword = randomBytes(24).toString('hex');
+      const keychainService = `agent-presence-test:${uniqueSuffix()}`;
+      const keychainLegacyService = `agent-presence-test-legacy:${uniqueSuffix()}`;
 
-        try {
-          clearCredentialEnv();
-          await execFileAsync('security', ['create-keychain', '-p', keychainPassword, keychainPath]);
-          await execFileAsync('security', ['unlock-keychain', '-p', keychainPassword, keychainPath]);
-          await execFileAsync('security', ['set-keychain-settings', keychainPath]);
+      try {
+        clearCredentialEnv();
+        await execFileAsync('security', ['create-keychain', '-p', keychainPassword, keychainPath]);
+        await execFileAsync('security', ['unlock-keychain', '-p', keychainPassword, keychainPath]);
+        await execFileAsync('security', ['set-keychain-settings', keychainPath]);
 
-          const store = createCredentialStore({ keychainService, keychainLegacyService, keychainPath });
+        const store = createCredentialStore({ keychainService, keychainLegacyService, keychainPath });
 
-          await store.writeCredential({ token: testToken, slotId: testSlotId });
-          const cred = await store.readCredential();
-          expect(cred).toEqual({ token: testToken, slotId: testSlotId });
+        await store.writeCredential({ token: testToken, slotId: testSlotId });
+        const cred = await store.readCredential();
+        expect(cred).toEqual({ token: testToken, slotId: testSlotId });
 
-          await store.writeCredential({ token: updatedToken, slotId: updatedSlotId });
-          const updated = await store.readCredential();
-          expect(updated).toEqual({ token: updatedToken, slotId: updatedSlotId });
+        await store.writeCredential({ token: updatedToken, slotId: updatedSlotId });
+        const updated = await store.readCredential();
+        expect(updated).toEqual({ token: updatedToken, slotId: updatedSlotId });
 
-          await store.deleteCredential();
-          const after = await store.readCredential();
-          expect(after).toBeUndefined();
-        } finally {
-          await execFileAsync('security', ['delete-keychain', keychainPath]).catch(() => undefined);
-          await rm(dir, { recursive: true, force: true });
-          restoreCredentialEnv(savedEnv);
-        }
+        await store.deleteCredential();
+        const after = await store.readCredential();
+        expect(after).toBeUndefined();
+      } finally {
+        await execFileAsync('security', ['delete-keychain', keychainPath]).catch(() => undefined);
+        await rm(dir, { recursive: true, force: true });
+        restoreCredentialEnv(savedEnv);
       }
-    );
+    });
   });
 
   describe('Linux libsecret backend', () => {

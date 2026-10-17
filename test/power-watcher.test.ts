@@ -1,38 +1,18 @@
 import { execFile } from 'node:child_process';
-import { chmod, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
-import { afterEach, describe, expect, it } from 'vite-plus/test';
+import { afterEach, describe, expect, it, vi } from 'vite-plus/test';
 import { buildPowerEventWatcherSwift, buildPowerWatcherPlist, buildPowerWatcherScript } from '../src/power-watcher.js';
 
 const execFileAsync = promisify(execFile);
-
-function withAbsoluteCliPath<T>(fn: () => T): T {
-  const previousMode = process.env.AGENT_PRESENCE_HOOK_COMMAND;
-  const previousCliPath = process.env.AGENT_PRESENCE_CLI_PATH;
-  process.env.AGENT_PRESENCE_HOOK_COMMAND = 'absolute';
-  process.env.AGENT_PRESENCE_CLI_PATH = '/usr/local/lib/node_modules/@rivus/agent-presence/dist/src/cli.js';
-  try {
-    return fn();
-  } finally {
-    if (previousMode === undefined) {
-      delete process.env.AGENT_PRESENCE_HOOK_COMMAND;
-    } else {
-      process.env.AGENT_PRESENCE_HOOK_COMMAND = previousMode;
-    }
-    if (previousCliPath === undefined) {
-      delete process.env.AGENT_PRESENCE_CLI_PATH;
-    } else {
-      process.env.AGENT_PRESENCE_CLI_PATH = previousCliPath;
-    }
-  }
-}
 
 describe('power watcher artifacts', () => {
   let tempDir: string | undefined;
 
   afterEach(async () => {
+    vi.unstubAllEnvs();
     if (tempDir) {
       await rm(tempDir, { recursive: true, force: true });
       tempDir = undefined;
@@ -68,19 +48,45 @@ describe('power watcher artifacts', () => {
     expect(swift).toContain('86_400');
   });
 
-  it('generates watcher artifacts with an absolute CLI path', () => {
-    withAbsoluteCliPath(() => {
-      const script = buildPowerWatcherScript({
-        pathEntries: ['/fake-home/.nvm/versions/node/v24.8.0/bin'],
-        powerEventWatcherPath: '/fake-home/.agent-presence/power-watch.swift'
-      });
-      const swift = buildPowerEventWatcherSwift();
+  it.each(['package', 'npx', 'absolute'])('uses a shell-quoted stable shim in %s mode', (mode) => {
+    vi.stubEnv('AGENT_PRESENCE_HOOK_COMMAND', mode);
+    vi.stubEnv('AGENT_PRESENCE_CLI_PATH', '/work/checkout/dist/src/cli.js');
+    vi.stubEnv('AGENT_PRESENCE_HOME', '/fake-home/presence data/$runtime');
+    const script = buildPowerWatcherScript();
+    const swift = buildPowerEventWatcherSwift();
+    const reset = "'/fake-home/presence data/$runtime/bin/agent-presence' reset --force --silent";
 
-      expect(script).not.toContain('npx');
-      expect(script).toContain('/usr/local/lib/node_modules/@rivus/agent-presence/dist/src/cli.js');
-      expect(swift).not.toContain('npx');
-      expect(swift).toContain('/usr/local/lib/node_modules/@rivus/agent-presence/dist/src/cli.js');
+    expect(script).toContain(`${reset} >/dev/null 2>/dev/null || true`);
+    expect(swift).toContain(`${reset} >/dev/null 2>/dev/null || true`);
+    for (const artifact of [script, swift]) {
+      expect(artifact).not.toContain('npx');
+      expect(artifact).not.toContain('/work/checkout/dist/src/cli.js');
+    }
+  });
+
+  it('executes the cleanup reset through a shim whose path contains shell metacharacters', async () => {
+    tempDir = await mkdtemp(join(tmpdir(), 'agent-presence-power-watch-test-'));
+    const presenceHome = join(tempDir, "presence's $runtime");
+    vi.stubEnv('AGENT_PRESENCE_HOME', presenceHome);
+    const shimDir = join(presenceHome, 'bin');
+    const argsPath = join(tempDir, 'reset-args');
+    await mkdir(shimDir, { recursive: true });
+    await writeFile(join(shimDir, 'agent-presence'), `#!/bin/sh\nprintf '%s\\n' "$@" > "${argsPath}"\n`, {
+      mode: 0o755
     });
+    const script = buildPowerWatcherScript();
+    const cleanup = script.slice(script.indexOf('cleanup() {'), script.indexOf('\ntrap cleanup'));
+
+    await execFileAsync('/bin/sh', ['-c', `watcher_pid=""\n${cleanup}\ncleanup\n`]);
+
+    expect(await readFile(argsPath, 'utf8')).toBe('reset\n--force\n--silent\n');
+    expect(buildPowerEventWatcherSwift()).toContain(
+      script
+        .split('\n')
+        .find((line) => line.includes(' reset --force --silent'))!
+        .trim()
+        .replaceAll('\\', '\\\\')
+    );
   });
 
   function oversizedLogLines(): string {

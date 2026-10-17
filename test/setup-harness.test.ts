@@ -2,13 +2,25 @@ import { existsSync } from 'node:fs';
 import { mkdir, readdir, readFile, readlink, realpath, stat, symlink, writeFile } from 'node:fs/promises';
 import { dirname, join, relative } from 'node:path';
 import * as discovery from '@rivus/agent-kit/discovery';
-import { AgentCli, type InstallPlan, type PlanConflict } from '@rivus/agent-kit/harness';
+import { AgentCli, type Bundle, type InstallPlan, type PlanConflict } from '@rivus/agent-kit/harness';
 import { Effect, Layer } from 'effect';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test';
-import { setup } from '../src/cli/commands/setup.js';
+import { setup as setupCommand } from '../src/cli/commands/setup.js';
+import { installFixtureRuntime } from './runtime-support.js';
 import { createPresenceBundle, PRESENCE_AGENTS } from '../src/harness/bundle.js';
 import { shellQuote } from '../src/shell-quote.js';
+import { packageVersion } from '../src/package-version.js';
+import { DSH_PLUGIN_MARKER, resolveDshPluginPaths } from '../src/installers.js';
+import { errorMessage } from '../src/cli/errors.js';
+import { writePresenceShim } from '../src/harness/shim.js';
+import * as runtimeModule from '../src/harness/runtime.js';
+import * as shimModule from '../src/harness/shim.js';
+import * as installersModule from '../src/installers.js';
 import { AGENT_HOME_VARIABLES, createHarnessFixture, type HarnessFixture } from './harness-support.js';
+
+const runtimeNpm = vi.fn<typeof installFixtureRuntime>(installFixtureRuntime);
+const setup: typeof setupCommand = (args, takeover, layer, options) =>
+  setupCommand(args, takeover, layer, { runNpm: runtimeNpm, ...options });
 
 const ui = vi.hoisted(() => ({
   isInteractiveTerminal: vi.fn<typeof import('../src/cli/ui.js').isInteractiveTerminal>(),
@@ -97,19 +109,23 @@ beforeEach(async () => {
     'AGENT_PRESENCE_CLI_PATH',
     'CODEX_THREAD_ID',
     'CODEX_SESSION_ID',
-    'DSH_HOME'
+    'DSH_HOME',
+    'DSH_AGENT_PRESENCE_PLUGIN_FILE',
+    'DSH_AGENT_PRESENCE_PATCH_FILE'
   ]) {
     vi.stubEnv(key, undefined);
   }
   previousExitCode = process.exitCode;
   process.exitCode = 0;
   vi.clearAllMocks();
+  runtimeNpm.mockReset().mockImplementation(installFixtureRuntime);
+  dependencies.installDsh.mockReset();
   timeline = [];
   plans = [];
   errors = vi.spyOn(console, 'error').mockImplementation(() => {});
   vi.spyOn(console, 'log').mockImplementation(() => {});
   ui.isInteractiveTerminal.mockReturnValue(true);
-  ui.promptConfirm.mockResolvedValue(true);
+  ui.promptConfirm.mockReset().mockResolvedValue(true);
   ui.promptSelect.mockResolvedValue('cancel');
   ui.showInfo.mockImplementation((message) => timeline.push(message));
   ui.showNote.mockImplementation((message, title) => timeline.push(`${title}: ${message}`));
@@ -297,6 +313,137 @@ function previewFixture(fields: Partial<InstallPlan>): void {
 }
 
 describe('setup through the harness', () => {
+  it.each([['invalid'], [], ['--yes']])(
+    'rejects invalid hook-command arguments %j before planning',
+    async (...value) => {
+      await expect(setup([...argumentsForSetup, '--hook-command', ...value], {}, fixture.layer)).rejects.toSatisfy(
+        (error: unknown) => errorMessage(error) === 'invalid --hook-command: expected package, npx, or absolute'
+      );
+
+      expect(dependencies.cleanup).not.toHaveBeenCalled();
+      expect(hooks.planInstall).not.toHaveBeenCalled();
+      expect(ui.promptConfirm).not.toHaveBeenCalled();
+      expect(runtimeNpm).not.toHaveBeenCalled();
+    }
+  );
+
+  it('rejects an invalid hook-command environment override before planning', async () => {
+    vi.stubEnv('AGENT_PRESENCE_HOOK_COMMAND', 'invalid');
+
+    await expect(setup(argumentsForSetup, {}, fixture.layer)).rejects.toThrow(
+      'invalid AGENT_PRESENCE_HOOK_COMMAND: expected package, npx, or absolute'
+    );
+
+    expect(dependencies.cleanup).not.toHaveBeenCalled();
+    expect(hooks.planInstall).not.toHaveBeenCalled();
+    expect(ui.promptConfirm).not.toHaveBeenCalled();
+  });
+
+  it.each([false, true])(
+    'updates a managed dsh plugin without a plugin prompt (interactive: %s)',
+    async (interactive) => {
+      const paths = resolveDshPluginPaths();
+      await put(paths.pluginPath, `// ${DSH_PLUGIN_MARKER}\nconst command = "npx @rivus/agent-presence@0.10.0";\n`);
+      const installers = await vi.importActual<typeof import('../src/installers.js')>('../src/installers.js');
+      dependencies.installDsh.mockImplementation(installers.installDshPlugin);
+      ui.isInteractiveTerminal.mockReturnValue(interactive);
+      ui.promptConfirm.mockResolvedValue(false);
+      if (interactive) {
+        ui.promptConfirm.mockResolvedValueOnce(true);
+      }
+
+      await setup([...argumentsForSetup, '--yes'], {}, fixture.layer);
+
+      expect(process.exitCode).toBe(0);
+      expect(ui.promptConfirm.mock.calls).toEqual(interactive ? [['Apply this installation plan?']] : []);
+      const plugin = await readFile(paths.pluginPath, 'utf8');
+      expect(plugin).toContain(join(fixture.presenceHome, 'bin/agent-presence'));
+      expect(plugin).not.toContain('npx');
+    }
+  );
+
+  it.each([
+    { interactive: true, accepted: true },
+    { interactive: true, accepted: false },
+    { interactive: false, accepted: true }
+  ])('installs a fresh dsh plugin only with interactive consent (%j)', async ({ interactive, accepted }) => {
+    await mkdir(join(fixture.home, '.dsh'));
+    const paths = resolveDshPluginPaths();
+    const installers = await vi.importActual<typeof import('../src/installers.js')>('../src/installers.js');
+    dependencies.installDsh.mockImplementation(installers.installDshPlugin);
+    ui.isInteractiveTerminal.mockReturnValue(interactive);
+    ui.promptConfirm.mockResolvedValueOnce(true).mockResolvedValueOnce(accepted);
+
+    await setup([...argumentsForSetup, '--yes'], {}, fixture.layer);
+
+    expect(process.exitCode).toBe(0);
+    expect(ui.promptConfirm.mock.calls).toEqual(
+      interactive
+        ? [['Apply this installation plan?'], ['Install the dsh plugin for presence + token usage reporting?']]
+        : []
+    );
+    expect(existsSync(paths.pluginPath)).toBe(interactive && accepted);
+    expect(dependencies.installDsh).toHaveBeenCalledTimes(interactive && accepted ? 1 : 0);
+  });
+
+  it('preserves an unmarked dsh plugin during non-interactive setup', async () => {
+    const paths = resolveDshPluginPaths();
+    await put(paths.pluginPath, '// user plugin\n');
+    const installers = await vi.importActual<typeof import('../src/installers.js')>('../src/installers.js');
+    dependencies.installDsh.mockImplementation(installers.installDshPlugin);
+    ui.isInteractiveTerminal.mockReturnValue(false);
+
+    await setup([...argumentsForSetup, '--yes'], {}, fixture.layer);
+
+    expect(process.exitCode).toBe(0);
+    expect(dependencies.installDsh).not.toHaveBeenCalled();
+    expect(await readFile(paths.pluginPath, 'utf8')).toBe('// user plugin\n');
+  });
+
+  it.each(['EISDIR', 'EACCES'])(
+    'continues publishing and pruning after a dsh plugin read failure (%s)',
+    async (code) => {
+      const paths = resolveDshPluginPaths();
+      const failure = Object.assign(new Error(`${code}: fixture plugin read failed`), { code });
+      vi.spyOn(installersModule, 'hasManagedDshPlugin').mockRejectedValueOnce(failure);
+      const staleRuntime = join(fixture.presenceHome, 'runtime', '0.8.0');
+      await mkdir(staleRuntime, { recursive: true });
+
+      await expect(setup(argumentsForSetup, {}, fixture.layer)).resolves.toBeUndefined();
+
+      expect(process.exitCode).toBe(0);
+      expect(errors).not.toHaveBeenCalled();
+      expect(ui.showNote.mock.calls.filter(([, title]) => title === 'dsh plugin')).toEqual([
+        [`could not read dsh plugin at ${paths.pluginPath}: ${failure.message}`, 'dsh plugin']
+      ]);
+      expect(ui.promptConfirm.mock.calls).toEqual([['Apply this installation plan?']]);
+      expect(dependencies.installDsh).not.toHaveBeenCalled();
+      expect(dependencies.publish).toHaveBeenCalledOnce();
+      expect(existsSync(staleRuntime)).toBe(false);
+      expect(ui.finishOutro).toHaveBeenCalledExactlyOnceWith('setup: ok');
+    }
+  );
+
+  it('neither reads nor rewrites a marked dsh plugin with --no-hooks', async () => {
+    const paths = resolveDshPluginPaths();
+    const original = `// ${DSH_PLUGIN_MARKER}\nconst command = "npx @rivus/agent-presence@0.10.0";\n`;
+    await put(paths.pluginPath, original);
+    const inspect = vi.spyOn(installersModule, 'hasManagedDshPlugin');
+    const installers = await vi.importActual<typeof import('../src/installers.js')>('../src/installers.js');
+    dependencies.installDsh.mockImplementation(installers.installDshPlugin);
+
+    await setup([...argumentsForSetup, '--no-hooks'], {}, fixture.layer);
+
+    expect(process.exitCode).toBe(0);
+    expect(inspect).not.toHaveBeenCalled();
+    expect(dependencies.installDsh).not.toHaveBeenCalled();
+    expect(await readFile(paths.pluginPath, 'utf8')).toBe(original);
+    expect(existsSync(paths.patchPath)).toBe(false);
+    expect(dependencies.publish).toHaveBeenCalledOnce();
+    expect(runtimeNpm).not.toHaveBeenCalled();
+    expect(existsSync(join(fixture.presenceHome, 'bin/agent-presence'))).toBe(false);
+  });
+
   it.each([
     { interactive: true, codexAvailable: true },
     { interactive: false, codexAvailable: true },
@@ -683,11 +830,35 @@ describe('setup through the harness', () => {
     let watcherCallsAtConfirmation: number | undefined;
     let noteTitlesAtConfirmation: (string | undefined)[] | undefined;
     let shimModeAtApply: number | undefined;
+    let runtimeSection = false;
+    const lock = runtimeModule.withPresenceRuntimeLock;
+    vi.spyOn(runtimeModule, 'withPresenceRuntimeLock').mockImplementation(async function <A>(action: () => Promise<A>) {
+      return lock(async () => {
+        runtimeSection = true;
+        try {
+          return await action();
+        } finally {
+          runtimeSection = false;
+        }
+      });
+    });
+    const writeShim = shimModule.writePresenceShim;
+    vi.spyOn(shimModule, 'writePresenceShim').mockImplementation(async (...args) => {
+      expect(runtimeSection).toBe(true);
+      return writeShim(...args);
+    });
+    const prune = runtimeModule.prunePresenceRuntimes;
+    vi.spyOn(runtimeModule, 'prunePresenceRuntimes').mockImplementation(async (...args) => {
+      expect(runtimeSection).toBe(true);
+      return prune(...args);
+    });
+
     ui.promptConfirm.mockImplementationOnce(async () => {
       targetsAtConfirmation = await snapshotTargets();
       shimExistedAtConfirmation = existsSync(join(fixture.presenceHome, 'bin/agent-presence'));
       watcherCallsAtConfirmation = dependencies.runScripts.mock.calls.length;
       noteTitlesAtConfirmation = ui.showNote.mock.calls.map(([, title]) => title);
+      expect(runtimeNpm).not.toHaveBeenCalled();
       timeline.push('confirm');
       return true;
     });
@@ -695,8 +866,14 @@ describe('setup through the harness', () => {
       timeline.push('dsh');
       return false;
     });
+    runtimeNpm.mockImplementation(async (command, args) => {
+      expect(runtimeSection).toBe(true);
+      timeline.push('runtime');
+      await installFixtureRuntime(command, args);
+    });
     hooks.applyInstall.mockImplementation((plan) =>
       Effect.promise(async () => {
+        expect(runtimeSection).toBe(false);
         shimModeAtApply = (await stat(join(fixture.presenceHome, 'bin/agent-presence'))).mode & 0o777;
         timeline.push('apply');
       }).pipe(Effect.andThen(realHarness.applyInstall(plan)))
@@ -729,8 +906,10 @@ describe('setup through the harness', () => {
       agents: PRESENCE_AGENTS
     });
     expect(
-      timeline.filter((entry) => ['planned', 'confirm', 'apply', 'watcher', 'dsh', 'publish', 'verify'].includes(entry))
-    ).toEqual(['planned', 'confirm', 'apply', 'verify', 'watcher', 'dsh', 'publish']);
+      timeline.filter((entry) =>
+        ['planned', 'confirm', 'runtime', 'apply', 'watcher', 'dsh', 'publish', 'verify'].includes(entry)
+      )
+    ).toEqual(['planned', 'confirm', 'runtime', 'apply', 'verify', 'watcher', 'dsh', 'publish']);
     expect(output()).toContain('setup create:');
     expect(output()).toMatch(/verif/i);
     expect(await snapshotTargets()).not.toEqual(before);
@@ -762,6 +941,79 @@ describe('setup through the harness', () => {
     expect(hooks.discardPlan).toHaveBeenCalledExactlyOnceWith(plans[0]);
     expect(plans[0]?.status).toBe('discarded');
     expect(await snapshotTargets()).toEqual(before);
+  });
+
+  it('discards the plan and leaves targets and shim untouched when the runtime install fails', async () => {
+    await seedSettings();
+    const before = await snapshotTargets();
+    let temporaryDirectory: string | undefined;
+    runtimeNpm.mockImplementation(async (_command, args) => {
+      temporaryDirectory = args[args.indexOf('--prefix') + 1];
+      throw new Error('fixture npm offline');
+    });
+
+    await setup(argumentsForSetup, {}, fixture.layer);
+
+    expectStopped();
+    expect(process.exitCode).toBe(1);
+    expect(errors.mock.calls.flat().join(' ')).toContain('fixture npm offline');
+    expect(hooks.discardPlan).toHaveBeenCalledExactlyOnceWith(plans[0]);
+    expect(plans[0]?.status).toBe('discarded');
+    expect(await snapshotTargets()).toEqual(before);
+    expect(existsSync(join(fixture.presenceHome, 'bin/agent-presence'))).toBe(false);
+    expect(temporaryDirectory).toBeDefined();
+    expect(existsSync(temporaryDirectory!)).toBe(false);
+    expect(await readdir(join(fixture.presenceHome, 'runtime'))).toEqual([]);
+  });
+
+  it('prunes only after successful setup and retains the runtime referenced by the previous shim', async () => {
+    const runtimeHome = join(fixture.presenceHome, 'runtime');
+    for (const version of ['0.8.0', '0.9.0']) {
+      await mkdir(join(runtimeHome, version), { recursive: true });
+    }
+    await writePresenceShim(fixture.presenceHome, { version: '0.9.0', mode: 'package' });
+    dependencies.runScripts.mockImplementation(async () => {
+      expect(await readdir(runtimeHome)).toContain('0.8.0');
+      return [];
+    });
+
+    await setup(argumentsForSetup, {}, fixture.layer);
+
+    expect(process.exitCode).toBe(0);
+    expect((await readdir(runtimeHome)).sort()).toEqual(['0.9.0', packageVersion()].sort());
+  });
+
+  it('keeps the runtime selected by a newer setup when an earlier setup finishes', async () => {
+    const newerVersion = '1.2.0';
+    dependencies.runScripts.mockImplementationOnce(async () => {
+      await setup(argumentsForSetup, {}, fixture.layer, { version: newerVersion });
+      return [];
+    });
+
+    await setup(argumentsForSetup, {}, fixture.layer);
+
+    expect(process.exitCode).toBe(0);
+    const newerCli = join(
+      fixture.presenceHome,
+      'runtime',
+      newerVersion,
+      'node_modules/@rivus/agent-presence/dist/src/cli.js'
+    );
+    expect(existsSync(newerCli)).toBe(true);
+    expect(await readFile(join(fixture.presenceHome, 'bin/agent-presence'), 'utf8')).toContain(shellQuote(newerCli));
+    expect((await readdir(join(fixture.presenceHome, 'runtime'))).sort()).toEqual(
+      [packageVersion(), newerVersion].sort()
+    );
+  });
+
+  it('does not prune old runtimes when setup stops after applying hooks', async () => {
+    const oldRuntime = join(fixture.presenceHome, 'runtime', '0.8.0');
+    await mkdir(oldRuntime, { recursive: true });
+    dependencies.runScripts.mockRejectedValueOnce(new Error('fixture watcher failure'));
+
+    await expect(setup(argumentsForSetup, {}, fixture.layer)).rejects.toThrow('fixture watcher failure');
+
+    expect(existsSync(oldRuntime)).toBe(true);
   });
 
   it('discards the plan without applying when writing the shim fails', async () => {
@@ -1150,7 +1402,7 @@ describe('setup through the harness', () => {
     }
   );
 
-  it.each(['npx', 'absolute'] as const)(
+  it.each(['package', 'npx', 'absolute'] as const)(
     'rewrites the shim from %s to the other mode without changing installed registrations on repeated setup',
     async (initialMode) => {
       vi.stubEnv('AGENT_PRESENCE_CLI_PATH', '/work/presence/dist/src/cli.js');
@@ -1158,26 +1410,31 @@ describe('setup through the harness', () => {
       const before = await snapshotTargets();
       const shim = join(fixture.presenceHome, 'bin/agent-presence');
       const initialShim = await readFile(shim, 'utf8');
-      const npxCommand = 'exec npx --yes --registry=https://registry.npmjs.org @rivus/agent-presence@';
-      const absoluteShim = `#!/bin/sh\nexec ${shellQuote(process.execPath)} /work/presence/dist/src/cli.js "$@"\n`;
-      if (initialMode === 'npx') {
-        expect(initialShim).toContain(npxCommand);
-      } else {
-        expect(initialShim).toBe(absoluteShim);
-      }
+      const packageCli = join(
+        fixture.presenceHome,
+        'runtime',
+        packageVersion(),
+        'node_modules/@rivus/agent-presence/dist/src/cli.js'
+      );
+      const expectedCli = initialMode === 'absolute' ? '/work/presence/dist/src/cli.js' : packageCli;
+      expect(initialShim).toContain(`${shellQuote(expectedCli)} "$@"`);
+      expect(initialShim).not.toContain('npx');
+      expect(runtimeNpm).toHaveBeenCalledTimes(initialMode === 'absolute' ? 0 : 1);
+      expect(existsSync(join(fixture.presenceHome, 'runtime'))).toBe(initialMode !== 'absolute');
 
       await setup(
-        [...argumentsForSetup, '--hook-command', initialMode === 'npx' ? 'absolute' : 'npx'],
+        [...argumentsForSetup, '--hook-command', initialMode === 'absolute' ? 'package' : 'absolute'],
         {},
         fixture.layer
       );
 
       expect(process.exitCode).toBe(0);
-      if (initialMode === 'npx') {
-        expect(await readFile(shim, 'utf8')).toBe(absoluteShim);
-      } else {
-        expect(await readFile(shim, 'utf8')).toContain(npxCommand);
-      }
+      const nextShim = await readFile(shim, 'utf8');
+      expect(nextShim).toContain(
+        `${shellQuote(initialMode === 'absolute' ? packageCli : '/work/presence/dist/src/cli.js')} "$@"`
+      );
+      expect(nextShim).not.toContain('npx');
+      expect(runtimeNpm).toHaveBeenCalledOnce();
       expect((await stat(shim)).mode & 0o777).toBe(0o755);
       expect(await snapshotTargets()).toEqual(before);
       expect(plans).toHaveLength(2);
@@ -1240,8 +1497,90 @@ describe('setup agent selection', () => {
     for (const agent of ['gemini-cli', 'grok', 'opencode', 'pi']) {
       expect(ui.showInfo).toHaveBeenCalledWith(`${agent}: not found; install it and run setup again`);
     }
-    expect(output()).toContain(
-      'Existing artifacts for unselected agents are left unchanged; run uninstall to remove them.'
+    expect(output()).not.toContain('unselected agents');
+    expect(fixture.processCalls).toEqual([]);
+  });
+
+  it('prints no retained-hook notice on a fresh home with one selected agent', async () => {
+    await setup([...detectedSetupArguments, '--agents', 'claude-code'], {}, fixture.layer);
+
+    expect(process.exitCode).toBe(0);
+    expect(output()).not.toContain('unselected agents');
+    expect(fixture.processCalls).toEqual([]);
+  });
+
+  it('names earlier Grok hooks and distinguishes updating them from uninstalling every agent', async () => {
+    await setup([...detectedSetupArguments, '--agents', 'grok'], {}, fixture.layer);
+    const before = (await fixture.run(realHarness.inventory())).entries;
+    expect(before.length).toBeGreaterThan(0);
+    expect(before.every((entry) => entry.owners.includes('agent-presence') && entry.agents.includes('grok'))).toBe(
+      true
+    );
+    timeline = [];
+
+    await setup([...detectedSetupArguments, '--agents', 'claude-code'], {}, fixture.layer);
+
+    expect(process.exitCode).toBe(0);
+    expect(ui.showInfo).toHaveBeenCalledWith(
+      'Existing hooks for unselected agents (grok) are left unchanged; run agent-presence setup --agents grok to update them. agent-presence uninstall removes presence hooks for all agents.'
+    );
+    expect(timeline.filter((line) => line.startsWith('Existing hooks for unselected agents'))).toHaveLength(1);
+    expect(fixture.processCalls).toEqual([]);
+  });
+
+  it('prints no retained-hook notice when the ledger contains only selected agents', async () => {
+    await setup([...detectedSetupArguments, '--agents', 'claude-code'], {}, fixture.layer);
+    const installed = (await fixture.run(realHarness.inventory())).entries;
+    expect(installed.length).toBeGreaterThan(0);
+    expect(installed.every((entry) => entry.agents.every((agent) => agent === 'claude-code'))).toBe(true);
+    timeline = [];
+
+    await setup([...detectedSetupArguments, '--agents', 'claude-code'], {}, fixture.layer);
+
+    expect(process.exitCode).toBe(0);
+    expect(output()).not.toContain('unselected agents');
+    expect(fixture.processCalls).toEqual([]);
+  });
+
+  it('ignores unselected ledger entries owned only by another application', async () => {
+    const bundle = { ...createPresenceBundle(fixture.presenceHome), owner: 'another-owner' };
+    const plan = await fixture.run(realHarness.planInstall(bundle, { agents: ['grok'] }));
+    await fixture.run(realHarness.applyInstall(plan));
+    const installed = (await fixture.run(realHarness.inventory())).entries;
+    expect(installed.length).toBeGreaterThan(0);
+    expect(installed.every((entry) => entry.owners.includes('another-owner'))).toBe(true);
+
+    await setup([...detectedSetupArguments, '--agents', 'claude-code'], {}, fixture.layer);
+
+    expect(process.exitCode).toBe(0);
+    expect(output()).not.toContain('unselected agents');
+    expect(fixture.processCalls).toEqual([]);
+  });
+
+  it('includes shared unselected hooks when presence is an owner but another application is active', async () => {
+    const bundle: Bundle = {
+      owner: 'agent-presence',
+      version: '1.0.0',
+      digest: 'shared-skill',
+      artifacts: [{ type: 'skill', name: 'shared-skill', files: { 'SKILL.md': '# Shared skill\n' } }]
+    };
+    const foreignPlan = await fixture.run(
+      realHarness.planInstall({ ...bundle, owner: 'another-owner' }, { agents: ['codex'] })
+    );
+    await fixture.run(realHarness.applyInstall(foreignPlan));
+    const presencePlan = await fixture.run(realHarness.planInstall(bundle, { agents: ['codex'] }));
+    await fixture.run(realHarness.applyInstall(presencePlan));
+    const installed = (await fixture.run(realHarness.inventory())).entries;
+    expect(installed.length).toBeGreaterThan(0);
+    expect(
+      installed.every((entry) => entry.owners.includes('agent-presence') && entry.activeOwner === 'another-owner')
+    ).toBe(true);
+
+    await setup([...detectedSetupArguments, '--agents', 'claude-code'], {}, fixture.layer);
+
+    expect(process.exitCode).toBe(0);
+    expect(ui.showInfo).toHaveBeenCalledWith(
+      'Existing hooks for unselected agents (codex) are left unchanged; run agent-presence setup --agents codex to update them. agent-presence uninstall removes presence hooks for all agents.'
     );
     expect(fixture.processCalls).toEqual([]);
   });
@@ -1338,7 +1677,7 @@ describe('setup agent selection', () => {
     expect(fixture.processCalls).toEqual([]);
   });
 
-  it('skips hook planning, shim, confirmation and verification when nothing is found and continues independent steps', async () => {
+  it('skips agent planning, confirmation and verification when nothing is found but prepares the runtime for independent steps', async () => {
     await mkdir(join(fixture.home, '.dsh'));
     ui.promptConfirm.mockResolvedValue(false);
 
@@ -1352,12 +1691,86 @@ describe('setup agent selection', () => {
     expect(ui.promptConfirm).toHaveBeenCalledExactlyOnceWith(
       'Install the dsh plugin for presence + token usage reporting?'
     );
-    expect(existsSync(join(fixture.presenceHome, 'bin/agent-presence'))).toBe(false);
+    expect(existsSync(join(fixture.presenceHome, 'bin/agent-presence'))).toBe(true);
+    expect(runtimeNpm).toHaveBeenCalledOnce();
     expect(dependencies.runScripts).toHaveBeenCalledOnce();
     expect(dependencies.publish).toHaveBeenCalledOnce();
     expect(output()).toContain('No agents detected; setup installed no hooks.');
     expect(ui.finishOutro).toHaveBeenCalledExactlyOnceWith('setup: ok');
     expect(timeline.filter((entry) => ['watcher', 'publish'].includes(entry))).toEqual(['watcher', 'publish']);
+  });
+
+  it.each([
+    { mode: 'default', args: [] },
+    { mode: 'npx', args: ['--hook-command', 'npx'] },
+    { mode: 'absolute', args: ['--hook-command', 'absolute'] }
+  ])('prepares the $mode shim before a dsh-only setup installs independent components', async ({ mode, args }) => {
+    await mkdir(join(fixture.home, '.dsh'));
+    vi.stubEnv('AGENT_PRESENCE_CLI_PATH', '/work/presence/dist/src/cli.js');
+    const shim = join(fixture.presenceHome, 'bin/agent-presence');
+    const packageCli = join(
+      fixture.presenceHome,
+      'runtime',
+      packageVersion(),
+      'node_modules/@rivus/agent-presence/dist/src/cli.js'
+    );
+    const expectedCli = mode === 'absolute' ? '/work/presence/dist/src/cli.js' : packageCli;
+    dependencies.runScripts.mockImplementation(async () => {
+      expect(existsSync(shim)).toBe(true);
+      timeline.push('watcher');
+      return [];
+    });
+    dependencies.installDsh.mockImplementation(async (paths) => {
+      const contents = await readFile(shim, 'utf8');
+      expect(contents).toContain(`${shellQuote(expectedCli)} "$@"`);
+      expect(contents).not.toContain('npx');
+      expect((await stat(shim)).mode & 0o777).toBe(0o755);
+      expect(existsSync(packageCli)).toBe(mode !== 'absolute');
+      timeline.push('dsh');
+      return { status: 'installed', ...paths, patchUpdated: true };
+    });
+
+    await setup([...detectedSetupArguments, ...args], {}, fixture.layer);
+
+    expect(process.exitCode).toBe(0);
+    expect(hooks.planInstall).not.toHaveBeenCalled();
+    expect(hooks.applyInstall).not.toHaveBeenCalled();
+    expect(hooks.verify).not.toHaveBeenCalled();
+    expect(runtimeNpm).toHaveBeenCalledTimes(mode === 'absolute' ? 0 : 1);
+    expect(dependencies.installDsh).toHaveBeenCalledOnce();
+    expect(ui.promptConfirm).toHaveBeenCalledExactlyOnceWith(
+      'Install the dsh plugin for presence + token usage reporting?'
+    );
+    expect(timeline.filter((entry) => ['watcher', 'dsh', 'publish'].includes(entry))).toEqual([
+      'watcher',
+      'dsh',
+      'publish'
+    ]);
+    expect(await snapshotTargets()).toEqual({});
+    expect(fixture.processCalls).toEqual([]);
+  });
+
+  it('stops independent setup components when runtime installation fails with no selected agents', async () => {
+    await mkdir(join(fixture.home, '.dsh'));
+    dependencies.installDsh.mockImplementation(async (paths) => ({
+      status: 'installed',
+      ...paths,
+      patchUpdated: true
+    }));
+    runtimeNpm.mockRejectedValueOnce(new Error('fixture npm offline'));
+
+    await setup(detectedSetupArguments, {}, fixture.layer);
+
+    expectStopped();
+    expect(hooks.planInstall).not.toHaveBeenCalled();
+    expect(hooks.discardPlan).not.toHaveBeenCalled();
+    expect(dependencies.installDsh).not.toHaveBeenCalled();
+    expect(ui.promptConfirm).not.toHaveBeenCalled();
+    expect(ui.finishOutro).not.toHaveBeenCalled();
+    expect(output()).toContain('fixture npm offline');
+    expect(existsSync(join(fixture.presenceHome, 'bin/agent-presence'))).toBe(false);
+    expect(await readdir(join(fixture.presenceHome, 'runtime'))).toEqual([]);
+    expect(fixture.processCalls).toEqual([]);
   });
 
   it('leaves earlier unselected artifacts and their ledger records untouched during setup verification', async () => {
@@ -1381,7 +1794,7 @@ describe('setup agent selection', () => {
     });
     expect(output()).not.toContain(`verify drift: ${path}`);
     expect(output()).toContain(
-      'Existing artifacts for unselected agents are left unchanged; run uninstall to remove them.'
+      'Existing hooks for unselected agents (pi) are left unchanged; run agent-presence setup --agents pi to update them. agent-presence uninstall removes presence hooks for all agents.'
     );
   });
 });

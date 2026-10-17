@@ -3,7 +3,7 @@ export function printHelp(): void {
 
 Usage:
   agent-presence login [--provider <magic-builder|feishu-signature>]
-  agent-presence setup [--provider <magic-builder|feishu-signature>] [--login] [--skip-login] [--hooks-only] [--no-hooks] [--yes] [--hook-command <npx|absolute>] [--agents <id,...>]
+  agent-presence setup [--provider <magic-builder|feishu-signature>] [--login] [--skip-login] [--hooks-only] [--no-hooks] [--yes] [--hook-command <package|npx|absolute>] [--agents <id,...>]
   agent-presence uninstall [--credentials] [--all]
   agent-presence url [--provider <magic-builder|feishu-signature>]
   agent-presence config show
@@ -26,6 +26,8 @@ claude-code,codex,gemini-cli,grok,opencode,pi. Setup installs the --agent form.
 Direct hook calls use --source with claude, codex,
 gemini, grok, dsh, or a configured source, and an internal event name such as
 SessionStart, Heartbeat, or Stop.
+The default hook-command mode is package: setup installs the pinned package locally.
+npx is an alias of package; absolute uses this checkout. Hooks run Node through the shim.
 `);
 }
 
