@@ -913,9 +913,11 @@ describe('setup agent selection', () => {
 
   it('prints each missing or unknown agent on one line with failed checks and an override', async () => {
     const path = join(fixture.home, '.grok');
+    const canonicalPath = join(await realpath(fixture.home), '.grok');
     const originalStat = fixture.platform.fs.stat.bind(fixture.platform.fs);
+    // Discovery follows links; legacy target checks must still inspect the actual ancestors.
     vi.spyOn(fixture.platform.fs, 'stat').mockImplementation((target, options) =>
-      target === path
+      (target === path || target === canonicalPath) && options?.followSymlinks
         ? Promise.reject(Object.assign(new Error('fixture permission denied'), { code: 'EACCES' }))
         : originalStat(target, options)
     );
