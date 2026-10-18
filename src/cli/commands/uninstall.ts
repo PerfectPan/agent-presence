@@ -99,7 +99,7 @@ export async function uninstall(
   if (clearState) {
     await remove('local state removal failed', async () => {
       const statePath = getStatePath();
-      // The tombstone goes down first (Plan 0003 3.8): producers record nothing from here on, and the takeover below
+      // The tombstone goes down first: producers record nothing from here on, and the takeover below
       // leaves without starting a worker.
       await writeTombstone(statePath);
       await takeOver(
@@ -107,7 +107,7 @@ export async function uninstall(
         async () => {
           await rm(queuePaths(statePath).queueDir, { recursive: true, force: true });
           await deleteStopRequests(statePath);
-          // `<state>.worker.v` goes with the leaving order's release (3.6), so it is not deleted here.
+          // `<state>.worker.v` goes with the leaving order's release, so it is not deleted here.
           await rm(statePath, { force: true });
         },
         takeover

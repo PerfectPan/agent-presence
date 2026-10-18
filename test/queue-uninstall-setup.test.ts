@@ -12,9 +12,9 @@ import { eventBody, readState, recordAt, until, writeState, T0 } from './queue-s
 import { createCommandHarness, type CommandHarness } from './queue-command-harness.js';
 import { createHarnessFixture, type HarnessFixture } from './harness-support.js';
 
-// Plan 0003 3.8: `uninstall --all` writes the tombstone, empties the queue under a takeover, and keeps the lock and
-// the epoch; `setup` removes a tombstone, raises the epoch, and lets records apply again; without a tombstone it
-// leaves the queue alone. The downgrade path of 3.12 runs the same setup of an older release through the seam.
+// `uninstall --all` writes the tombstone, empties the queue under a takeover, and keeps the lock and the epoch;
+// `setup` removes a tombstone, raises the epoch, and lets records apply again; without a tombstone it leaves the queue
+// alone. The downgrade between queue releases runs the same setup of an older release through the seam.
 
 // No detached process may leave a test: every start goes through the seam, and a stray spawn is recorded here.
 const spawnMock = vi.hoisted(() =>
@@ -118,7 +118,7 @@ async function plantStopRequest(): Promise<string> {
 
 const SETUP_ARGS = ['--provider', 'feishu-signature', '--no-hooks', '--skip-login'];
 
-describe('uninstall --all (Spec S10)', () => {
+describe('uninstall --all', () => {
   it('stops a worker busy in a follow-up item, removes the planted requests and the state, and keeps the lock and epoch', async () => {
     // The worker picks the owed refresh first, so it is busy in the follow-up lane when the records are still pending.
     await writeState(h.home.statePath, {
@@ -246,7 +246,7 @@ describe('setup after a tombstone', () => {
   });
 });
 
-describe('downgrade between queue releases (3.12)', () => {
+describe('downgrade between queue releases', () => {
   it('after the newer release stops the worker, the older release records nothing until its setup runs', async () => {
     await recordAt(h.home.statePath, T0, eventBody('SessionStart', 's1'), { version: NEWER });
     const starts = h.countingStarts();

@@ -24,7 +24,7 @@ import {
   type QueueHome
 } from './queue-support.js';
 
-// Plan 0003 5.2 and Spec S4: a worker killed with SIGKILL at each point of its work leaves the next worker to apply
+// A worker killed with SIGKILL at each point of its work leaves the next worker to apply
 // every record once, append every dsh usage line once, and refresh every owed source once. The worker runs in a child
 // process, which reports reaching the point on stdout and is killed there; the tests wait on those lines only.
 

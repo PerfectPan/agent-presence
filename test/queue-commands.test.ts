@@ -22,7 +22,7 @@ import {
   type CommandHarness
 } from './queue-command-harness.js';
 
-// Plan 0003 3.7 and 3.8 for the state-changing commands: they take over, apply what is pending, and run today's code;
+// The state-changing commands: they take over, apply what is pending, and run their own code;
 // under the tombstone they change nothing. The argv path is exercised through the takeover seam the commands accept
 // behind their args, so time stays on the harness's virtual clock.
 
@@ -178,7 +178,7 @@ describe('status', () => {
       expect(JSON.parse(out.lines[0]!)).toMatchObject({ activeCount: 1 });
       expect(h.fake.appended).toEqual([]);
       expect((await readState(h.home.statePath)).queueOwed?.dshUsage).toHaveLength(1);
-      // The append is left to the worker status starts when it leaves (3.6); the test counts instead of running it.
+      // The append is left to the worker status starts when it leaves; the test counts instead of running it.
       expect(starts.count()).toBe(1);
     } finally {
       await lock.release();
@@ -287,7 +287,7 @@ describe('flush', () => {
   });
 });
 
-describe('reset during a slow usage refresh (Spec S6)', () => {
+describe('reset during a slow usage refresh', () => {
   it('takes over within its wait, applies the SessionStart, finishes every session, publishes, and leaves the refresh owed', async () => {
     nowAt(T0 + 2_000);
     await writeState(h.home.statePath, {
@@ -530,7 +530,7 @@ describe('commands under the tombstone', () => {
   });
 });
 
-describe('commands of an older release (section 7, option (a))', () => {
+describe('commands of an older release', () => {
   it('an older reset finishes every session and publishes, leaves the newer SessionStart pending, and a newer worker applies it', async () => {
     nowAt(T0 + 2_000);
     await writeState(h.home.statePath, {

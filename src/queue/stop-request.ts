@@ -6,9 +6,9 @@ import { hasNodeErrorCode } from '../json-file.js';
 import { writeLogEvent } from '../log.js';
 import { queuePaths, randomHex, systemClock, type QueueClock } from './files.js';
 
-// A command asks for the worker lock with a stop request (Plan 0003 3.7): the file `<state>.worker.stop.<token>`
+// A command asks for the worker lock with a stop request: the file `<state>.worker.stop.<token>`
 // holding its pid as decimal text. Every release with the queue keeps that name, the format, the touch period and the
-// age bound below (3.12).
+// age bound below.
 
 /** How often a waiting command touches its request, and writes it again if it is gone. */
 export const STOP_REQUEST_TOUCH_MS = 2_000;
@@ -120,11 +120,11 @@ async function logQuietly(event: Record<string, unknown>): Promise<void> {
   }
 }
 
-// The unremovable request paths this process has logged: a holder checks every 250 ms (3.3), so the same file would
+// The unremovable request paths this process has logged: a holder checks every 250 ms, so the same file would
 // log on every check. The path leaves the set once its file is gone, so a later file there logs again.
 const staleRequestsLogged = new Set<string>();
 
-/** Remove a stale request; when that fails too, keep the reader going and log the request once per file (3.7). */
+/** Remove a stale request; when that fails too, keep the reader going and log the request once per file. */
 async function removeStaleRequest(path: string, readError: unknown): Promise<void> {
   try {
     await rm(path, { force: true });
@@ -204,7 +204,7 @@ export interface HoldStopRequestOptions {
 /**
  * Write a stop request for the worker lock of `statePath` and keep it live while the caller waits: touch it every
  * `STOP_REQUEST_TOUCH_MS`, and write it again with the same name and pid if a reader deleted it as stale, for example
- * after the clock moved during a sleep (Plan 0003 3.7). The caller stays alive for its whole wait and releases the hold
+ * after the clock moved during a sleep. The caller stays alive for its whole wait and releases the hold
  * once it gets the lock or gives up.
  */
 export async function holdStopRequest(

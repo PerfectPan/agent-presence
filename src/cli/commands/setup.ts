@@ -185,7 +185,7 @@ export async function setup(
     return;
   }
 
-  // An uninstall --all or worker --stop left the tombstone (Plan 0003 3.8): drop the records it kept from applying, raise
+  // An uninstall --all or worker --stop left the tombstone: drop the records it kept from applying, raise
   // the epoch so a record a producer still writes with the old epoch is deleted unapplied, and let hooks record again.
   const statePath = getStatePath();
   if (await isDisabled(statePath)) {

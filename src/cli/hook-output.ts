@@ -19,16 +19,16 @@ export function setHookStartWorkerForTests(override: StartWorker | undefined): v
   startWorker = override ?? startWorkerProcess;
 }
 
-/** Start the worker for this process's state file: the injected starter (tests) or a detached one (3.3). */
+/** Start the worker for this process's state file: the injected starter (tests) or a detached one. */
 export function startHookWorker(): void {
   startWorker();
 }
 
 /**
  * Record a hook failure as an `error` record whose message is the line the hook logged before the queue
- * (`hook failed: <message>`, Plan 0003 3.11), so the worker logs the same text. Resolves whether the producer wants a
- * worker started for the record (3.3): the caller starts it once, after its own work. A failed recording — the queue
- * could not take this record either — leaves only the hook output (3.10) and starts no worker.
+ * (`hook failed: <message>`), so the worker logs the same text. Resolves whether the producer wants a
+ * worker started for the record: the caller starts it once, after its own work. A failed recording — the queue
+ * could not take this record either — leaves only the hook output and starts no worker.
  */
 export async function recordHookFailure(message: string): Promise<boolean> {
   try {

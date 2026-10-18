@@ -29,7 +29,7 @@ export interface QueueFile {
 }
 
 export interface QueueListing {
-  /** In apply order: by recorded time, then by file name (Plan 0003 3.4). */
+  /** In apply order: by recorded time, then by file name. */
   readonly records: QueueFile[];
   /** Paths of `.tmp-` files: records being written, or left by a producer that died while writing. */
   readonly temporary: string[];

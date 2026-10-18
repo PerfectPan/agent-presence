@@ -1,6 +1,5 @@
-// Shared by the Q1b command tests: a queue home on virtual time with fake owed-work effects and a worker pool, the
-// takeover seam the tests pass to the commands, and stdout capture. Kept out of queue-support.ts so part A's edits
-// there do not conflict. Nothing here waits on the wall clock.
+// Shared by the command tests: a queue home on virtual time with fake owed-work effects and a worker pool, the
+// takeover seam the tests pass to the commands, and stdout capture. Nothing here waits on the wall clock.
 import { readdir } from 'node:fs/promises';
 import { basename } from 'node:path';
 import { vi } from 'vite-plus/test';

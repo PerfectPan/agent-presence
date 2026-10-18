@@ -3,12 +3,12 @@ import { mkdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { hasNodeErrorCode } from '../json-file.js';
 
-// Processes of two releases with the queue read each other's files (Plan 0003 3.12), so every name and text format in
+// Processes of two releases with the queue read each other's files, so every name and text format in
 // this module is fixed for all of them: a later release may add files, never rename one or change what it holds. The
 // hook reaches this module through the producer, so it stays free of schemas: the numbers are decimal text and the
 // tombstone is an existence check.
 
-/** The record version this release writes and applies up to (Plan 0003 3.2). */
+/** The record version this release writes and applies up to. */
 export const RECORD_VERSION = 1;
 
 /** Wall-clock milliseconds; tests pass their own. */
@@ -126,7 +126,7 @@ export function readEpoch(statePath: string): Promise<number> {
   return readDecimalFile(queuePaths(statePath).epoch);
 }
 
-/** Increase the epoch by one and return it; `setup` does this when it removes a tombstone (Plan 0003 3.8). */
+/** Increase the epoch by one and return it; `setup` does this when it removes a tombstone. */
 export async function increaseEpoch(statePath: string): Promise<number> {
   const next = (await readEpoch(statePath)) + 1;
   await writeDecimalFile(queuePaths(statePath).epoch, next);
@@ -153,12 +153,12 @@ export function readWorkerVersion(statePath: string): Promise<number> {
   return readDecimalFile(queuePaths(statePath).workerVersion);
 }
 
-/** Every holder writes its version right after it takes the worker lock (Plan 0003 3.3). */
+/** Every holder writes its version right after it takes the worker lock. */
 export async function writeWorkerVersion(statePath: string, version: number): Promise<void> {
   await writeDecimalFile(queuePaths(statePath).workerVersion, version);
 }
 
-/** Every holder deletes its version right before it releases the worker lock (Plan 0003 3.6). */
+/** Every holder deletes its version right before it releases the worker lock. */
 export async function deleteWorkerVersion(statePath: string): Promise<void> {
   await rm(queuePaths(statePath).workerVersion, { force: true });
 }

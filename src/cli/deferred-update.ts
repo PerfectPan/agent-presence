@@ -44,7 +44,7 @@ export async function scheduleDeferredRenderedUpdate(options: {
   const runAt = options.now + delayMs;
 
   // The deferred flush renders the state when it runs, so scheduling it, or finding one already due in time, settles
-  // the owed rendered sync (Plan 0003 3.5).
+  // the owed rendered sync.
   const shouldSpawn = await withStateLock(options.statePath, async () => {
     const state = await loadState(options.statePath);
     const pending = state.pendingSlotFlushAt ?? 0;

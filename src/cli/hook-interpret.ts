@@ -93,7 +93,7 @@ const EVENT_TABLES: Readonly<Record<string, EventTable>> = {
 };
 
 /**
- * A skip with the code and fields the queue's skip record needs (Plan 0003 3.2); the applier builds the line the hook
+ * A skip with the code and fields the queue's skip record needs; the applier builds the line the hook
  * used to log from them. `source` names the presence source when one is known, `agent` the kit agent when none is.
  */
 type SkippedHook =

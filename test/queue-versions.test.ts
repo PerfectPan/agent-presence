@@ -27,7 +27,7 @@ import {
   type WorkerPool
 } from './queue-support.js';
 
-// Plan 0003 5.3's checks that need no producer command. One build runs an older release (record version 1) and a newer
+// Version checks that need no producer command. One build runs an older release (record version 1) and a newer
 // one (record version 2): the version a worker or a takeover writes and compares is a parameter.
 
 // A sync inside the debounce interval schedules a deferred flush as a detached process; record it instead.
@@ -72,7 +72,7 @@ afterEach(async () => {
 
 /**
  * A producer of release `version` recording at `at`: write the record, then start a worker of its release when the
- * lock check calls for one, as Q1b's hook will.
+ * lock check calls for one, as the hook does.
  */
 async function produce(version: number, at: number, body: RecordBody, worker: Partial<WorkerOptions> = {}) {
   const produced = await produceRecord(home.statePath, body, { version, clock: { now: () => at } });

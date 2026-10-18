@@ -144,7 +144,7 @@ export async function syncRenderedSlotWithStateLock(
   });
 
   const claimed = requireDecision(decision);
-  // The owed rendered sync (Plan 0003 3.5) stays owed while the publish runs, so a holder that dies during it leaves it
+  // The owed rendered sync stays owed while the publish runs, so a holder that dies during it leaves it
   // for the next one. Records applied during the publish leave it owed too, unless they render the same value.
   return applySlotSyncDecision(statePath, claimed, updateSlot, (state) => {
     if (claimed.action === 'update' && renderedValue(state, options) === claimed.value) {
@@ -154,7 +154,7 @@ export async function syncRenderedSlotWithStateLock(
 }
 
 /**
- * What the tombstoned commands print (Plan 0003 3.8): they change nothing, and the slot keeps the value it last
+ * What the tombstoned commands print: they change nothing, and the slot keeps the value it last
  * published.
  */
 export async function disabledSlotResult(statePath: string): Promise<SyncSlotResult> {

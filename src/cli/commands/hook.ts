@@ -35,7 +35,7 @@ function scanEnvFor(source: string): Record<string, string> {
   return scanEnv;
 }
 
-/** Write one record; a failed write records the failure once, best-effort, and loses the event (3.10). */
+/** Write one record; a failed write records the failure once, best-effort, and loses the event. */
 async function record(production: HookProduction, body: RecordBody): Promise<void> {
   try {
     const outcome = await produceRecord(production.statePath, body);
@@ -62,7 +62,7 @@ async function recordResolvedHook(
   const context = await resolveHookContextForSource(source, payload, config, { diagnostics });
   const event = options.event ?? context.event ?? 'Heartbeat';
 
-  // The resolution lines become error records like the run's main record below (3.11); with the same recorded time,
+  // The resolution lines become error records like the run's main record below; with the same recorded time,
   // the applier's file-name order decides when they are applied.
   for (const diagnostic of diagnostics) {
     await record(production, {
@@ -159,7 +159,7 @@ export async function hook(args: string[]): Promise<void> {
 
   if (startRequested) {
     // The starter never throws (`startWorkerProcess` keeps every spawn failure to itself); a start that cannot happen
-    // loses the records to the next producer (3.10).
+    // loses the records to the next producer.
     startHookWorker();
   }
 

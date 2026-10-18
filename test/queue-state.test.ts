@@ -6,7 +6,7 @@ import { loadState, saveState } from '../src/state-store.js';
 import { appendUsageEvent, getUsageEventsPath, readUsageEvents } from '../src/usage-events-log.js';
 
 // These tests act as an older queue release: the state they load was saved by a later release, with owed work this
-// release does not know (Plan 0003 3.5 and 5.1).
+// release does not know.
 
 const usage = {
   source: 'dsh',

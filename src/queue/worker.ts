@@ -22,15 +22,15 @@ import { startWorkerProcess, type StartWorker } from './start-worker.js';
 import { isPidAlive, liveStopRequests, type Delay, type PidAlive } from './stop-request.js';
 import { holdWorkerLock, tryWorkerLock, type WorkerLockHold } from './worker-lock.js';
 
-/** The apply lane's iteration and a started worker's round (Plan 0003 3.3, 3.5). */
+/** The apply lane's iteration and a started worker's round. */
 export const WORKER_ROUND_MS = 250;
-/** How long a started worker repeats its rounds before it gives up (3.3). */
+/** How long a started worker repeats its rounds before it gives up. */
 export const STARTED_WORKER_WAIT_MS = 60_000;
-/** How long a worker holds the lock with nothing to do before it leaves (3.6; decided by the owner). */
+/** How long a worker holds the lock with nothing to do before it leaves. */
 export const WORKER_IDLE_MS = 5 * 60_000;
 
 /**
- * Why a worker exited (3.11):
+ * Why a worker exited:
  * - `idle`: the idle interval passed with nothing it could do, and its last listing found no record;
  * - `stop-request`: a command's live stop request;
  * - `newer-record`: its listing reached a record with a higher `v`;
@@ -99,7 +99,7 @@ async function takeLockNow(context: WorkerContext): Promise<WorkerLockHold | und
   return lock && holdWorkerLock(context.statePath, context.version, lock);
 }
 
-/** Whether owed work this release can do remains, the items this holder set aside included (3.5, 3.6). */
+/** Whether owed work this release can do remains, the items this holder set aside included. */
 export async function owedWorkRemains(statePath: string): Promise<boolean> {
   const [state, { config }] = await Promise.all([loadState(statePath), loadValidatedConfig({ report: false })]);
   return doableOwedItems(state.queueOwed, knownSources(config)).length > 0;
@@ -115,7 +115,7 @@ export async function recordsRemain(statePath: string): Promise<boolean> {
 }
 
 /**
- * A started worker's rounds (3.3): every `WORKER_ROUND_MS` for up to `STARTED_WORKER_WAIT_MS` it exits at the
+ * A started worker's rounds: every `WORKER_ROUND_MS` for up to `STARTED_WORKER_WAIT_MS` it exits at the
  * tombstone, does nothing while a command's stop request is live, takes a free lock with one try, exits when the
  * holder's version is at least its own, and otherwise waits for the next round. It checks before it tries, so it never
  * pays a try against a held lock, and it never yields to another worker.
@@ -162,7 +162,7 @@ interface FollowUpLane {
   stop(): Promise<void>;
 }
 
-/** The follow-up lane (3.5): owed items one at a time, next to the apply lane, checking between items for a stop. */
+/** The follow-up lane: owed items one at a time, next to the apply lane, checking between items for a stop. */
 function createFollowUpLane(context: WorkerContext): FollowUpLane {
   const controller = new AbortController();
   const attempts = createOwedAttempts();
@@ -228,8 +228,8 @@ type HoldEnd = 'idle' | 'stop-request' | 'newer-record' | 'tombstone' | 'failing
 
 /**
  * Hold the lock and apply: every `WORKER_ROUND_MS` check the tombstone and the stop requests, apply one batch, keep the
- * follow-up lane going, and leave when idle. Then stop the lane, note whether owed work remains, and release (3.6,
- * steps 1 and 2).
+ * follow-up lane going, and leave when idle. Then stop the lane, note whether owed work remains, and release
+ * (steps 1 and 2 of leaving).
  */
 async function applyWhileHolding(
   context: WorkerContext,
@@ -281,7 +281,7 @@ async function applyWhileHolding(
         break;
       }
       // A successful batch alone does not clear the failing clock: the checks and `hasWork` around it can throw too,
-      // and one of them throwing every round must still run the clock out and make the worker leave (3.10).
+      // and one of them throwing every round must still run the clock out and make the worker leave.
       failingSince = undefined;
     } catch (error) {
       await logQuietly({ type: 'worker.batch.failed', error: errorMessage(error) });
@@ -329,7 +329,7 @@ async function workUntilExit(context: WorkerContext): Promise<WorkerExitReason> 
     const left = await applyWhileHolding(context, hold);
     hold = undefined;
 
-    // Step 3 of leaving (3.6): list the queue once more.
+    // Step 3 of leaving: list the queue once more.
     const records = await recordsRemain(context.statePath);
     if (left.end === 'idle') {
       if (!records) {
@@ -343,7 +343,7 @@ async function workUntilExit(context: WorkerContext): Promise<WorkerExitReason> 
     }
     // A producer that renamed its record while this worker held the lock started no worker, and the requester may be
     // of an older release; the worker started here waits for the requester and exits once a holder of its version
-    // or a newer one has written it (3.6). Leaving for a newer record or the tombstone starts none.
+    // or a newer one has written it. Leaving for a newer record or the tombstone starts none.
     if (left.end === 'stop-request' && (left.owedRemains || records)) {
       context.startWorker();
     }
@@ -352,8 +352,9 @@ async function workUntilExit(context: WorkerContext): Promise<WorkerExitReason> 
 }
 
 /**
- * Run `agent-presence worker` for the state file (Plan 0003 3.3-3.7): start as a started worker, apply records and
- * work off owed items while holding the worker lock, and leave in 3.6's order. Resolves with the reason it exited.
+ * Run `agent-presence worker` for the state file: start as a started worker, apply records and work off owed items
+ * while holding the worker lock, and leave: delete `<state>.worker.v`, release the lock, then list the queue once
+ * more. Resolves with the reason it exited.
  */
 export async function runWorker(options: WorkerOptions): Promise<WorkerExitReason> {
   const context = resolveOptions(options);

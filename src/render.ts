@@ -27,7 +27,7 @@ export type SyncSlotResult =
   | { status: 'updated'; value: string }
   | {
       status: 'skipped';
-      /** `disabled`: the tombstone exists, so the command changed nothing (Plan 0003 3.8). */
+      /** `disabled`: the tombstone exists, so the command changed nothing. */
       reason: 'unchanged' | 'debounced' | 'rate-limited' | 'disabled';
       value: string;
       retryAfterMs?: number;

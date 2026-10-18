@@ -3,7 +3,7 @@ import { isSessionBoundaryEvent, type PresenceState } from '../state.js';
 // Type-only, so erased: this module loads no schema.
 import type { DshUsageEntry, EventRecord, QueueOwed, ScanEnv, UsageRefreshEntry } from './schema.js';
 
-// The follow-up work that applied records owe, kept in the state's `queueOwed` (Plan 0003 3.5). Releases with the
+// The follow-up work that applied records owe, kept in the state's `queueOwed`. Releases with the
 // queue save the state in turns, so every change here is made in place on the parsed entries: an entry keeps the
 // fields this release does not know, and keys and kinds it does not know are never touched.
 
@@ -36,7 +36,7 @@ function owedOf(state: PresenceState): QueueOwed {
  * Add what an applied event record owes: a dsh usage append when it carries usage, a refresh of its source and
  * `scanEnv` at a session boundary when `refreshUsage` is set (the signature renders usage), and the rendered sync. A
  * boundary for a source and `scanEnv` already owed updates that entry: its boundary time moves to the later one and its
- * generation increases, so a refresh already running for it keeps it owed (Plan 0003 3.5).
+ * generation increases, so a refresh already running for it keeps it owed.
  */
 export function addOwedWork(state: PresenceState, record: EventRecord, options: { refreshUsage: boolean }): void {
   const owed = owedOf(state);

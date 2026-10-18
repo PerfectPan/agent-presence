@@ -14,7 +14,7 @@ import {
   type WorkerPool
 } from './queue-support.js';
 
-// Plan 0003 5.4's concurrent-hook check (Spec S3): 100 hooks fire at once as the real hook command, each recording its
+// The concurrent-hook check: 100 hooks fire at once as the real hook command, each recording its
 // event through the queue's producer with the worker start injected, and one worker applies every event.
 
 // Each concurrent hook reads its own payload; the list doubles as the count of hooks that ran.
