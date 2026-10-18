@@ -53,7 +53,7 @@ agent-presence uninstall --all
 
 setup 成功后在 runtime 锁内清理，保留本次版本、旧 shim 指向的版本和清理时 shim 指向的版本，删除其他版本及残留的 `runtime/.install-*` 目录。dsh 和 macOS 电源 watcher 也通过 shim 调用。从 0.10.0 升级只需安装本版本并运行 `setup`；已安装的命令保持不变，无需先卸载，也不会增加 hook 重新信任流程。见[从 0.10.0 升级](/zh/guide/install/#从-0100-升级)。
 
-完整路径见[安装位置](/zh/guide/install/#安装位置)：Claude Code 使用插件，避免写入 Cursor 也会读取的 settings 文件；Gemini 使用扩展及其原生事件名；Codex 使用插件或 `config.toml`；Grok 使用独立 hook 文件；opencode/Pi 使用桥接文件。Claude Code、Codex、Gemini CLI 和 Grok 的命令式 hook 按各自的原生单位设置五秒超时。opencode/Pi 桥接仅对同步结束事件的交付设置五秒超时，其他事件异步发送，不设置子进程超时。切换到 shim 的 `hook --agent` 命令预计需要在 Codex 中重新信任一次 hook，后续只更新 shim 时会保留 hook 定义。真实智能体验收与隔离环境中的安装检查分开进行。
+完整路径见[安装位置](/zh/guide/install/#安装位置)：Claude Code 使用插件，避免写入 Cursor 也会读取的 settings 文件；Gemini 使用扩展及其原生事件名；Codex 使用插件或 `config.toml`；Grok 使用独立 hook 文件；opencode/Pi 使用桥接文件。Claude Code、Codex、Gemini CLI 和 Grok 的命令式 hook 按各自的原生单位设置五秒超时。opencode/Pi 桥接仅对同步结束事件的交付设置五秒超时，其他事件异步发送，不设置子进程超时。切换到 shim 的 `hook --agent` 命令预计需要在 Codex 中重新信任一次 hook，后续只更新 shim 时会保留 hook 定义。0.11.0 版本的真实智能体检查已验证安装的插件表面、Codex 的一次性信任审阅和 Gemini 的扩展加载。
 
 hook 命令由 `setup` 自动安装,且永不阻塞智能体。添加、覆盖或禁用被统计的智能体见 [Sources](/zh/guide/sources/)。
 

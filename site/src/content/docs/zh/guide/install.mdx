@@ -163,7 +163,7 @@ dsh 插件和 macOS 电源 watcher 仍由 presence 自行管理，不属于 harn
 
 命令式 hook 中，Claude Code、Codex 和 Grok 按秒写入 `timeout: 5`，Gemini 按毫秒写入 `timeout: 5000`。opencode/Pi 桥接仅对同步结束事件的交付设置 5000 毫秒子进程超时；其他事件异步发送，不设置子进程超时。Gemini 使用 `SessionStart`、`BeforeAgent`、`BeforeTool`、`AfterTool`、`AfterAgent` 和 `SessionEnd`。Claude 插件位置避免向 Cursor 也会读取的 settings 文件添加 presence hook；presence 不安装 Cursor 源。
 
-现有 Codex 注册切换到 shim 的 `hook --agent` 命令后，预计需要重新信任一次 hook。请查看计划列出的提示，通过 Codex 批准；setup 不会修改信任状态。后续仅替换 shim 时，已安装 hook 的定义保持稳定。真实 Claude 插件加载、Cursor 行为、Codex 信任提示和 Gemini 扩展加载仍需单独验收，隔离环境中的产物检查不能证明这些行为。支持扩展的最低 Gemini 版本尚未确认。
+现有 Codex 注册切换到 shim 的 `hook --agent` 命令后，预计需要重新信任一次 hook。请查看计划列出的提示，通过 Codex 批准；setup 不会修改信任状态。后续仅替换 shim 时，已安装 hook 的定义保持稳定。0.11.0 版本的真实智能体检查已验证这些行为：Claude Code 2.1.301 加载了安装的插件，Codex 0.162.1 审阅并运行了插件 hook，Gemini CLI 0.64.0 加载了扩展。更早的 Gemini CLI 版本和 Cursor 桌面应用未经测试。
 
 ## 检查与卸载
 
