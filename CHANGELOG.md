@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.12.0
+
+### Minor Changes
+
+- [#136](https://github.com/PerfectPan/agent-presence/pull/136) [`ee1438c`](https://github.com/PerfectPan/agent-presence/commit/ee1438cfadcc70acccea7e8b5a86b409a4fd7244) Thanks [@PerfectPan](https://github.com/PerfectPan)! - Setup no longer refuses to run when an installation from 0.9.0 or earlier is still present. To upgrade from 0.9.0 or earlier, first run that release's uninstall (`npx --yes @rivus/agent-presence@0.9.0 uninstall`, or `node <checkout>/dist/src/cli.js uninstall` for a checkout); it also removes what earlier releases installed. Remove two kinds of absolute-mode hook entry by hand, because the old uninstall misses them and `agent-presence doctor` cannot see them without a presence marker: one whose checkout path needed shell quoting (spaces, non-ASCII, `+`, `~`, …), and one from an `AGENT_PRESENCE_CLI_PATH` that does not end in `dist/src/cli.js`. If you skip the old uninstall, Claude Code, Codex, Gemini CLI and Grok (which also reads `~/.claude/settings.json`) run both versions' hooks and `agent-presence doctor` reports the duplicates: run the 0.9.0 uninstall, then run `agent-presence setup` again, because the old uninstall can delete the current opencode bridge. opencode and Pi bridges instead show up in setup as `unmanaged-exists` conflicts: cancel there and run the 0.9.0 uninstall. Do not choose `adopt` or `backup`: `adopt` goes on without the old uninstall, so the old Claude Code, Codex and Gemini CLI hooks and the old `opencode.json` plugin entry stay, and `backup` is worse, because a later `agent-presence uninstall` restores the old bridge. If you chose `backup` earlier, delete the restored `~/.config/opencode/plugins/agent-presence.js` and `~/.pi/agent/extensions/agent-presence.ts` by hand after running `agent-presence uninstall`.
+  
+  Credentials stored only under the Keychain service used before the rename, and files in the old `~/.codex/agent-signature` home, are no longer migrated or read. If `agent-presence status` reports `hasToken: false` after upgrading, log in again with `agent-presence login`. `uninstall --credentials` no longer deletes that old Keychain entry (service `agent-signature-slot-credential`); on macOS, remove it with `security delete-generic-password -s agent-signature-slot-credential -a "$USER"`.
+
 ## 0.11.0
 
 ### Minor Changes
