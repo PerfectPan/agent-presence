@@ -33,14 +33,6 @@ vi.mock('../src/config.js', () => ({
   defaultCommandProviderId: (_config: unknown, provider?: string) => provider ?? 'magic-builder'
 }));
 
-vi.mock('../src/migration.js', () => ({
-  cleanupMigratedLegacyHome: vi
-    .fn<typeof import('../src/migration.js').cleanupMigratedLegacyHome>()
-    .mockResolvedValue({ from: '', to: '', removed: [] }),
-  hasLegacyHomeToMigrate: vi.fn<typeof import('../src/migration.js').hasLegacyHomeToMigrate>().mockResolvedValue(false),
-  migrateLegacyHome: vi.fn<typeof import('../src/migration.js').migrateLegacyHome>()
-}));
-
 vi.mock('../src/platform.js', () => ({
   isMacOS: vi.fn<typeof import('../src/platform.js').isMacOS>().mockReturnValue(true)
 }));

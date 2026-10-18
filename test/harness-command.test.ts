@@ -1,4 +1,4 @@
-import { rm } from 'node:fs/promises';
+import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { applyInstall, inventory, planInstall, type Bundle } from '@rivus/agent-kit/harness';
 import { Effect } from 'effect';
@@ -109,6 +109,44 @@ describe('harness commands', () => {
     const checks = z.parse(checksSchema, JSON.parse(z.parse(z.string(), log.mock.calls.at(-1)?.[0])));
     expect(checks).toEqual(
       expect.arrayContaining([expect.objectContaining({ name: 'duplicate-hook', status: 'warn' })])
+    );
+    expect(process.exitCode).toBe(1);
+    expect(error).not.toHaveBeenCalled();
+    expect(fixture.processCalls).toEqual([]);
+  });
+
+  it('reports a hook entry left by 0.9.0 beside the installed hook and exits non-zero', async () => {
+    await installBundle();
+    // The Claude settings entry 0.9.0's setup wrote; skipping that release's uninstall leaves it in place.
+    await mkdir(join(fixture.home, '.claude'), { recursive: true });
+    await writeFile(
+      join(fixture.home, '.claude/settings.json'),
+      JSON.stringify({
+        hooks: {
+          SessionStart: [
+            {
+              hooks: [
+                {
+                  type: 'command',
+                  command:
+                    'npx --yes --registry=https://registry.npmjs.org @rivus/agent-presence@0.9.0 hook --source claude --event SessionStart --silent >/dev/null 2>/dev/null || true',
+                  timeout: 5000
+                }
+              ]
+            }
+          ]
+        }
+      })
+    );
+    await runCli(['doctor', '--json']);
+    const checks = z.parse(checksSchema, JSON.parse(z.parse(z.string(), log.mock.calls.at(-1)?.[0])));
+    // Grok also runs the hooks in Claude Code's settings file.
+    expect(checks.filter(({ name }) => name === 'duplicate-hook')).toEqual(
+      ['claude-code', 'grok'].map((agent) => ({
+        name: 'duplicate-hook',
+        status: 'warn',
+        message: `${agent} runs 2 hooks of one application for SessionStart`
+      }))
     );
     expect(process.exitCode).toBe(1);
     expect(error).not.toHaveBeenCalled();

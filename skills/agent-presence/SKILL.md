@@ -92,7 +92,7 @@ Pi only counts as active once the user submits a task (`before_agent_start`). Op
 3. Inspect local log:
 
    ```bash
-   tail -n 120 ~/.agent-presence/agent-presence.log ~/.agent-presence/agent-signature.log ~/.codex/agent-signature/agent-presence.log 2>/dev/null
+   tail -n 120 ~/.agent-presence/agent-presence.log ~/.agent-presence/agent-signature.log 2>/dev/null
    ```
 
 4. Check the installation and its ledger:

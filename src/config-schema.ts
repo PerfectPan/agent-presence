@@ -304,7 +304,7 @@ export interface ValidatedConfigLoad {
 }
 
 export interface LoadValidatedConfigOptions {
-  /** The config file to read; the standard path (with its legacy fallback) by default. */
+  /** The config file to read; the standard path by default. */
   readonly configPath?: string;
   /** Print each dropped value once per process on stderr; the worker passes false to drop silently. */
   readonly report?: boolean;

@@ -57,16 +57,6 @@ vi.mock('../src/secret.js', () => ({
   deleteCredential: deleteCredentialMock
 }));
 
-vi.mock('../src/migration.js', () => ({
-  cleanupMigratedLegacyHome: vi.fn<typeof import('../src/migration.js').cleanupMigratedLegacyHome>(async () => ({
-    from: '',
-    to: '',
-    removed: []
-  })),
-  hasLegacyHomeToMigrate: vi.fn<typeof import('../src/migration.js').hasLegacyHomeToMigrate>(async () => false),
-  migrateLegacyHome: vi.fn<typeof import('../src/migration.js').migrateLegacyHome>()
-}));
-
 vi.mock('../src/cli/ui.js', () => ({
   createSpinner: () => ({
     start: vi.fn<(message?: string) => void>(),

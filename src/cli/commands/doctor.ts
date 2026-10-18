@@ -3,7 +3,19 @@ import type { Layer } from 'effect';
 import { createPresenceBundle, PRESENCE_AGENTS } from '../../harness/bundle.js';
 import { hasFlag } from '../args.js';
 import { runHarness } from '../harness.js';
-import { PREVIOUS_RELEASE_MARKERS } from '../setup-legacy.js';
+
+// Markers must occur in presence's old artifacts and never in foreign files: the kit matches plain substrings.
+const PREVIOUS_RELEASE_MARKERS = [
+  'agent-presence hook',
+  '@rivus/agent-presence',
+  'agent-signature hook',
+  'agent-signature.mjs hook',
+  'AgentSignaturePlugin',
+  'runAgentPresence',
+  './plugins/agent-presence.js',
+  './plugins/agent-signature.js',
+  '@rivus/agent-presence pi extension'
+] as const;
 
 function doctorProgram() {
   const bundle = createPresenceBundle();

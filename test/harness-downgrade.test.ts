@@ -53,11 +53,6 @@ vi.mock('../src/setup.js', () => ({
   runSetupScripts: boundary.setupScripts,
   runUninstallScripts: boundary.uninstallScripts
 }));
-vi.mock('../src/migration.js', () => ({
-  cleanupMigratedLegacyHome: async () => ({ from: '', to: '', removed: [] }),
-  hasLegacyHomeToMigrate: async () => false,
-  migrateLegacyHome: vi.fn<typeof import('../src/migration.js').migrateLegacyHome>()
-}));
 vi.mock('../src/secret.js', () => ({
   readCredential: boundary.credential,
   deleteCredential: boundary.process

@@ -1,5 +1,4 @@
 import { join } from 'node:path';
-import { Effect } from 'effect';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 import { AGENT_HOME_VARIABLES, createHarnessFixture, type HarnessFixture } from './harness-support.js';
 
@@ -9,7 +8,6 @@ const dependencies = vi.hoisted(() => ({
   loadConfig: vi.fn<typeof import('../src/config-schema.js').loadValidatedConfig>(),
   isDisabled: vi.fn<typeof import('../src/queue/files.js').isDisabled>(),
   takeOver: vi.fn<typeof import('../src/queue/takeover.js').takeOver>(),
-  checkPreviousRelease: vi.fn<typeof import('../src/cli/setup-legacy.js').checkPreviousRelease>(),
   runHarness: vi.fn<typeof import('../src/cli/harness.js').runHarness>(),
   planInstall: vi.fn<typeof import('../src/cli/setup-plan.js').planSetupInstall>(),
   writeShim: vi.fn<typeof import('../src/harness/shim.js').writePresenceShim>(),
@@ -28,21 +26,10 @@ vi.mock('../src/queue/files.js', async (importOriginal) => ({
 }));
 vi.mock('../src/queue/takeover.js', () => ({ takeOver: dependencies.takeOver }));
 vi.mock('../src/cli/harness.js', () => ({ runHarness: dependencies.runHarness }));
-vi.mock('../src/cli/setup-legacy.js', () => ({
-  checkPreviousRelease: dependencies.checkPreviousRelease,
-  warnPreviousReleaseOverrides: vi.fn<typeof import('../src/cli/setup-legacy.js').warnPreviousReleaseOverrides>()
-}));
 vi.mock('../src/cli/setup-plan.js', () => ({ planSetupInstall: dependencies.planInstall }));
 vi.mock('../src/harness/shim.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../src/harness/shim.js')>()),
   writePresenceShim: dependencies.writeShim
-}));
-vi.mock('../src/migration.js', () => ({
-  cleanupMigratedLegacyHome: vi
-    .fn<typeof import('../src/migration.js').cleanupMigratedLegacyHome>()
-    .mockResolvedValue({ from: '', to: '', removed: [] }),
-  hasLegacyHomeToMigrate: vi.fn<typeof import('../src/migration.js').hasLegacyHomeToMigrate>().mockResolvedValue(false),
-  migrateLegacyHome: vi.fn<typeof import('../src/migration.js').migrateLegacyHome>()
 }));
 vi.mock('../src/cli/ui.js', () => ({
   startIntro: vi.fn<typeof import('../src/cli/ui.js').startIntro>(),
@@ -122,12 +109,6 @@ beforeEach(async () => {
     timeline.push('harness:end');
     return result;
   });
-  dependencies.checkPreviousRelease.mockImplementation(() =>
-    Effect.sync(() => {
-      timeline.push('check');
-      return true;
-    })
-  );
   dependencies.isDisabled.mockImplementation(async () => {
     timeline.push('queue');
     return false;
@@ -189,11 +170,8 @@ describe('setup failures at the CLI entry', () => {
     expect(stdout).not.toHaveBeenCalled();
     expect(stderr).not.toHaveBeenCalled();
     expect(dependencies.login).toHaveBeenCalledExactlyOnceWith(['--provider', 'magic-builder']);
-    expect(timeline).toEqual(
-      noHooks ? ['queue', 'config', 'login'] : ['harness:start', 'check', 'harness:end', 'queue', 'config', 'login']
-    );
-    expect(dependencies.runHarness).toHaveBeenCalledTimes(noHooks ? 0 : 1);
-    expect(dependencies.checkPreviousRelease).toHaveBeenCalledTimes(noHooks ? 0 : 1);
+    expect(timeline).toEqual(['queue', 'config', 'login']);
+    expect(dependencies.runHarness).not.toHaveBeenCalled();
     expect(dependencies.takeOver).not.toHaveBeenCalled();
     expect(dependencies.planInstall).not.toHaveBeenCalled();
     expect(dependencies.writeShim).not.toHaveBeenCalled();

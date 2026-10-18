@@ -19,7 +19,6 @@ import { increaseEpoch, isDisabled, removeTombstone } from '../../queue/files.js
 import { deleteQueueFile, listQueue } from '../../queue/reader.js';
 import { takeOver, type TakeoverOptions } from '../../queue/takeover.js';
 import { hasManagedDshPlugin, installDshPlugin, resolveDshPluginPaths } from '../../installers.js';
-import { cleanupMigratedLegacyHome, hasLegacyHomeToMigrate, migrateLegacyHome } from '../../migration.js';
 import { isMacOS } from '../../platform.js';
 import { readCredential } from '../../secret.js';
 import { LINUX_WATCHER_SKIP_MESSAGE, runSetupScripts } from '../../setup.js';
@@ -27,7 +26,6 @@ import { hasFlag, optionValue } from '../args.js';
 import { hasCredential } from '../credential.js';
 import { errorMessage } from '../errors.js';
 import { runHarness } from '../harness.js';
-import { checkPreviousRelease, warnPreviousReleaseOverrides } from '../setup-legacy.js';
 import { parseSetupAgents, selectSetupAgents } from '../setup-agents.js';
 import { planSetupInstall } from '../setup-plan.js';
 import { MAGIC_TOKEN_HELP, publishMagicBuilderFaas } from '../magic-builder-setup.js';
@@ -163,27 +161,6 @@ export async function setup(
   }
 
   startIntro('Agent Presence setup');
-  await cleanupMigratedLegacyHome();
-  if (await hasLegacyHomeToMigrate()) {
-    const migration = await migrateLegacyHome({
-      confirm: () =>
-        promptConfirm('Move existing Agent Presence files from ~/.codex/agent-signature to ~/.agent-presence?')
-    });
-    if (migration.status === 'migrated') {
-      const skipped =
-        migration.skipped.length > 0 ? `; kept existing destination files: ${migration.skipped.join(', ')}` : '';
-      const removed = migration.removed.length > 0 ? `; removed legacy files: ${migration.removed.join(', ')}` : '';
-      showInfo(`migrated local files: ${migration.copied.join(', ') || 'none'}${skipped}${removed}`);
-    } else if (migration.status === 'skipped') {
-      showInfo('migration skipped; legacy config can still be read for this setup run');
-    }
-  }
-
-  warnPreviousReleaseOverrides();
-
-  if (!skipHooks && !(await runHarness(checkPreviousRelease(), layer))) {
-    return;
-  }
 
   // An uninstall --all or worker --stop left the tombstone: drop the records it kept from applying, raise
   // the epoch so a record a producer still writes with the old epoch is deleted unapplied, and let hooks record again.
