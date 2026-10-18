@@ -97,13 +97,17 @@ describe('isolateTestHome', () => {
 
     const restore = isolateTestHome();
     const root = testRoot();
-    expect(process.env.DSH_AGENT_PRESENCE_PLUGIN_FILE).toBeUndefined();
-    expect(resolveDshPluginPaths().pluginPath).toBe(join(root, 'home/.dsh/plugins/agent-presence.mjs'));
-    expect(magicBuilderBaseUrl({})).toBe(DEFAULT_MAGIC_BUILDER_BASE_URL);
-    expect(process.env.PRESENCE_RACE_RUNS).toBe('7');
-    expect(root).not.toBe(dirname(previousHome));
-    process.env.AGENT_PRESENCE_HOME = join(root, 'set-by-a-test');
-    restore();
+    // Restore even when an assertion fails, so the root is removed and HOME does not stay redirected.
+    try {
+      expect(process.env.DSH_AGENT_PRESENCE_PLUGIN_FILE).toBeUndefined();
+      expect(resolveDshPluginPaths().pluginPath).toBe(join(root, 'home/.dsh/plugins/agent-presence.mjs'));
+      expect(magicBuilderBaseUrl({})).toBe(DEFAULT_MAGIC_BUILDER_BASE_URL);
+      expect(process.env.PRESENCE_RACE_RUNS).toBe('7');
+      expect(root).not.toBe(dirname(previousHome));
+      process.env.AGENT_PRESENCE_HOME = join(root, 'set-by-a-test');
+    } finally {
+      restore();
+    }
 
     expect(process.env.DSH_AGENT_PRESENCE_PLUGIN_FILE).toBe(callerPlugin);
     expect(process.env.MAGIC_BASE_URL).toBe('http://127.0.0.1:9/caller');
