@@ -142,6 +142,18 @@ checkout 路径不含 presence 标记的旧绝对路径 hook 命令无法被检�
 
 旧卸载器还会移除 dsh 插件和 macOS watcher；setup 会再次询问 dsh，并重新安装 watcher。Codex 切换到稳定 shim 的 `hook --agent` 命令预计需要重新信任一次 hook。后续仅替换 shim 的升级保持已安装 hook 的定义稳定。
 
+## 降级到 0.9.0 或更早版本
+
+按以下顺序降级：
+
+1. `agent-presence uninstall`：按 harness 记录移除产物，并报告保留的文件。
+2. 移出或删除卸载报告中列出的保留文件。
+3. `agent-presence doctor`：按报告手动移除残留的新产物或与旧位置重叠的项目。
+4. `agent-presence worker --stop`：先应用排队中的事件，再阻止本版本的 hook 和 worker 继续记录。
+5. 安装旧版本并运行它的 `agent-presence setup`。每个事件应恰好触发一次。
+
+harness 记录位于 `$XDG_STATE_HOME/agent-kit/harness`（默认 `~/.local/state/agent-kit/harness`）；删除它不是降级手段。不要先运行旧版 setup：它会在 kit 注册旁添加第二条命令式 hook，覆盖记录在案的 opencode 桥接文件而不更新记录，旧 Pi 安装器还会拒绝覆盖 kit 桥接，留下半安装状态。
+
 ## 安装位置
 
 以下是选中智能体的默认用户目录位置；覆盖智能体 home 时，计划会显示解析后的实际路径。
@@ -163,7 +175,7 @@ dsh 插件和 macOS 电源 watcher 仍由 presence 自行管理，不属于 harn
 
 命令式 hook 中，Claude Code、Codex 和 Grok 按秒写入 `timeout: 5`，Gemini 按毫秒写入 `timeout: 5000`。opencode/Pi 桥接仅对同步结束事件的交付设置 5000 毫秒子进程超时；其他事件异步发送，不设置子进程超时。Gemini 使用 `SessionStart`、`BeforeAgent`、`BeforeTool`、`AfterTool`、`AfterAgent` 和 `SessionEnd`。Claude 插件位置避免向 Cursor 也会读取的 settings 文件添加 presence hook；presence 不安装 Cursor 源。
 
-现有 Codex 注册切换到 shim 的 `hook --agent` 命令后，预计需要重新信任一次 hook。请查看计划列出的提示，通过 Codex 批准；setup 不会修改信任状态。后续仅替换 shim 时，已安装 hook 的定义保持稳定。0.11.0 版本的真实智能体检查已验证这些行为：Claude Code 2.1.301 加载了安装的插件，Codex 0.162.1 审阅并运行了插件 hook，Gemini CLI 0.64.0 加载了扩展。更早的 Gemini CLI 版本和 Cursor 桌面应用未经测试。
+现有 Codex 注册切换到 shim 的 `hook --agent` 命令后，预计需要重新信任一次 hook。请查看计划列出的提示，通过 Codex 批准；setup 不会修改信任状态。后续仅替换 shim 时，已安装 hook 的定义保持稳定。0.11.0 版本的真实智能体检查均在隔离临时 home 中全新安装，未覆盖这次迁移的重新信任：Claude Code 2.1.301 加载了安装的插件并触发 hook；Codex 0.162.1 启动时审阅一次，批准后 hook 全部运行，setup 原样重跑后无新的审阅；Gemini CLI 0.64.0 加载了扩展；Cursor CLI 2026.10.16 工具调用正常，未运行 presence 的 hook。更早的 Gemini CLI 版本和 Cursor 桌面应用未经测试。
 
 ## 检查与卸载
 
