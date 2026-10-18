@@ -46,3 +46,5 @@ agent-presence config render --many "{total} 个 AI 牛马 | {details} | 今日 
 ```
 
 `{usage_1d}` 是今日;`{usage_7d}`(或任意 `{usage_Nd}`)是 N 个自然日。
+
+窗口已整段翻过的徽标显示为 `—`：`{usage_1d}` 过一个本地零点后，`{usage_Nd}` 过 N 个零点后。`usage.showInSignature` 追加的标签则直接去掉。零点后第一次会话边界或 `agent-presence update` 为所有内置源刷新当天数据后，数字恢复。签名只由本机渲染和写入（hook 事件、`update`、延迟 flush 和 macOS 电源事件 reset 之后），所以零点后没有任何写入时（机器空闲、睡眠或关机），已发布的签名会一直保留最后的值，包括昨天的 `今日`，直到下一次写入。
