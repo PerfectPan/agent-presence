@@ -26,7 +26,8 @@ export default defineConfig({
   },
   test: {
     environment: 'node',
-    include: ['test/**/*.test.ts']
+    include: ['test/**/*.test.ts'],
+    setupFiles: ['test/isolated-home-setup.ts']
   },
   pack: {
     // Modules locate shipped files from import.meta.url: sources.default.json, litellm-pricing.json,

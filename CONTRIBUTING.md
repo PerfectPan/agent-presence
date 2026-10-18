@@ -17,6 +17,8 @@ Use the Node.js major in `.node-version` (the current Active LTS line; CI reads 
 
 The installer scripts (`pnpm run install:*` / `uninstall:*`) and `agent-presence setup` write to the real agent configs, Keychain, and LaunchAgents under your home directory. When trying them from a checkout, run them with `HOME="$(mktemp -d)"` unless you mean to change your own setup. The credential integration tests in `test/secret.integration.test.ts` follow the same rule: the macOS case runs against a temporary keychain file the test creates and deletes, and the Linux libsecret case — which writes to the real keyring under a unique service name — runs only when `PRESENCE_SECRET_INTEGRATION=1` is set.
 
+`pnpm test` isolates itself: the Vitest setup file `test/isolated-home-setup.ts` gives every test file its own temporary `HOME` and XDG base directories, and clears the `AGENT_PRESENCE_*` / `AGENT_SIGNATURE_*` variables and the agent-home variables (`CLAUDE_CONFIG_DIR`, `CODEX_HOME`, and the others), so a run leaves your `~/.agent-presence`, agent homes, and the kit's harness ledger alone. A test that needs a particular home sets its own.
+
 ## Contribution Flow
 
 1. Open an issue or discussion for ambiguous work.
