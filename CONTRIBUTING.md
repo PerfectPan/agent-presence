@@ -88,6 +88,12 @@ The package is published as `@rivus/agent-presence` through Changesets and npm T
 2. The release PR is opened with the workflow's `GITHUB_TOKEN`, and GitHub does not start workflows for events that token causes, so CI does not run on it by itself. Before merging, a person closes and reopens it (`gh pr close <n> && gh pr reopen <n>`) or pushes an empty commit to its branch. `gh workflow run ci.yml` does not count: a dispatched run is not attached to the PR and does not satisfy required checks.
 3. Merging the release PR runs `publish.yml` again: gates, then `pnpm release` (`changeset publish`) publishes the unpublished version to npm through OIDC trusted publishing with provenance, and `changesets/action` pushes the tag and creates the matching GitHub Release.
 
+Before merging the release PR, run the hook event queue's idle-exit race tests at 1,000 iterations; CI runs them at the default 100:
+
+```bash
+PRESENCE_RACE_RUNS=1000 pnpm test test/queue-idle-race.test.ts test/queue-command-race.test.ts
+```
+
 Two settings surfaces must stay in sync:
 
 - **GitHub**: `PerfectPan/agent-presence` → Settings → Actions → General: allow read/write workflow permissions and let GitHub Actions create and approve pull requests, so the Changesets action can open the release PR.

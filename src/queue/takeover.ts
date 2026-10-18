@@ -21,7 +21,7 @@ import { holdStopRequest, type Delay } from './stop-request.js';
 import { owedWorkRemains, recordsRemain } from './worker.js';
 import { holdWorkerLock, waitForWorkerLock, type WorkerLockHold } from './worker-lock.js';
 
-/** How long a command waits for the worker lock, in every release (Plan 0003 3.7). */
+/** How long a command waits for the worker lock, in every release. */
 const TAKEOVER_WAIT_MS = 10_000;
 /** How often a waiting command checks the lock and, when it is free, tries to take it. */
 export const TAKEOVER_RETRY_MS = 50;
@@ -46,11 +46,11 @@ export interface TakeoverOptions {
   readonly logLockWaitMs?: number;
 }
 
-/** What a command that took over does with the queue before it runs its own code (3.7). */
+/** What a command that took over does with the queue before it runs its own code. */
 export interface Takeover {
   /**
    * Whether the tombstone existed right after taking over. `status`, `reset`, `flush` and `update` then change nothing,
-   * and nothing is applied (3.8).
+   * and nothing is applied.
    */
   readonly disabled: boolean;
   /** Apply the records listed now, up to the first with a higher `v` (apply-lane steps 1-3). */
@@ -106,10 +106,10 @@ function createTakeover(context: TakeoverContext, disabled: boolean): Takeover {
         return;
       }
       const attempts = createOwedAttempts();
-      // Off the hook path the log lock keeps the appends' bounded wait (Plan 0003 6.3): unlike the
-      // worker's follow-up lane (3.5), no handover needs to stop a command's dsh append. One deadline from the call's
+      // Off the hook path the log lock keeps the appends' bounded wait: unlike the
+      // worker's follow-up lane, no handover needs to stop a command's dsh append. One deadline from the call's
       // start bounds all of its dsh appends together, so a command with several owed entries waits `logLockWaitMs`
-      // once; an append the deadline ends stays owed for the worker this command starts when it leaves (3.6). A
+      // once; an append the deadline ends stays owed for the worker this command starts when it leaves. A
       // caller's signal replaces the deadline.
       const logLock = signal ?? AbortSignal.timeout(context.logLockWaitMs);
       for (;;) {
@@ -135,7 +135,7 @@ function createTakeover(context: TakeoverContext, disabled: boolean): Takeover {
 }
 
 /**
- * Leave as a command (3.6): note whether owed work remains, delete `<state>.worker.v` and release, list the queue once
+ * Leave as a command: note whether owed work remains, delete `<state>.worker.v` and release, list the queue once
  * more, and start a worker when owed work or a record remains, unless the tombstone exists. A producer that renamed its
  * record while the command held the lock read the command's version and started no worker, so this start is what gets
  * that record applied. Failures here never replace the command's own outcome.
@@ -154,9 +154,9 @@ async function leave(context: TakeoverContext, hold: WorkerLockHold): Promise<vo
 }
 
 /**
- * Take over from the worker for a command that changes state (Plan 0003 3.7): write a stop request and keep it live
+ * Take over from the worker for a command that changes state: write a stop request and keep it live
  * while waiting up to `TAKEOVER_WAIT_MS` for the worker lock, then delete it, write `<state>.worker.v`, run `work`, and
- * leave in 3.6's order whether `work` succeeded or failed. A command that cannot take the lock in time rejects, as a
+ * leave (`leave` below) whether `work` succeeded or failed. A command that cannot take the lock in time rejects, as a
  * failed command does. A command that holds the lock never yields it to another request.
  */
 export async function takeOver<T>(
@@ -199,7 +199,7 @@ export async function takeOver<T>(
 }
 
 /**
- * `agent-presence worker --stop` (3.8): take over, apply the pending records, work off the owed items, and write the
+ * `agent-presence worker --stop`: take over, apply the pending records, work off the owed items, and write the
  * tombstone, so that hooks of this release record nothing and no worker starts until `setup` runs again. With the
  * tombstone already there it applies nothing.
  */

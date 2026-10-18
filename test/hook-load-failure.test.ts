@@ -90,7 +90,7 @@ describe('hook command load failure', () => {
     expect(stderrWrites).toEqual([]);
     expect(process.exitCode).toBeUndefined();
     expect(await recordedLoadFailureMessage()).toBe('hook failed: hook module failed to load');
-    // The failure record asked for a worker like any record (3.3).
+    // The failure record asked for a worker like any record.
     expect(hookWorkerStarts.requested).toBe(1);
   });
 

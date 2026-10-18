@@ -26,16 +26,16 @@ export async function printStatus(args: string[], takeover: TakeoverOptions = {}
   await takeOver(
     statePath,
     async (queue) => {
-      // The pending records were recorded before this run; they apply first (Plan 0003 3.7).
+      // The pending records were recorded before this run; they apply first.
       await queue.applyPending();
       await queue.workOffOwed(['dshUsage']);
       // Read after the apply: an applied record can be newer than the command's start, and `now` must not be earlier
-      // than an applied record's time (Plan 0003 3.7).
+      // than an applied record's time.
       const now = Date.now();
       await withStateLock(statePath, async () => {
         const state = await loadState(statePath);
         const active = getActiveSessions(state, now, ttlMs(config));
-        // Under the tombstone the command changes nothing (Plan 0003 3.8): it prints from the loaded state without
+        // Under the tombstone the command changes nothing: it prints from the loaded state without
         // saving.
         if (!queue.disabled) {
           await saveState(state, statePath);

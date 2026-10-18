@@ -24,8 +24,8 @@ import {
   type WorkerPool
 } from './queue-support.js';
 
-// Plan 0003 5.3's producer checks at the lock: the upgrade burst, and producers recording while a command holds the
-// worker lock. The producers are `produceRecord`, whose version parameter stands for the release (6.3), so one build
+// The producer checks at the lock: the upgrade burst, and producers recording while a command holds the
+// worker lock. The producers are `produceRecord`, whose version parameter stands for the release, so one build
 // runs an older release (1) and a newer one (2).
 
 // A sync inside the debounce interval schedules a deferred flush as a detached process; record it instead.

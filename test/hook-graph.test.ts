@@ -7,7 +7,7 @@ import { describe, expect, it } from 'vite-plus/test';
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const cliEntry = resolve(repoRoot, 'src/cli.ts');
 const hookCommandEntry = resolve(repoRoot, 'src/cli/commands/hook.ts');
-// The queue producer the hook records through (Plan 0003 3.3), walked on its own.
+// The queue producer the hook records through, walked on its own.
 const producerEntry = resolve(repoRoot, 'src/queue/produce.ts');
 
 // The hook path's static graph loads only repository modules, Node built-ins,
@@ -177,7 +177,7 @@ describe('hook static import graph', () => {
     expect(usageScanners).toContain(resolve(usageDir, 'scan-dsh.ts'));
     const graph = walkStaticGraph([cliEntry, hookCommandEntry]);
 
-    // The producer is in the walk: the hook records through it (Plan 0003 3.3).
+    // The producer is in the walk: the hook records through it.
     expect(graph.files).toEqual(expect.arrayContaining([cliEntry, hookCommandEntry, deepHookModule, producerEntry]));
     const reachedForbidden = graph.files.filter(
       (file) => forbiddenHookGraphModules.includes(file) || file.startsWith(`${scriptsDir}/`)

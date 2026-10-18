@@ -44,7 +44,7 @@ vi.mock('../src/cli/io.js', async () => {
 
 vi.mock('../src/cli/deferred-update.js', () => ({
   scheduleDeferredRenderedUpdate: async () => undefined,
-  // The real scheduling settles the owed rendered sync in its locked save (Plan 0003 3.5); the mock makes the same
+  // The real scheduling settles the owed rendered sync in its locked save; the mock makes the same
   // state change without spawning the detached flush, so the worker's follow-up lane settles with it.
   scheduleDeferredRenderedUpdateForResult: async (
     result: { status: string; reason?: string },

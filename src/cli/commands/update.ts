@@ -26,14 +26,14 @@ export async function update(args: string[], takeover: TakeoverOptions = {}): Pr
     const result = await takeOver(
       statePath,
       async (queue): Promise<SyncSlotResult> => {
-        // The pending records were recorded before this run; they apply first (Plan 0003 3.7).
+        // The pending records were recorded before this run; they apply first.
         await queue.applyPending();
         await queue.workOffOwed(['dshUsage']);
         if (queue.disabled) {
           return disabledSlotResult(statePath);
         }
         // Read after the apply: an applied record can be newer than the command's start, and `now` must not be earlier
-        // than an applied record's time (Plan 0003 3.7).
+        // than an applied record's time.
         const now = Date.now();
         return syncExplicitSlotValueWithStateLock(
           statePath,
@@ -45,7 +45,7 @@ export async function update(args: string[], takeover: TakeoverOptions = {}): Pr
           },
           (value) => provider.publishValue(value),
           // The explicit value is the one the slot keeps: settle the owed rendered sync in the save that records it,
-          // so a later worker does not overwrite it with the rendered one (Plan 0003 3.5).
+          // so a later worker does not overwrite it with the rendered one.
           settleRenderedSync
         );
       },
@@ -60,7 +60,7 @@ export async function update(args: string[], takeover: TakeoverOptions = {}): Pr
   const result = await takeOver(
     statePath,
     async (queue): Promise<SyncSlotResult> => {
-      // The pending records were recorded before this run; they apply first (Plan 0003 3.7).
+      // The pending records were recorded before this run; they apply first.
       await queue.applyPending();
       await queue.workOffOwed(['dshUsage']);
       if (queue.disabled) {

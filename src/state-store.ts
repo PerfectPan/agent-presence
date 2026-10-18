@@ -16,7 +16,7 @@ const STATE_LOCK_RETRY_MS = 5;
 // The state file is untrusted disk JSON: it may be hand-edited, truncated, or written by another release. A field or
 // map entry whose value does not parse loads as missing, never as a failed load, and top-level fields this release
 // does not know are dropped when it saves. The queue fields are the exception: they keep what this release does not
-// know inside them, because releases with the queue save the state in turns (Plan 0003 3.5).
+// know inside them, because releases with the queue save the state in turns.
 const entries = z.record(z.string(), z.unknown());
 const windowKey = z.string().check(z.regex(/^\d+$/));
 const nonEmptyKey = z.string().check(z.minLength(1));

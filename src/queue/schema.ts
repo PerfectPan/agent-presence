@@ -4,14 +4,14 @@ import { catch as catchInvalid } from 'zod/mini';
 import { SCAN_ENV } from '../cli/hook-context.js';
 
 // Only appliers (the worker and the commands that take over) and the state store import this module; the hook graph
-// must not reach it, because loading zod costs the hook about 22 ms (Plan 0003 3.2, test/hook-graph.test.ts).
+// must not reach it, because loading zod costs the hook about 22 ms (test/hook-graph.test.ts).
 
 const nonNegativeInteger = z.int().check(z.nonnegative());
 const nonEmptyString = z.string().check(z.minLength(1));
 const tokenCount = z.number().check(z.nonnegative());
 
 // Objects that end up in the state's owed work are loose: a later release may add fields to them, and every release
-// keeps the fields it does not know (Plan 0003 3.5). A record's own copies are loose too, so those fields reach the
+// keeps the fields it does not know. A record's own copies are loose too, so those fields reach the
 // owed entry, and through it the dsh usage line, unchanged.
 
 /** A dsh usage event as `usageEventFromPayload` builds it. */
@@ -159,7 +159,7 @@ export type UsageRefreshEntry = z.infer<typeof usageRefreshEntrySchema>;
 /**
  * Follow-up work that applied records owe. Every level is loose: keys, entry fields, and fields of an entry's `usage`
  * and `scanEnv` that this release does not know load as they are and are saved back. A release changes a known entry
- * in place and never builds a new object for it, so the entry keeps those fields (Plan 0003 3.5).
+ * in place and never builds a new object for it, so the entry keeps those fields.
  */
 export type QueueOwed = z.infer<typeof queueOwedSchema>;
 

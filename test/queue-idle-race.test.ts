@@ -18,8 +18,8 @@ import {
   type WorkerPool
 } from './queue-support.js';
 
-// Plan 0003 5.2's idle-exit race for a worker: a producer renames its record at a random point while an idle worker
-// leaves, and the leaving order (3.6) still gets every record applied. The random delay is a number of event-loop
+// The idle-exit race for a worker: a producer renames its record at a random point while an idle worker
+// leaves, and the leaving order still gets every record applied. The random delay is a number of event-loop
 // turns. The command's half is in queue-command-race.test.ts, so the two run side by side.
 
 // A sync inside the debounce interval schedules a deferred flush as a detached process; record it instead.
@@ -34,7 +34,7 @@ vi.mock('node:child_process', async (importOriginal) => ({
   spawn: spawnMock
 }));
 
-// A release checks 1,000 runs by setting PRESENCE_RACE_RUNS=1000 before it (Plan 0003 5.2, 6.4).
+// A release checks 1,000 runs by setting PRESENCE_RACE_RUNS=1000 before it.
 const RUNS = catchInvalid(z.coerce.number().check(z.int(), z.minimum(1)), 100).parse(process.env.PRESENCE_RACE_RUNS);
 
 let home: QueueHome;

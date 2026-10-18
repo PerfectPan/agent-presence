@@ -3,7 +3,7 @@ import { loadConfig, type AppConfig } from './config.js';
 
 // Commands, the queue worker and the takeover parse the config here, so one broken entry is ignored with a warning
 // that names it instead of breaking them. The hook path keeps the schema-free read in `src/config.ts`: loading zod
-// costs a hook about 22 ms (Plan 0003 3.2, test/hook-graph.test.ts), and the hook reads only its own source's entry
+// costs a hook about 22 ms (test/hook-graph.test.ts), and the hook reads only its own source's entry
 // and fails open on that entry and on a null root, as before.
 
 /** A config value the loader dropped, named by its path in the config file. */

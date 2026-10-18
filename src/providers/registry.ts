@@ -20,7 +20,7 @@ export interface CreateProviderOptions {
 
 type ProviderFactory = (options: CreateProviderOptions) => PresenceProvider;
 
-/** How long a publish may take before it is aborted, so a hanging provider cannot hold the applier (Plan 0003 3.10). */
+/** How long a publish may take before it is aborted, so a hanging provider cannot hold the applier. */
 const PUBLISH_TIMEOUT_MS = 30_000;
 
 /** The caller's signal, bounded by a timeout of its own so the request ends even when the caller waits forever. */

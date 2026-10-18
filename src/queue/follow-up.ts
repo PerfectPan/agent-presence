@@ -54,7 +54,7 @@ export const defaultOwedWorkEffects: OwedWorkEffects = {
       onSave: request.onSave
     }),
   publish: async (value, config, signal) => {
-    // Credentials come from the worker's environment, which is that of the hook or command that started it (3.9).
+    // Credentials come from the worker's environment, which is that of the hook or command that started it.
     const credential = await readCredential(configSlotId(config));
     const provider = createProvider(providerId(config), { config, credential });
     assertSupportsPublish(provider);
@@ -107,7 +107,7 @@ async function appendOwedUsage(
   context: OwedWorkContext
 ): Promise<OwedOutcome> {
   const { entry } = item;
-  // The entry's usage is written as parsed, fields this release does not know included (3.5).
+  // The entry's usage is written as parsed, fields this release does not know included.
   if (!(await context.effects.appendUsage(entry.usage, entry.id, context.signal))) {
     return 'aborted';
   }
@@ -168,7 +168,7 @@ async function syncOwedRendered(context: OwedWorkContext): Promise<OwedOutcome> 
 }
 
 /**
- * Work off one owed item (Plan 0003 3.5). `done` removed it from the state, in the same save as its effect where the
+ * Work off one owed item. `done` removed it from the state, in the same save as its effect where the
  * effect is a save; `aborted` and `failed` leave it owed.
  */
 export async function workOffOwedItem(item: OwedItem, context: OwedWorkContext): Promise<OwedOutcome> {

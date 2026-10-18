@@ -9,15 +9,15 @@ import {
 import type { Delay } from './stop-request.js';
 import { deleteWorkerVersion, queuePaths, writeWorkerVersion, type QueueClock } from './files.js';
 
-/** The worker lock, held by the applier: a worker or a command that took over (Plan 0003 3.3). */
+/** The worker lock, held by the applier: a worker or a command that took over. */
 export interface WorkerLockHold {
-  /** Delete `<state>.worker.v`, then release the lock: steps 1 and 2 of leaving (3.6). Later calls do nothing. */
+  /** Delete `<state>.worker.v`, then release the lock: steps 1 and 2 of leaving. Later calls do nothing. */
   release(): Promise<void>;
 }
 
 /**
  * Take the worker lock of `statePath` once, without waiting, and return it, or `undefined` when another process or
- * acquisition holds it. A try against a held lock costs about 125 ms of settling (3.3), so callers check first.
+ * acquisition holds it. A try against a held lock costs about 125 ms of settling, so callers check first.
  */
 export async function tryWorkerLock(
   statePath: string,

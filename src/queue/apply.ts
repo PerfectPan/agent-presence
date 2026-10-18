@@ -10,12 +10,12 @@ import { addOwedWork } from './owed.js';
 import { deleteQueueFile, listQueue, moveToFailed, readQueueFile, type QueueFile } from './reader.js';
 import type { QueueRecord, SkipRecord } from './schema.js';
 
-/** Above this many listed records the applier logs a backlog warning (Plan 0003 3.10). */
+/** Above this many listed records the applier logs a backlog warning. */
 export const BACKLOG_WARNING_RECORDS = 10_000;
 
 /**
  * The backlog-warning state of one applier run: the warning is logged once per run, and again only after the backlog
- * has fallen below the threshold (Plan 0003 3.10), so a holder reading every 250 ms does not log it every batch.
+ * has fallen below the threshold, so a holder reading every 250 ms does not log it every batch.
  */
 export interface BacklogWarning {
   /** Whether a listing of `listed` records logs the warning now. */
@@ -48,11 +48,11 @@ export type BatchStep = 'read' | 'saved' | 'deleted';
 export interface ApplyBatchOptions {
   /** The record version of the applier: it applies records up to this `v` and stops at a higher one. */
   readonly version: number;
-  /** Read before each batch, as the worker reads the configuration file (Plan 0003 3.9). */
+  /** Read before each batch, as the worker reads the configuration file. */
   readonly config: AppConfig;
   /** Dates the records moved to `failed/`. */
   readonly clock: QueueClock;
-  /** The backlog-warning state; this process's by default (a worker run is one process, Plan 0003 3.10). */
+  /** The backlog-warning state; this process's by default (a worker run is one process). */
   readonly backlogWarning?: BacklogWarning;
   /** Called at each step of the batch; tests pause or kill the applier there. */
   readonly onStep?: (step: BatchStep) => Promise<void>;
@@ -138,7 +138,7 @@ function recordLogLines(record: QueueRecord): string[] {
   }
 }
 
-/** Apply one record to the loaded state at its recorded time, as the hook applied its event (Plan 0003 3.5). */
+/** Apply one record to the loaded state at its recorded time, as the hook applied its event. */
 function applyRecord(state: PresenceState, record: QueueRecord, config: AppConfig, refreshUsage: boolean): void {
   if (record.kind !== 'event') {
     return;
@@ -159,10 +159,10 @@ function recordFileExists(statePath: string, id: string): Promise<boolean> {
 }
 
 /**
- * One batch of the apply lane (Plan 0003 3.5), run by the worker lock's holder:
+ * One batch of the apply lane, run by the worker lock's holder:
  * 1. list the queue; delete the files whose ids `queueApplied` holds, unapplied; read the rest in order, stopping at a
  *    record with a higher `v` than `version`. A bad record moves to `failed/`; a record whose epoch is not the current
- *    one was recorded around an uninstall and is deleted unapplied (3.8).
+ *    one was recorded around an uninstall and is deleted unapplied.
  * 2. under the state lock, apply the records in order with their recorded times, add their ids to `queueApplied` (and
  *    drop the ids whose files are gone) and the work they owe, and save once;
  * 3. delete the applied files.
@@ -175,7 +175,7 @@ export async function applyQueueBatch(statePath: string, options: ApplyBatchOpti
     return NOTHING_LISTED;
   }
   const backlogWarning = options.backlogWarning ?? processBacklogWarning;
-  // The batch's log lines go into one append, so a batch takes the log lock once (Plan 0003 3.11).
+  // The batch's log lines go into one append, so a batch takes the log lock once.
   const lines: string[] = [];
   if (backlogWarning.due(files.length)) {
     lines.push(infoLogLine({ type: 'queue.backlog', records: files.length }));

@@ -440,7 +440,7 @@ describe('a worker holding the lock', () => {
     // A request is visible before its mtime is set to the virtual clock. Let the holder read only the stamped file.
     rounds.resume();
     expect(await run).toBe('stop-request');
-    // The holder stops at its first check after the request appeared (Plan 0003 5.2).
+    // The holder stops at its first check after the request appeared.
     expect(vt.monotonic.now() - requestedAt).toBeLessThanOrEqual(1_000);
     await request.release();
 

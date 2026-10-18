@@ -29,7 +29,7 @@ interface SourceDiagnostic {
 
 /**
  * The diagnostics source resolution would write. The producer passes a list and records each as an `error` record
- * instead (Plan 0003 3.11); every other caller leaves it `undefined` and resolution writes the lines as before.
+ * instead; every other caller leaves it `undefined` and resolution writes the lines as before.
  */
 export type SourceDiagnostics = SourceDiagnostic[];
 

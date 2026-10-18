@@ -25,14 +25,14 @@ export async function flush(args: string[], takeover: TakeoverOptions = {}): Pro
   const result = await takeOver(
     statePath,
     async (queue): Promise<SyncSlotResult> => {
-      // The pending records were recorded before this run; they apply first (Plan 0003 3.7).
+      // The pending records were recorded before this run; they apply first.
       await queue.applyPending();
       await queue.workOffOwed(['dshUsage']);
       if (queue.disabled) {
         return disabledSlotResult(statePath);
       }
       // Read after the apply: an applied record can be newer than the command's start, and `now` must not be earlier
-      // than an applied record's time (Plan 0003 3.7).
+      // than an applied record's time.
       const now = Date.now();
       return syncRenderedSlotWithDeferredFlush(
         statePath,

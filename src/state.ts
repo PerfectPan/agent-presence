@@ -27,9 +27,9 @@ export interface PresenceState {
   usageBadgesAt?: number;
   /** Per-window source contributions used to rebuild aggregate usage badges. */
   usageSnapshots?: Record<string, Record<string, UsageSnapshot>>;
-  /** Ids of applied queue records whose files may still exist (Plan 0003 3.5). */
+  /** Ids of applied queue records whose files may still exist. */
   queueApplied?: string[];
-  /** Follow-up work that applied queue records owe, with what this release does not know kept (Plan 0003 3.5). */
+  /** Follow-up work that applied queue records owe, with what this release does not know kept. */
   queueOwed?: QueueOwed;
 }
 

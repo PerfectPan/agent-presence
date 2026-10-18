@@ -25,14 +25,13 @@ export async function reset(args: string[], takeover: TakeoverOptions = {}): Pro
   const result = await takeOver(
     statePath,
     async (queue): Promise<SyncSlotResult> => {
-      // The pending records were recorded before this run; reset applies them first, then finishes every session
-      // (Plan 0003 3.7).
+      // The pending records were recorded before this run; reset applies them first, then finishes every session.
       await queue.applyPending();
       if (queue.disabled) {
         return disabledSlotResult(statePath);
       }
       // Read after the apply: an applied record can be newer than the command's start, and `now` must not be earlier
-      // than an applied record's time, or reset would finish a session before it started (Plan 0003 3.7).
+      // than an applied record's time, or reset would finish a session before it started.
       const now = Date.now();
       return syncRenderedSlotWithDeferredFlush(
         statePath,

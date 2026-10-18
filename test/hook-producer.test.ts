@@ -27,7 +27,7 @@ import {
   restoreHookWorkerStarts
 } from './hook-producer-support.js';
 
-// The hook as the queue's producer (Plan 0003 3.3): what each hook path writes into the queue, that it writes no log
+// The hook as the queue's producer: what each hook path writes into the queue, that it writes no log
 // line and no stop request, and that the worker logs the lines the hook logged before the queue. Every case runs the
 // hook, reads the records back through the queue reader, and drives one in-process worker run (`drainQueue`) to check
 // the lines the worker logs for them.
@@ -89,7 +89,7 @@ vi.mock('../src/cli/io.js', async () => {
 
 vi.mock('../src/cli/deferred-update.js', () => ({
   scheduleDeferredRenderedUpdate: async () => undefined,
-  // The real scheduling settles the owed rendered sync in its locked save (Plan 0003 3.5); the mock makes the same
+  // The real scheduling settles the owed rendered sync in its locked save; the mock makes the same
   // state change without spawning the detached flush, so the worker's follow-up lane settles with it.
   scheduleDeferredRenderedUpdateForResult: async (
     result: { status: string; reason?: string },
@@ -588,7 +588,7 @@ describe('hook producer — failures and quietness', () => {
       code: 'hook-failed',
       message: 'hook failed: Agent "bogus" has no hook dialect'
     });
-    // The failure record asked for a worker like any record (3.3); the worker logs the line.
+    // The failure record asked for a worker like any record; the worker logs the line.
     expect(hookWorkerStarts.requested).toBe(1);
     await drainAndExpectLogLine('hook failed: Agent');
   });
@@ -597,7 +597,7 @@ describe('hook producer — failures and quietness', () => {
     produceCalls.failFirst = true;
     await runHook(['--source', 'claude', '--event', 'Heartbeat'], { session_id: 's1' });
 
-    // The event record was lost to the failed write; its failure record carries the start request (3.3).
+    // The event record was lost to the failed write; its failure record carries the start request.
     expect(await writtenRecords()).toHaveLength(1);
     expect((await writtenRecords())[0]).toMatchObject({ kind: 'error', code: 'hook-failed' });
     expect(hookWorkerStarts.requested).toBe(1);
