@@ -117,10 +117,10 @@ node <checkout>/dist/src/cli.js setup --hook-command absolute
 npx --yes @rivus/agent-presence@0.9.0 uninstall
 ```
 
-从 checkout 安装的用户改为在更新 checkout 前运行 `node <checkout>/dist/src/cli.js uninstall`。然后安装本版本，再运行 `agent-presence setup`。本版本的卸载只移除 harness 安装记录中的智能体产物，不能代替这一步。如果跳过这一步：
+从 checkout 安装的用户改为在更新 checkout 前运行 `node <checkout>/dist/src/cli.js uninstall`。有两类 absolute 模式的 hook 条目需要手动移除，因为旧卸载器漏掉它们，`doctor` 也因为没有 presence 标记而看不到：checkout 路径需要 shell 引号（含空格、非 ASCII 字符、`+`、`~` 等）的条目，以及 `AGENT_PRESENCE_CLI_PATH` 不以 `dist/src/cli.js` 结尾时写入的条目。然后安装本版本，再运行 `agent-presence setup`。本版本的卸载只移除 harness 安装记录中的智能体产物，不能代替这一步。如果跳过这一步：
 
-- Claude Code、Codex 和 Gemini CLI 会对每个事件运行新旧两个版本的 hook。`agent-presence doctor` 会报告这些重复 hook，但以绝对路径运行 checkout 的旧命令不含 presence 标记，识别不了，需要手动移除。此时先运行 0.9.0 的卸载，再重新运行 `agent-presence setup`：旧卸载器会删除 `~/.config/opencode/plugins/agent-presence.js`，本版本的 opencode 桥接文件也安装在这个路径。
-- 两个版本的 opencode 和 Pi 桥接文件路径相同，因此 setup 会把每个旧桥接文件报告为 `unmanaged-exists` 冲突，可选 `adopt` 和 `backup`；`setup --yes` 会在这里退出。先取消，运行 0.9.0 的卸载，再重新运行 setup。不要选择 `adopt` 或 `backup`：`backup` 会把旧桥接文件保存为之后 `agent-presence uninstall` 要恢复的文件，旧 hook 会因此回来。`doctor` 不检查桥接文件。
+- Claude Code、Codex、Gemini CLI 和 Grok 会对每个事件运行新旧两个版本的 hook；Grok 也读取 `~/.claude/settings.json`，因此会运行旧的 `--source claude` hook。`agent-presence doctor` 会报告这些重复 hook，并在 `claude-code` 旁列出 `grok`，但以绝对路径运行 checkout 的旧命令不含 presence 标记，识别不了。此时先运行 0.9.0 的卸载，再重新运行 `agent-presence setup`：旧卸载器会删除 `~/.config/opencode/plugins/agent-presence.js`，本版本的 opencode 桥接文件也安装在这个路径。
+- 两个版本的 opencode 和 Pi 桥接文件路径相同，因此 setup 会把每个旧桥接文件报告为 `unmanaged-exists` 冲突，可选 `adopt` 和 `backup`；`setup --yes` 会在这里退出。先取消，运行 0.9.0 的卸载，再重新运行 setup。不要选择 `adopt` 或 `backup`：`adopt` 会跳过旧卸载，旧的 Claude Code、Codex 和 Gemini CLI hook 以及 `opencode.json` 中旧的插件项都会留下；`backup` 更糟，因为它会把旧桥接文件保存为之后 `agent-presence uninstall` 要恢复的文件，旧 hook 会因此回来。如果之前选过 `backup`，运行旧卸载和 setup 不会清掉这份保存的文件，因此运行 `agent-presence uninstall` 后手动删除恢复出来的 `~/.config/opencode/plugins/agent-presence.js` 和 `~/.pi/agent/extensions/agent-presence.ts`。`doctor` 不检查桥接文件。
 
 旧卸载器还会移除 Claude、Codex 或 Gemini 中所有包含 `dist/src/cli.js hook` 的 hook，包括其他工具的 hook；必要时先保存再恢复这些无关项目。它也会移除 dsh 插件和 macOS watcher；setup 会再次询问 dsh，并重新安装 watcher。Codex 切换到稳定 shim 的 `hook --agent` 命令预计需要重新信任一次 hook。后续仅替换 shim 的升级保持已安装 hook 的定义稳定。
 

@@ -58,10 +58,10 @@ agent-presence setup --hook-command absolute
 npx --yes @rivus/agent-presence@0.9.0 uninstall
 ```
 
-从 checkout 安装的用户改为在更新 checkout 前运行 `node <checkout>/dist/src/cli.js uninstall`。然后安装本版本并运行 `agent-presence setup`。如果跳过卸载：
+从 checkout 安装的用户改为在更新 checkout 前运行 `node <checkout>/dist/src/cli.js uninstall`。有两类 absolute 模式的 hook 条目需要手动移除，因为旧卸载器漏掉它们，`doctor` 也因为没有 presence 标记而看不到：checkout 路径需要 shell 引号（含空格、非 ASCII 字符、`+`、`~` 等）的条目，以及 `AGENT_PRESENCE_CLI_PATH` 不以 `dist/src/cli.js` 结尾时写入的条目。然后安装本版本并运行 `agent-presence setup`。如果跳过卸载：
 
-- Claude Code、Codex 和 Gemini CLI 会对每个事件运行新旧两个版本的 hook，`agent-presence doctor` 会报告这些重复 hook，但识别不了以绝对路径运行 checkout 的旧命令。此时先运行 0.9.0 的卸载，再重新运行 `agent-presence setup`：旧卸载器可能删除当前的 opencode 桥接文件。
-- setup 会把旧的 opencode 和 Pi 桥接文件报告为 `unmanaged-exists` 冲突。在这里取消，然后运行 0.9.0 的卸载。不要选择 `adopt` 或 `backup`：`backup` 会保留旧桥接文件，之后运行 `agent-presence uninstall` 时会把它恢复回来。
+- Claude Code、Codex、Gemini CLI 和 Grok 会对每个事件运行新旧两个版本的 hook；Grok 也读取 `~/.claude/settings.json`，因此会运行旧的 `--source claude` hook。`agent-presence doctor` 会报告这些重复 hook，并在 `claude-code` 旁列出 `grok`，但识别不了以绝对路径运行 checkout 的旧命令。此时先运行 0.9.0 的卸载，再重新运行 `agent-presence setup`：旧卸载器可能删除当前的 opencode 桥接文件。
+- setup 会把旧的 opencode 和 Pi 桥接文件报告为 `unmanaged-exists` 冲突。在这里取消，然后运行 0.9.0 的卸载。不要选择 `adopt` 或 `backup`：`adopt` 会跳过旧卸载，旧的 Claude Code、Codex 和 Gemini CLI hook 以及 `opencode.json` 中旧的插件项都会留下；`backup` 更糟，因为之后运行 `agent-presence uninstall` 时会把旧桥接文件恢复回来。如果之前选过 `backup`，运行 `agent-presence uninstall` 后手动删除恢复出来的 `~/.config/opencode/plugins/agent-presence.js` 和 `~/.pi/agent/extensions/agent-presence.ts`。
 
 切换到稳定 shim 预计需要在 Codex 中重新信任一次 hook；后续只更新 shim 时，hook 定义保持稳定。详见[升级指引](https://agent-presence.vercel.app/zh/guide/install/#从-090-或更早版本升级)。
 

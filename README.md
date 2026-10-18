@@ -58,10 +58,10 @@ First run that release's own uninstall. It also removes what earlier releases in
 npx --yes @rivus/agent-presence@0.9.0 uninstall
 ```
 
-A checkout install runs `node <checkout>/dist/src/cli.js uninstall` instead, before updating the checkout. Then install this release and run `agent-presence setup`. If you skip the uninstall:
+A checkout install runs `node <checkout>/dist/src/cli.js uninstall` instead, before updating the checkout. Remove two kinds of absolute-mode hook entry by hand, because the old uninstall misses them and `doctor` cannot see them without a presence marker: one whose checkout path needed shell quoting (spaces, non-ASCII, `+`, `~`, …), and one from an `AGENT_PRESENCE_CLI_PATH` that does not end in `dist/src/cli.js`. Then install this release and run `agent-presence setup`. If you skip the uninstall:
 
-- Claude Code, Codex and Gemini CLI run both versions' hooks for each event, and `agent-presence doctor` reports these duplicates, except old commands that run a checkout by absolute path. Run the 0.9.0 uninstall, then run `agent-presence setup` again: the old uninstall can delete the current opencode bridge.
-- Setup reports the old opencode and Pi bridges as `unmanaged-exists` conflicts. Cancel there and run the 0.9.0 uninstall. Do not choose `adopt` or `backup`: `backup` keeps the old bridge, and a later `agent-presence uninstall` restores it.
+- Claude Code, Codex, Gemini CLI and Grok run both versions' hooks for each event; Grok also reads `~/.claude/settings.json`, so it runs the old `--source claude` hook. `agent-presence doctor` reports these duplicates, listing `grok` next to `claude-code`, except old commands that run a checkout by absolute path. Run the 0.9.0 uninstall, then run `agent-presence setup` again: the old uninstall can delete the current opencode bridge.
+- Setup reports the old opencode and Pi bridges as `unmanaged-exists` conflicts. Cancel there and run the 0.9.0 uninstall. Do not choose `adopt` or `backup`: `adopt` goes on without the old uninstall, so the old Claude Code, Codex and Gemini CLI hooks and the old `opencode.json` plugin entry stay, and `backup` is worse, because a later `agent-presence uninstall` restores the old bridge. If you chose `backup` earlier, delete the restored `~/.config/opencode/plugins/agent-presence.js` and `~/.pi/agent/extensions/agent-presence.ts` by hand after running `agent-presence uninstall`.
 
 Switching to the stable shim is expected to require one Codex hook re-trust; later shim-only upgrades keep the hook definition stable. See the [upgrade guide](https://agent-presence.vercel.app/guide/install/#upgrade-from-090-or-earlier).
 
