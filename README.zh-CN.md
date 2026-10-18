@@ -52,13 +52,18 @@ agent-presence setup --hook-command absolute
 
 ## 从 0.9.0 或更早版本升级
 
-先运行旧版本自己的卸载命令，它会保留凭据、配置和状态：
+先运行旧版本自己的卸载命令。它也会移除更早版本安装的内容，并保留凭据、配置和状态：
 
 ```bash
 npx --yes @rivus/agent-presence@0.9.0 uninstall
 ```
 
-从 checkout 安装的用户改为在更新 checkout 前运行 `node <checkout>/dist/src/cli.js uninstall`。然后安装本版本并运行 `agent-presence setup`。如果跳过卸载，新旧两个版本的 hook 会对每个事件各触发一次；`agent-presence doctor` 会报告这些重复 hook，但识别不了以绝对路径运行 checkout 的旧命令。切换到稳定 shim 预计需要在 Codex 中重新信任一次 hook；后续只更新 shim 时，hook 定义保持稳定。详见[升级指引](https://agent-presence.vercel.app/zh/guide/install/#从-090-或更早版本升级)。
+从 checkout 安装的用户改为在更新 checkout 前运行 `node <checkout>/dist/src/cli.js uninstall`。然后安装本版本并运行 `agent-presence setup`。如果跳过卸载：
+
+- Claude Code、Codex 和 Gemini CLI 会对每个事件运行新旧两个版本的 hook，`agent-presence doctor` 会报告这些重复 hook，但识别不了以绝对路径运行 checkout 的旧命令。此时先运行 0.9.0 的卸载，再重新运行 `agent-presence setup`：旧卸载器可能删除当前的 opencode 桥接文件。
+- setup 会把旧的 opencode 和 Pi 桥接文件报告为 `unmanaged-exists` 冲突。在这里取消，然后运行 0.9.0 的卸载。不要选择 `adopt` 或 `backup`：`backup` 会保留旧桥接文件，之后运行 `agent-presence uninstall` 时会把它恢复回来。
+
+切换到稳定 shim 预计需要在 Codex 中重新信任一次 hook；后续只更新 shim 时，hook 定义保持稳定。详见[升级指引](https://agent-presence.vercel.app/zh/guide/install/#从-090-或更早版本升级)。
 
 ## 使用流程
 

@@ -37,7 +37,8 @@ const ui = vi.hoisted(() => ({
   promptText: vi.fn<typeof import('../src/cli/ui.js').promptText>(),
   showInfo: vi.fn<typeof import('../src/cli/ui.js').showInfo>(),
   showNote: vi.fn<typeof import('../src/cli/ui.js').showNote>(),
-  finishOutro: vi.fn<typeof import('../src/cli/ui.js').finishOutro>()
+  finishOutro: vi.fn<typeof import('../src/cli/ui.js').finishOutro>(),
+  startIntro: vi.fn<typeof import('../src/cli/ui.js').startIntro>()
 }));
 const hooks = vi.hoisted(() => ({
   planInstall: vi.fn<typeof import('@rivus/agent-kit/harness').planInstall>(),
@@ -65,7 +66,6 @@ vi.mock('@rivus/agent-kit/discovery', async (importOriginal) => {
 });
 vi.mock('../src/cli/ui.js', () => ({
   ...ui,
-  startIntro: vi.fn<typeof import('../src/cli/ui.js').startIntro>(),
   createSpinner: () => ({
     start: vi.fn<(message?: string) => void>(),
     stop: vi.fn<(message?: string) => void>(),
@@ -332,7 +332,7 @@ describe('setup through the harness', () => {
         (error: unknown) => errorMessage(error) === 'invalid --hook-command: expected package, npx, or absolute'
       );
 
-      expect(dependencies.hasCredential).not.toHaveBeenCalled();
+      expect(ui.startIntro).not.toHaveBeenCalled();
       expect(hooks.planInstall).not.toHaveBeenCalled();
       expect(ui.promptConfirm).not.toHaveBeenCalled();
       expect(runtimeNpm).not.toHaveBeenCalled();
@@ -346,7 +346,7 @@ describe('setup through the harness', () => {
       'invalid AGENT_PRESENCE_HOOK_COMMAND: expected package, npx, or absolute'
     );
 
-    expect(dependencies.hasCredential).not.toHaveBeenCalled();
+    expect(ui.startIntro).not.toHaveBeenCalled();
     expect(hooks.planInstall).not.toHaveBeenCalled();
     expect(ui.promptConfirm).not.toHaveBeenCalled();
   });

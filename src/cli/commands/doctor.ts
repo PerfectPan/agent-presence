@@ -4,17 +4,13 @@ import { createPresenceBundle, PRESENCE_AGENTS } from '../../harness/bundle.js';
 import { hasFlag } from '../args.js';
 import { runHarness } from '../harness.js';
 
-// Markers must occur in presence's old artifacts and never in foreign files: the kit matches plain substrings.
+// Fragments of the hook commands releases before 0.10.0 installed. The kit matches them as plain substrings of hook
+// commands only, so each must be specific to presence and never occur in another tool's hook.
 const PREVIOUS_RELEASE_MARKERS = [
   'agent-presence hook',
   '@rivus/agent-presence',
   'agent-signature hook',
-  'agent-signature.mjs hook',
-  'AgentSignaturePlugin',
-  'runAgentPresence',
-  './plugins/agent-presence.js',
-  './plugins/agent-signature.js',
-  '@rivus/agent-presence pi extension'
+  'agent-signature.mjs hook'
 ] as const;
 
 function doctorProgram() {

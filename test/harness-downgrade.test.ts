@@ -441,7 +441,8 @@ describe('documented harness downgrade order', () => {
         doctor({ owner: 'agent-presence', agents: PRESENCE_AGENTS, markers: installedMarkers(bundle) })
       );
       expect(currentOnly.filter(({ name }) => name === 'duplicate-hook')).toEqual([]);
-      // Absolute old commands need the test-only dist/src marker; production doctor supplies neither legacy marker.
+      // Production doctor supplies `@rivus/agent-presence`, which matches the old npx commands; the absolute old
+      // commands need the test-only `dist/src/cli.js hook` marker, which production doctor does not supply.
       const checks = await fixture.run(
         doctor({
           owner: 'agent-presence',

@@ -52,13 +52,18 @@ Install this release and run `agent-presence setup`. Setup installs the runtime 
 
 ## Upgrade from 0.9.0 or earlier
 
-First run that release's own uninstall; it keeps credentials, configuration and state:
+First run that release's own uninstall. It also removes what earlier releases installed, and keeps credentials, configuration and state:
 
 ```bash
 npx --yes @rivus/agent-presence@0.9.0 uninstall
 ```
 
-A checkout install runs `node <checkout>/dist/src/cli.js uninstall` instead, before updating the checkout. Then install this release and run `agent-presence setup`. If you skip the uninstall, both versions' hooks fire for each event; `agent-presence doctor` reports these duplicates, except old commands that run a checkout by absolute path. Switching to the stable shim is expected to require one Codex hook re-trust; later shim-only upgrades keep the hook definition stable. See the [upgrade guide](https://agent-presence.vercel.app/guide/install/#upgrade-from-090-or-earlier).
+A checkout install runs `node <checkout>/dist/src/cli.js uninstall` instead, before updating the checkout. Then install this release and run `agent-presence setup`. If you skip the uninstall:
+
+- Claude Code, Codex and Gemini CLI run both versions' hooks for each event, and `agent-presence doctor` reports these duplicates, except old commands that run a checkout by absolute path. Run the 0.9.0 uninstall, then run `agent-presence setup` again: the old uninstall can delete the current opencode bridge.
+- Setup reports the old opencode and Pi bridges as `unmanaged-exists` conflicts. Cancel there and run the 0.9.0 uninstall. Do not choose `adopt` or `backup`: `backup` keeps the old bridge, and a later `agent-presence uninstall` restores it.
+
+Switching to the stable shim is expected to require one Codex hook re-trust; later shim-only upgrades keep the hook definition stable. See the [upgrade guide](https://agent-presence.vercel.app/guide/install/#upgrade-from-090-or-earlier).
 
 ## Quick start
 

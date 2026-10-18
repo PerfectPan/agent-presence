@@ -65,7 +65,7 @@ agent-presence setup --agents claude-code,codex
 
 Unknown ids and kit ids without presence support are errors. Hooks for agents omitted by detection or `--agents` stay unchanged. When the harness ledger has entries owned by `agent-presence` for those agents, setup names them and shows `agent-presence setup --agents <id,...>` to update them. `agent-presence uninstall` removes presence hooks for all agents. Install an agent later and rerun setup to add its hooks. If no agent is detected and `--agents` is absent, setup skips the agent install plan, confirmation, apply and verification. It still prepares the shim for the selected `--hook-command` mode: `package` installs or reuses the pinned runtime, while `absolute` uses the checkout CLI. Only after preparation succeeds does setup continue with the watcher, dsh and provider steps.
 
-`setup` lists configuration conflicts and their allowed resolutions, re-plans with your choices, then shows the complete changes, commands and expected trust prompts. Review and confirm that plan before it writes agent configuration. Canceling, declining confirmation or encountering a protected target stops setup. Login and local home migration may already have written their own data.
+`setup` lists configuration conflicts and their allowed resolutions, re-plans with your choices, then shows the complete changes, commands and expected trust prompts. Review and confirm that plan before it writes agent configuration. Canceling, declining confirmation or encountering a protected target stops setup. Login may already have written its own data.
 
 In a non-interactive terminal, `setup --yes` applies a conflict-free plan. It does not resolve conflicts automatically. An interactive terminal always asks for confirmation, including with `--yes`. After confirmation, setup installs or reuses the pinned runtime in `package` mode, writes the shim, applies the plan and immediately verifies the kit artifacts selected for this run. If runtime installation fails, it removes the temporary install, discards the plan and exits non-zero before writing the shim or any agent target. If verification fails, setup stops without installing the watcher, offering dsh, publishing to the provider or displaying a signature URL. After successful verification, or when no agent was selected, it installs the macOS power watcher, updates an existing presence dsh plugin or offers a fresh installation, and configures the provider. A canceled dsh prompt or provider failure does not skip the verification results. Linux skips the watcher and relies on TTL pruning.
 
@@ -111,13 +111,16 @@ Install this release and run `agent-presence setup`. This installs the pinned ru
 
 ## Upgrade from 0.9.0 or earlier
 
-First run that release's own uninstall; it keeps credentials, configuration and state. If its setup ran with install-target variables such as `CLAUDE_SETTINGS_FILE`, keep them set for the uninstall:
+First run that release's own uninstall. Its matcher also covers the hook commands of earlier releases, so it removes those installations too, and it keeps credentials, configuration and state. If its setup ran with install-target variables such as `CLAUDE_SETTINGS_FILE`, keep them set for the uninstall:
 
 ```bash
 npx --yes @rivus/agent-presence@0.9.0 uninstall
 ```
 
-For a checkout installation, run `node <checkout>/dist/src/cli.js uninstall` instead, before updating that checkout. Then install this release and run `agent-presence setup`. This version's uninstall removes only the agent artifacts in its harness ledger, so it cannot replace that step. If you skip it, both versions' hooks fire for each event; `agent-presence doctor` reports these duplicates, except an old command that runs a checkout by absolute path, which carries no presence marker and needs removing by hand.
+For a checkout installation, run `node <checkout>/dist/src/cli.js uninstall` instead, before updating that checkout. Then install this release and run `agent-presence setup`. This version's uninstall removes only the agent artifacts in its harness ledger, so it cannot replace that step. If you skip it:
+
+- Claude Code, Codex and Gemini CLI run both versions' hooks for each event. `agent-presence doctor` reports these duplicates, except an old command that runs a checkout by absolute path, which carries no presence marker and needs removing by hand. Run the 0.9.0 uninstall, then run `agent-presence setup` again: the old uninstall deletes `~/.config/opencode/plugins/agent-presence.js`, the path where this version also installs its opencode bridge.
+- Both versions install the opencode and Pi bridges at the same paths, so setup reports each old bridge as an `unmanaged-exists` conflict with the choices `adopt` and `backup`, and `setup --yes` stops there. Cancel, run the 0.9.0 uninstall, then run setup again. Do not choose `adopt` or `backup`: `backup` keeps the old bridge as the file a later `agent-presence uninstall` restores, which brings the old hook back. `doctor` does not inspect bridges.
 
 The old uninstall also removes any Claude, Codex or Gemini hook containing `dist/src/cli.js hook`, including another tool's hook; save and restore those unrelated entries if needed. It removes the dsh plugin and macOS watcher too; setup offers dsh again and reinstalls the watcher. Moving Codex to the stable shim's `hook --agent` command is expected to require one hook re-trust cycle. Later upgrades that only replace the shim keep its installed hook definition stable.
 
