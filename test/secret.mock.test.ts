@@ -287,15 +287,12 @@ describe('credential storage', () => {
 
       await deleteCredential();
 
-      // delete SERVICE token + SERVICE slotId + LEGACY_SERVICE
-      expect(execFileMock).toHaveBeenCalledTimes(3);
+      expect(execFileMock).toHaveBeenCalledTimes(2);
       const calls = execFileMock.mock.calls;
       expect(calls[0]![0]).toBe('security');
       expect(calls[0]![1]).toEqual(['delete-generic-password', '-s', 'agent-signature:l-garyyang', '-a', 'token']);
       expect(calls[1]![0]).toBe('security');
       expect(calls[1]![1]).toEqual(['delete-generic-password', '-s', 'agent-signature:l-garyyang', '-a', 'slotId']);
-      // legacy keychain entry
-      expect(calls[2]![0]).toBe('security');
     });
   });
 
@@ -306,13 +303,12 @@ describe('credential storage', () => {
 
     it('appends the keychain file as the trailing argument of every command when set', async () => {
       execFileMock
-        .mockImplementationOnce(cbReject('not found')) // primary token read
-        .mockImplementationOnce(cbResolve('legacy\n')) // legacy token read
+        .mockImplementationOnce(cbResolve('token\n')) // token read
         .mockImplementationOnce(cbResolve('slot\n')) // slotId read
         .mockImplementation(cbIgnore);
 
       const store = createCredentialStore({ keychainPath });
-      await expect(store.readCredential()).resolves.toEqual({ token: 'legacy', slotId: 'slot' });
+      await expect(store.readCredential()).resolves.toEqual({ token: 'token', slotId: 'slot' });
       await store.writeCredential({ token: 'tok', slotId: 'sid' });
       await store.deleteCredential();
 
@@ -329,22 +325,13 @@ describe('credential storage', () => {
       expect(calls[1]![1]).toEqual([
         'find-generic-password',
         '-s',
-        'agent-signature-slot-credential',
-        '-a',
-        process.env.USER ?? 'agent-presence',
-        '-w',
-        keychainPath
-      ]);
-      expect(calls[2]![1]).toEqual([
-        'find-generic-password',
-        '-s',
         'agent-signature:l-garyyang',
         '-a',
         'slotId',
         '-w',
         keychainPath
       ]);
-      expect(calls[3]![1]).toEqual([
+      expect(calls[2]![1]).toEqual([
         'add-generic-password',
         '-U',
         '-s',
@@ -355,7 +342,7 @@ describe('credential storage', () => {
         'tok',
         keychainPath
       ]);
-      expect(calls[4]![1]).toEqual([
+      expect(calls[3]![1]).toEqual([
         'add-generic-password',
         '-U',
         '-s',
@@ -366,7 +353,7 @@ describe('credential storage', () => {
         'sid',
         keychainPath
       ]);
-      expect(calls[5]![1]).toEqual([
+      expect(calls[4]![1]).toEqual([
         'delete-generic-password',
         '-s',
         'agent-signature:l-garyyang',
@@ -374,7 +361,7 @@ describe('credential storage', () => {
         'token',
         keychainPath
       ]);
-      expect(calls[6]![1]).toEqual([
+      expect(calls[5]![1]).toEqual([
         'delete-generic-password',
         '-s',
         'agent-signature:l-garyyang',
@@ -382,38 +369,22 @@ describe('credential storage', () => {
         'slotId',
         keychainPath
       ]);
-      expect(calls[7]![1]).toEqual([
-        'delete-generic-password',
-        '-s',
-        'agent-signature-slot-credential',
-        '-a',
-        process.env.USER ?? 'agent-presence',
-        keychainPath
-      ]);
+      expect(calls).toHaveLength(6);
     });
 
     // Write and delete argv without a path stay pinned by the preserved-
     // behavior block above; this case pins the reads, which nowhere else do.
     it('keeps find-generic-password free of a keychain argument when no path is set', async () => {
       execFileMock
-        .mockImplementationOnce(cbReject('not found')) // primary token read
-        .mockImplementationOnce(cbResolve('legacy\n')) // legacy token read
+        .mockImplementationOnce(cbResolve('token\n')) // token read
         .mockImplementationOnce(cbResolve('slot\n')); // slotId read
 
       const store = createCredentialStore();
-      await expect(store.readCredential()).resolves.toEqual({ token: 'legacy', slotId: 'slot' });
+      await expect(store.readCredential()).resolves.toEqual({ token: 'token', slotId: 'slot' });
 
       const calls = execFileMock.mock.calls;
       expect(calls[0]![1]).toEqual(['find-generic-password', '-s', 'agent-signature:l-garyyang', '-a', 'token', '-w']);
-      expect(calls[1]![1]).toEqual([
-        'find-generic-password',
-        '-s',
-        'agent-signature-slot-credential',
-        '-a',
-        process.env.USER ?? 'agent-presence',
-        '-w'
-      ]);
-      expect(calls[2]![1]).toEqual(['find-generic-password', '-s', 'agent-signature:l-garyyang', '-a', 'slotId', '-w']);
+      expect(calls[1]![1]).toEqual(['find-generic-password', '-s', 'agent-signature:l-garyyang', '-a', 'slotId', '-w']);
     });
   });
 });

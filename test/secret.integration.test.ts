@@ -105,7 +105,6 @@ describe('credential storage integration', () => {
       const keychainPath = join(dir, 'test.keychain');
       const keychainPassword = randomBytes(24).toString('hex');
       const keychainService = `agent-presence-test:${uniqueSuffix()}`;
-      const keychainLegacyService = `agent-presence-test-legacy:${uniqueSuffix()}`;
 
       try {
         clearCredentialEnv();
@@ -113,7 +112,7 @@ describe('credential storage integration', () => {
         await execFileAsync('security', ['unlock-keychain', '-p', keychainPassword, keychainPath]);
         await execFileAsync('security', ['set-keychain-settings', keychainPath]);
 
-        const store = createCredentialStore({ keychainService, keychainLegacyService, keychainPath });
+        const store = createCredentialStore({ keychainService, keychainPath });
 
         await store.writeCredential({ token: testToken, slotId: testSlotId });
         const cred = await store.readCredential();

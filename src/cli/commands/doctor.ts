@@ -3,7 +3,15 @@ import type { Layer } from 'effect';
 import { createPresenceBundle, PRESENCE_AGENTS } from '../../harness/bundle.js';
 import { hasFlag } from '../args.js';
 import { runHarness } from '../harness.js';
-import { PREVIOUS_RELEASE_MARKERS } from '../setup-legacy.js';
+
+// Fragments of the hook commands releases before 0.10.0 installed. The kit matches them as plain substrings of hook
+// commands only, so each must be specific to presence and never occur in another tool's hook.
+const PREVIOUS_RELEASE_MARKERS = [
+  'agent-presence hook',
+  '@rivus/agent-presence',
+  'agent-signature hook',
+  'agent-signature.mjs hook'
+] as const;
 
 function doctorProgram() {
   const bundle = createPresenceBundle();

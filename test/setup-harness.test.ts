@@ -37,7 +37,8 @@ const ui = vi.hoisted(() => ({
   promptText: vi.fn<typeof import('../src/cli/ui.js').promptText>(),
   showInfo: vi.fn<typeof import('../src/cli/ui.js').showInfo>(),
   showNote: vi.fn<typeof import('../src/cli/ui.js').showNote>(),
-  finishOutro: vi.fn<typeof import('../src/cli/ui.js').finishOutro>()
+  finishOutro: vi.fn<typeof import('../src/cli/ui.js').finishOutro>(),
+  startIntro: vi.fn<typeof import('../src/cli/ui.js').startIntro>()
 }));
 const hooks = vi.hoisted(() => ({
   planInstall: vi.fn<typeof import('@rivus/agent-kit/harness').planInstall>(),
@@ -46,9 +47,6 @@ const hooks = vi.hoisted(() => ({
   verify: vi.fn<typeof import('@rivus/agent-kit/harness').verify>()
 }));
 const dependencies = vi.hoisted(() => ({
-  cleanup: vi.fn<typeof import('../src/migration.js').cleanupMigratedLegacyHome>(),
-  hasLegacy: vi.fn<typeof import('../src/migration.js').hasLegacyHomeToMigrate>(),
-  migrate: vi.fn<typeof import('../src/migration.js').migrateLegacyHome>(),
   login: vi.fn<typeof import('../src/cli/commands/login.js').login>(),
   hasCredential: vi.fn<typeof import('../src/cli/credential.js').hasCredential>(),
   readCredential: vi.fn<typeof import('../src/secret.js').readCredential>(),
@@ -68,17 +66,11 @@ vi.mock('@rivus/agent-kit/discovery', async (importOriginal) => {
 });
 vi.mock('../src/cli/ui.js', () => ({
   ...ui,
-  startIntro: vi.fn<typeof import('../src/cli/ui.js').startIntro>(),
   createSpinner: () => ({
     start: vi.fn<(message?: string) => void>(),
     stop: vi.fn<(message?: string) => void>(),
     error: vi.fn<(message?: string) => void>()
   })
-}));
-vi.mock('../src/migration.js', () => ({
-  cleanupMigratedLegacyHome: dependencies.cleanup,
-  hasLegacyHomeToMigrate: dependencies.hasLegacy,
-  migrateLegacyHome: dependencies.migrate
 }));
 vi.mock('../src/cli/commands/login.js', () => ({ login: dependencies.login }));
 vi.mock('../src/cli/credential.js', () => ({ hasCredential: dependencies.hasCredential }));
@@ -137,8 +129,6 @@ beforeEach(async () => {
   ui.promptSelect.mockResolvedValue('cancel');
   ui.showInfo.mockImplementation((message) => timeline.push(message));
   ui.showNote.mockImplementation((message, title) => timeline.push(`${title}: ${message}`));
-  dependencies.cleanup.mockResolvedValue({ from: '', to: '', removed: [] });
-  dependencies.hasLegacy.mockResolvedValue(false);
   dependencies.hasCredential.mockResolvedValue(true);
   dependencies.login.mockResolvedValue(undefined);
   dependencies.runScripts.mockImplementation(async () => {
@@ -342,7 +332,7 @@ describe('setup through the harness', () => {
         (error: unknown) => errorMessage(error) === 'invalid --hook-command: expected package, npx, or absolute'
       );
 
-      expect(dependencies.cleanup).not.toHaveBeenCalled();
+      expect(ui.startIntro).not.toHaveBeenCalled();
       expect(hooks.planInstall).not.toHaveBeenCalled();
       expect(ui.promptConfirm).not.toHaveBeenCalled();
       expect(runtimeNpm).not.toHaveBeenCalled();
@@ -356,7 +346,7 @@ describe('setup through the harness', () => {
       'invalid AGENT_PRESENCE_HOOK_COMMAND: expected package, npx, or absolute'
     );
 
-    expect(dependencies.cleanup).not.toHaveBeenCalled();
+    expect(ui.startIntro).not.toHaveBeenCalled();
     expect(hooks.planInstall).not.toHaveBeenCalled();
     expect(ui.promptConfirm).not.toHaveBeenCalled();
   });
@@ -801,22 +791,9 @@ describe('setup through the harness', () => {
     );
   });
 
-  it('allows migration and credential writes before planning while preserving all agent targets until confirmation', async () => {
+  it('allows credential writes before planning while preserving all agent targets until confirmation', async () => {
     await seedSettings();
     const before = await snapshotTargets();
-    dependencies.hasLegacy.mockResolvedValue(true);
-    dependencies.migrate.mockImplementation(async () => {
-      timeline.push('migration');
-      await put(join(fixture.presenceHome, 'config.json'), '{"provider":"magic-builder","slot_id":"fixture-slot"}\n');
-      return {
-        status: 'migrated',
-        from: 'legacy-home',
-        to: 'presence-home',
-        copied: ['config.json'],
-        skipped: [],
-        removed: []
-      };
-    });
     dependencies.hasCredential.mockResolvedValue(false);
     dependencies.login.mockImplementation(async () => {
       timeline.push('login');
@@ -831,15 +808,10 @@ describe('setup through the harness', () => {
     await setup(['--provider', 'magic-builder', '--agents', PRESENCE_AGENTS.join(',')], {}, fixture.layer);
 
     expectStopped();
-    expect(dependencies.migrate).toHaveBeenCalledOnce();
     expect(dependencies.login).toHaveBeenCalledExactlyOnceWith(['--provider', 'magic-builder']);
     expect(await readFile(join(fixture.presenceHome, 'credential-marker'), 'utf8')).toBe('fixture credential stored\n');
     expect(targetsAtConfirmation).toEqual(before);
-    expect(timeline.filter((entry) => ['migration', 'login', 'planned'].includes(entry))).toEqual([
-      'migration',
-      'login',
-      'planned'
-    ]);
+    expect(timeline.filter((entry) => ['login', 'planned'].includes(entry))).toEqual(['login', 'planned']);
     expect(await snapshotTargets()).toEqual(before);
   });
 
@@ -1724,7 +1696,7 @@ describe('setup agent selection', () => {
     { value: ['codex,'], message: 'empty agent id' },
     { value: [], message: 'requires a comma-separated list' },
     { value: ['--yes'], message: 'requires a comma-separated list' }
-  ])('rejects invalid --agents $value before migration, login or writes', async ({ value, message }) => {
+  ])('rejects invalid --agents $value before login or writes', async ({ value, message }) => {
     const before = await snapshotTargets();
     const detected = vi.mocked(discovery.detectAgents);
 
@@ -1732,8 +1704,6 @@ describe('setup agent selection', () => {
       setup(['--agents', ...value, '--no-hooks', '--hook-command', 'absolute'], {}, fixture.layer)
     ).rejects.toThrow(message);
 
-    expect(dependencies.cleanup).not.toHaveBeenCalled();
-    expect(dependencies.hasLegacy).not.toHaveBeenCalled();
     expect(dependencies.login).not.toHaveBeenCalled();
     expect(dependencies.hasCredential).not.toHaveBeenCalled();
     expect(dependencies.runScripts).not.toHaveBeenCalled();
@@ -1750,7 +1720,7 @@ describe('setup agent selection', () => {
     const path = join(fixture.home, '.grok/sessions');
     const canonicalPath = join(await realpath(fixture.home), '.grok/sessions');
     const originalStat = fixture.platform.fs.stat.bind(fixture.platform.fs);
-    // Discovery follows links; legacy target checks must still inspect the actual ancestors.
+    // Discovery follows links; fail only those lookups so other checks still see the actual ancestors.
     vi.spyOn(fixture.platform.fs, 'stat').mockImplementation((target, options) =>
       (target === path || target === canonicalPath) && options?.followSymlinks
         ? Promise.reject(Object.assign(new Error('fixture permission denied'), { code: 'EACCES' }))

@@ -65,7 +65,7 @@ agent-presence setup --agents claude-code,codex
 
 未知 id 和 presence 不支持的 kit id 都会报错。未被检测选中或未列入 `--agents` 的智能体，其 hook 保持不变。只有 harness 安装记录中存在属于 `agent-presence` 的未选中智能体条目时，setup 才会列出这些智能体，并提示用 `agent-presence setup --agents <id,...>` 更新它们。`agent-presence uninstall` 会移除所有智能体的 presence hook。以后安装智能体后，重新运行 setup 即可添加 hook。没有检测到智能体且未传 `--agents` 时，setup 跳过智能体安装计划、确认、应用和校验，但仍按所选 `--hook-command` 模式准备 shim：`package` 安装或复用固定版本 runtime，`absolute` 使用 checkout 的 CLI。准备成功后才继续 watcher、dsh 和 provider 步骤。
 
-`setup` 先列出配置冲突和允许的处理方式，按你的选择重新规划，再展示完整变更、命令和预期信任提示。确认计划后才会写入智能体配置。取消、拒绝确认或遇到受保护目标时，setup 会退出。登录和本地目录迁移可能已经写入各自的数据。
+`setup` 先列出配置冲突和允许的处理方式，按你的选择重新规划，再展示完整变更、命令和预期信任提示。确认计划后才会写入智能体配置。取消、拒绝确认或遇到受保护目标时，setup 会退出。登录可能已经写入自己的数据。
 
 非交互终端可用 `setup --yes` 应用无冲突的计划，但它不会自动处理冲突。交互终端始终会请求明确确认，包括传了 `--yes` 时。确认后，setup 在 `package` 模式下安装或复用固定版本的 runtime，再写入 shim、应用计划并立即验证本次选中的 kit 产物。runtime 安装失败时，会清理临时安装目录、丢弃计划，并在写入 shim 或任何智能体目标前以非零状态退出。验证失败时，setup 就此停止，不安装 watcher、不询问 dsh、不发布 provider，也不显示签名 URL。验证成功或没有选中智能体时，依次安装 macOS 电源 watcher、更新已有 presence dsh 插件或询问是否首次安装，再配置 provider。取消 dsh 提示或 provider 失败不会跳过验证结果。Linux 跳过 watcher，依靠 TTL 清理。
 
@@ -111,36 +111,18 @@ node <checkout>/dist/src/cli.js setup --hook-command absolute
 
 ## 从 0.9.0 或更早版本升级
 
-如果 setup 列出此前卸载时保留的文件，请先将它们移出安装位置，不再需要时也可删除。它们也可能由本版本安装，例如卸载时保留的已修改 hook 文件。即使同时列出了需要替换的项目，也必须先处理保留文件，再运行任何旧卸载器。其余旧安装在升级前运行旧版本自己的卸载命令，不加 `--credentials` 或 `--all`，以保留凭据、配置和状态：
+先运行旧版本自己的卸载命令。它的匹配规则也覆盖更早版本的 hook 命令，因此会一并移除这些安装，并保留凭据、配置和状态。如果旧版 setup 运行时设置了 `CLAUDE_SETTINGS_FILE` 等安装目标变量，卸载时保持这些变量的原值：
 
 ```bash
-npx --yes @rivus/agent-presence@<previous-version> uninstall
+npx --yes @rivus/agent-presence@0.9.0 uninstall
 ```
 
-对需要替换的 hook 命令中固定的每个不同版本，分别运行卸载命令。只要有一个需要替换的项目不是固定版本的 hook 命令，就额外运行迁移到 harness 前的最后一个版本 `0.9.0`。即使其他项目已固定版本，桥接文件和 opencode 配置引用仍需这个回退版本，因为较早的固定版本可能还不认识后来的产物。从 checkout 安装的用户可在更新 checkout 前运行 `node <checkout>/dist/src/cli.js uninstall`。然后安装本版本，再运行 `agent-presence setup`。不要使用未固定版本的卸载命令：本版本只移除 harness 安装记录中的智能体产物，不处理记录之外的旧版本项目。后续升级由 setup 原地更新安装记录，无需先卸载。
+从 checkout 安装的用户改为在更新 checkout 前运行 `node <checkout>/dist/src/cli.js uninstall`。有两类 absolute 模式的 hook 条目需要手动移除，因为旧卸载器漏掉它们，`doctor` 也因为没有 presence 标记而看不到：checkout 路径需要 shell 引号（含空格、非 ASCII 字符、`+`、`~` 等）的条目，以及 `AGENT_PRESENCE_CLI_PATH` 不以 `dist/src/cli.js` 结尾时写入的条目。然后安装本版本，再运行 `agent-presence setup`。本版本的卸载只移除 harness 安装记录中的智能体产物，不能代替这一步。如果跳过这一步：
 
-旧版本检查覆盖全部六个受支持的智能体，不受检测结果或 `--agents` 影响。setup 检测到旧版本项目或此前卸载时保留的文件时，会列出智能体、路径和类型，hook 还会列出事件和命令，然后在队列恢复、登录和安装确认前以非零状态退出。智能体目标和队列文件保持不变；此前可能已经执行获准的旧目录迁移。`--no-hooks` 跳过此检查。
+- Claude Code、Codex、Gemini CLI 和 Grok 会对每个事件运行新旧两个版本的 hook；Grok 也读取 `~/.claude/settings.json`，因此会运行旧的 `--source claude` hook。`agent-presence doctor` 会报告这些重复 hook，并在 `claude-code` 旁列出 `grok`，但以绝对路径运行 checkout 的旧命令不含 presence 标记，识别不了。此时先运行 0.9.0 的卸载，再重新运行 `agent-presence setup`：旧卸载器会删除 `~/.config/opencode/plugins/agent-presence.js`，本版本的 opencode 桥接文件也安装在这个路径。
+- 两个版本的 opencode 和 Pi 桥接文件路径相同，因此 setup 会把每个旧桥接文件报告为 `unmanaged-exists` 冲突，可选 `adopt` 和 `backup`；`setup --yes` 会在这里退出。先取消，运行 0.9.0 的卸载，再重新运行 setup。不要选择 `adopt` 或 `backup`：`adopt` 会跳过旧卸载，旧的 Claude Code、Codex 和 Gemini CLI hook 以及 `opencode.json` 中旧的插件项都会留下；`backup` 更糟，因为它会把旧桥接文件保存为之后 `agent-presence uninstall` 要恢复的文件，旧 hook 会因此回来。如果之前选过 `backup`，运行旧卸载和 setup 不会清掉这份保存的文件，因此运行 `agent-presence uninstall` 后手动删除恢复出来的 `~/.config/opencode/plugins/agent-presence.js` 和 `~/.pi/agent/extensions/agent-presence.ts`。`doctor` 不检查桥接文件。
 
-- 标为需要替换的项目使用上面的旧版本卸载命令。卸载后仍留下的改名插件副本或手改项目，按列出的路径手动移除。
-- 标为此前卸载时保留的文件属于用户，也可能由本版本安装，请手动移动或删除；不要为这些文件运行旧卸载器，它会删除用户保留的文件。
-
-本版本忽略以下旧安装目标覆盖变量。setup 会逐一列出已设置的变量，包括拒绝继续安装时。运行旧版本卸载时，须保持它们原来的值，否则这些目标中的旧产物会留下，也不在本版本的检查范围内：
-
-```text
-CLAUDE_SETTINGS_FILE
-GEMINI_SETTINGS_FILE
-CODEX_HOOKS_FILE
-OPENCODE_CONFIG
-OPENCODE_AGENT_PRESENCE_PLUGIN_FILE
-OPENCODE_AGENT_SIGNATURE_PLUGIN_FILE
-PI_SETTINGS_FILE
-PI_AGENT_PRESENCE_EXTENSION_FILE
-PI_AGENT_PRESENCE_EXTENSION_DIR
-```
-
-checkout 路径不含 presence 标记的旧绝对路径 hook 命令无法被检查识别。旧卸载器通常能移除不带引号的形式；带空格等需要引号的 checkout 路径也可能逃过旧卸载器。请检查智能体配置，手动移除残留的旧命令，否则它会与新 hook 一起执行；`doctor` 也无法识别这种重复。旧卸载器还会移除 Claude、Codex 或 Gemini 中所有包含 `dist/src/cli.js hook` 的 hook，包括其他工具的 hook；必要时先保存再恢复这些无关项目。
-
-旧卸载器还会移除 dsh 插件和 macOS watcher；setup 会再次询问 dsh，并重新安装 watcher。Codex 切换到稳定 shim 的 `hook --agent` 命令预计需要重新信任一次 hook。后续仅替换 shim 的升级保持已安装 hook 的定义稳定。
+旧卸载器还会移除 Claude、Codex 或 Gemini 中所有包含 `dist/src/cli.js hook` 的 hook，包括其他工具的 hook；必要时先保存再恢复这些无关项目。它也会移除 dsh 插件和 macOS watcher；setup 会再次询问 dsh，并重新安装 watcher。Codex 切换到稳定 shim 的 `hook --agent` 命令预计需要重新信任一次 hook。后续仅替换 shim 的升级保持已安装 hook 的定义稳定。
 
 ## 降级到 0.9.0 或更早版本
 
@@ -185,6 +167,6 @@ agent-presence inventory
 agent-presence uninstall
 ```
 
-`doctor` 检查全部六个受支持智能体的 hook 和 harness 安装记录，包括已无法检测到的智能体；警告或错误会导致非零退出码。重复检查同时使用 presence 专属的旧版本标记和已安装命令，覆盖命令式 hook 文件，不覆盖 opencode/Pi 桥接文件。它也会检查其他工具的 hook，因此其他工具的警告也可能导致退出码 1。`inventory` 展示共享的 kit 安装记录，包含其他应用的条目。两个命令都支持 `--json`，完整限制见[命令](/zh/reference/commands/)。
+`doctor` 检查全部六个受支持智能体的 hook 和 harness 安装记录，包括已无法检测到的智能体；警告或错误会导致非零退出码。重复检查同时使用 0.10.0 之前版本的 presence 专属标记和已安装命令，覆盖命令式 hook 文件，不覆盖 opencode/Pi 桥接文件。它也会检查其他工具的 hook，因此其他工具的警告也可能导致退出码 1。`inventory` 展示共享的 kit 安装记录，包含其他应用的条目。两个命令都支持 `--json`，完整限制见[命令](/zh/reference/commands/)。
 
-`uninstall` 覆盖全部六个受支持的智能体，包括已无法检测到的智能体。它报告移除的产物及每个保留位置和原因，再独立移除 shim、整个 `~/.agent-presence/runtime/` 目录、dsh 插件和 macOS watcher。默认保留凭据、配置和 session 状态。智能体产物只按 harness 记录移除；旧版本 hook 不会自动加入该记录，应按上面的升级步骤用对应版本移除。
+`uninstall` 覆盖全部六个受支持的智能体，包括已无法检测到的智能体。它报告移除的产物及每个保留位置和原因，再独立移除 shim、整个 `~/.agent-presence/runtime/` 目录、dsh 插件和 macOS watcher。默认保留凭据、配置和 session 状态。智能体产物只按 harness 记录移除；0.9.0 或更早版本安装的 hook 不在该记录中，应按上面的升级步骤用该版本的卸载命令移除。

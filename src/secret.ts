@@ -9,7 +9,6 @@ export interface SlotCredential {
 }
 
 const KEYCHAIN_SERVICE = 'agent-signature:l-garyyang';
-const KEYCHAIN_LEGACY_SERVICE = 'agent-signature-slot-credential';
 const LIBSECRET_SERVICE = 'agent-presence';
 const LIBSECRET_ERROR = 'agent-presence requires libsecret on linux (install gnome-keyring or libsecret-tools)';
 
@@ -21,7 +20,6 @@ export interface CredentialStore {
 
 export interface CredentialStoreOptions {
   keychainService?: string;
-  keychainLegacyService?: string;
   /**
    * macOS only: send every generic-password command to this keychain file
    * instead of the default search list. Tests only — production callers leave
@@ -112,13 +110,10 @@ async function deleteKeychain(service: string, account: string, keychainPath?: s
 
 // --- macOS Keychain backend ---
 
-function createKeychainBackend(service: string, legacyService: string, keychainPath?: string): CredentialBackend {
+function createKeychainBackend(service: string, keychainPath?: string): CredentialBackend {
   return {
     async readToken() {
-      return (
-        (await readKeychain(service, 'token', keychainPath)) ??
-        (await readKeychain(legacyService, process.env.USER ?? 'agent-presence', keychainPath))
-      );
+      return readKeychain(service, 'token', keychainPath);
     },
 
     async readSlotId() {
@@ -133,8 +128,7 @@ function createKeychainBackend(service: string, legacyService: string, keychainP
     async deleteCredential() {
       await Promise.all([
         deleteKeychain(service, 'token', keychainPath),
-        deleteKeychain(service, 'slotId', keychainPath),
-        deleteKeychain(legacyService, process.env.USER ?? 'agent-presence', keychainPath)
+        deleteKeychain(service, 'slotId', keychainPath)
       ]);
     }
   };
@@ -250,11 +244,7 @@ function getCredentialBackend(options: CredentialStoreOptions): CredentialBacken
   if (process.platform === 'linux') {
     return createSecretToolBackend(options.libsecretService ?? LIBSECRET_SERVICE);
   }
-  return createKeychainBackend(
-    options.keychainService ?? KEYCHAIN_SERVICE,
-    options.keychainLegacyService ?? KEYCHAIN_LEGACY_SERVICE,
-    options.keychainPath
-  );
+  return createKeychainBackend(options.keychainService ?? KEYCHAIN_SERVICE, options.keychainPath);
 }
 
 export function createCredentialStore(options: CredentialStoreOptions = {}): CredentialStore {

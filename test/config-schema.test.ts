@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test';
@@ -215,17 +215,6 @@ describe('loadValidatedConfig', () => {
       }
     }
     await rm(home, { recursive: true, force: true });
-  });
-
-  it('reads a legacy config when the new config does not exist, validated like any other', async () => {
-    const legacyDir = join(home, '.codex', 'agent-signature');
-    await mkdir(legacyDir, { recursive: true });
-    await writeFile(join(legacyDir, 'config.json'), JSON.stringify({ slot_id: 'slot_legacy' }));
-
-    const { config, raw, issues } = await loadValidatedConfig();
-    expect(issues).toEqual([]);
-    expect(config).toEqual({ slot_id: 'slot_legacy' });
-    expect(raw).toEqual(config);
   });
 
   it('hands writes an empty object as the file base when the root is dropped', async () => {

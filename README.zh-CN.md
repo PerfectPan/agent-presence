@@ -52,17 +52,18 @@ agent-presence setup --hook-command absolute
 
 ## 从 0.9.0 或更早版本升级
 
-如果 setup 列出此前卸载时保留的文件，请先将它们移出安装位置，不再需要时也可删除。这些文件也可能由本版本安装，例如卸载时保留的已修改 hook 文件。即使同时列出了需要替换的项目，也必须先处理保留文件，再运行任何旧卸载器。其余旧安装在升级前运行旧版本自己的卸载命令，不加 `--credentials` 或 `--all`，以保留凭据、配置和状态：
+先运行旧版本自己的卸载命令。它也会移除更早版本安装的内容，并保留凭据、配置和状态：
 
 ```bash
-npx --yes @rivus/agent-presence@<previous-version> uninstall
+npx --yes @rivus/agent-presence@0.9.0 uninstall
 ```
 
-对需要替换的 hook 命令中固定的每个不同版本，分别运行卸载命令。只要有一个需要替换的项目不是固定版本的 hook 命令，例如桥接文件或 opencode 配置引用，就额外运行 `0.9.0`，即使其他项目已固定版本。从 checkout 安装的用户也可在更新 checkout 前运行 `node <checkout>/dist/src/cli.js uninstall`。然后安装本版本并运行 `agent-presence setup`。本版本的卸载只移除 harness 安装记录中的智能体产物，不能代替这一步；后续升级直接重新运行 setup。
+从 checkout 安装的用户改为在更新 checkout 前运行 `node <checkout>/dist/src/cli.js uninstall`。有两类 absolute 模式的 hook 条目需要手动移除，因为旧卸载器漏掉它们，`doctor` 也因为没有 presence 标记而看不到：checkout 路径需要 shell 引号（含空格、非 ASCII 字符、`+`、`~` 等）的条目，以及 `AGENT_PRESENCE_CLI_PATH` 不以 `dist/src/cli.js` 结尾时写入的条目。然后安装本版本并运行 `agent-presence setup`。如果跳过卸载：
 
-setup 会列出检测到的旧版本项目和此前卸载时保留的文件，在队列恢复、登录和安装确认前退出。保留文件属于用户，请手动移动或删除；旧卸载器会删除它们。旧卸载器遗漏的改名副本或手改项目也需要手动清理。旧安装目标覆盖变量须保持设置，再运行旧版本卸载；本版本忽略这些变量，并在设置时警告。
+- Claude Code、Codex、Gemini CLI 和 Grok 会对每个事件运行新旧两个版本的 hook；Grok 也读取 `~/.claude/settings.json`，因此会运行旧的 `--source claude` hook。`agent-presence doctor` 会报告这些重复 hook，并在 `claude-code` 旁列出 `grok`，但识别不了以绝对路径运行 checkout 的旧命令。此时先运行 0.9.0 的卸载，再重新运行 `agent-presence setup`：旧卸载器可能删除当前的 opencode 桥接文件。
+- setup 会把旧的 opencode 和 Pi 桥接文件报告为 `unmanaged-exists` 冲突。在这里取消，然后运行 0.9.0 的卸载。不要选择 `adopt` 或 `backup`：`adopt` 会跳过旧卸载，旧的 Claude Code、Codex 和 Gemini CLI hook 以及 `opencode.json` 中旧的插件项都会留下；`backup` 更糟，因为之后运行 `agent-presence uninstall` 时会把旧桥接文件恢复回来。如果之前选过 `backup`，运行 `agent-presence uninstall` 后手动删除恢复出来的 `~/.config/opencode/plugins/agent-presence.js` 和 `~/.pi/agent/extensions/agent-presence.ts`。
 
-checkout 路径不含 presence 标记的旧绝对路径 hook 命令可能无法被检测。旧版本卸载后请检查智能体配置，尤其是带引号的 checkout 路径。旧卸载器还会移除其他工具在 Claude/Codex/Gemini 中包含 `dist/src/cli.js hook` 的 hook，必要时先保存再恢复。切换到稳定 shim 预计需要在 Codex 中重新信任一次 hook；后续只更新 shim 时，hook 定义保持稳定。详见[升级指引](https://agent-presence.vercel.app/zh/guide/install/#从-090-或更早版本升级)。
+切换到稳定 shim 预计需要在 Codex 中重新信任一次 hook；后续只更新 shim 时，hook 定义保持稳定。详见[升级指引](https://agent-presence.vercel.app/zh/guide/install/#从-090-或更早版本升级)。
 
 ## 使用流程
 
@@ -76,7 +77,7 @@ checkout 路径不含 presence 标记的旧绝对路径 hook 命令可能无法�
 
 也可用 `setup --agents claude-code,codex` 明确选择。仅安装桌面应用、从未运行 CLI 且命令不在 `PATH` 中时，需要此参数。支持的 id 为 `claude-code`、`codex`、`gemini-cli`、`grok`、`opencode` 和 `pi`，其他 id 会被拒绝。未被检测选中或未列入 `--agents` 的智能体，其 hook 保持不变。只有 harness 安装记录中存在属于 `agent-presence` 的未选中智能体条目时，setup 才会列出这些智能体，并提示用 `agent-presence setup --agents <id,...>` 更新它们。`agent-presence uninstall` 会移除所有智能体的 presence hook。没有检测到智能体时，setup 跳过智能体安装计划、确认、应用和校验，但仍按所选 `--hook-command` 模式准备 shim：`package` 安装或复用固定版本 runtime，`absolute` 使用 checkout 的 CLI。准备成功后才继续 watcher、dsh 和 provider 步骤。
 
-`setup` 在确认安装计划前不会写入智能体配置。非交互终端需要 `setup --yes` 才会应用无冲突的计划；有冲突时即使传了 `--yes` 也会退出，交互终端仍需明确确认。确认后，setup 在 `package` 模式下安装或复用固定版本的 runtime，再写入 shim、应用计划、写入 harness 安装记录并立即验证本次选中的 kit 产物。runtime 安装失败时，setup 会在写入 shim 或任何智能体配置之前退出。验证成功后，依次运行电源 watcher 步骤、无需询问地更新已有 presence dsh 插件或在交互终端询问是否首次安装，再配置 provider。旧版本检查、`doctor` 和 `uninstall` 仍覆盖全部六个智能体，包括已无法检测到的智能体。
+`setup` 在确认安装计划前不会写入智能体配置。非交互终端需要 `setup --yes` 才会应用无冲突的计划；有冲突时即使传了 `--yes` 也会退出，交互终端仍需明确确认。确认后，setup 在 `package` 模式下安装或复用固定版本的 runtime，再写入 shim、应用计划、写入 harness 安装记录并立即验证本次选中的 kit 产物。runtime 安装失败时，setup 会在写入 shim 或任何智能体配置之前退出。验证成功后，依次运行电源 watcher 步骤、无需询问地更新已有 presence dsh 插件或在交互终端询问是否首次安装，再配置 provider。`doctor` 和 `uninstall` 仍覆盖全部六个智能体，包括已无法检测到的智能体。
 
 安装的 hook、dsh 插件和 macOS 电源 watcher 调用 `~/.agent-presence/bin/agent-presence` 中的稳定 shim。setup 更新其中的 Node/CLI 路径，智能体中的 hook 命令保持不变。setup 成功后，在 runtime 锁内保留本次版本和旧 shim、当前 shim 指向的 runtime，删除其他版本和中断安装残留的目录；卸载会移除 shim 和整个 runtime 目录。绝对路径模式要求 checkout 持续可用。Claude Code、Codex、Gemini CLI 和 Grok 的命令式 hook 按各自的原生单位设置五秒超时；opencode/Pi 桥接仅对同步结束事件的交付设置五秒超时，其他事件异步发送，不设置子进程超时。Gemini 使用自己的事件名。Claude hook 放在插件中，避免写入 Cursor 也会读取的共享 settings 文件。切换到 shim 命令预计需要在 Codex 中重新审阅一次 hook；后续只更新 shim 时，安装命令保持稳定。见[安装位置与检查](https://agent-presence.vercel.app/zh/guide/install/#安装位置)。
 

@@ -1,13 +1,9 @@
 import { describe, expect, it, vi } from 'vite-plus/test';
-import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
-import { tmpdir } from 'node:os';
 import {
   configSlotId,
   feishuSignatureConfig,
   getConfigPath,
   getHomeDir,
-  loadConfig,
   providerBaseUrl,
   providerId,
   renderTemplates
@@ -66,20 +62,6 @@ describe('home directory', () => {
     expect(getConfigPath()).toBe('/fake-home/.agent-presence/config.json');
 
     vi.unstubAllEnvs();
-  });
-
-  it('reads a legacy config when the new config does not exist', async () => {
-    const home = await mkdtemp(join(tmpdir(), 'agent-presence-config-test-'));
-    vi.stubEnv('HOME', home);
-    const legacyDir = join(home, '.codex', 'agent-signature');
-    await mkdir(legacyDir, { recursive: true });
-    await writeFile(join(legacyDir, 'config.json'), JSON.stringify({ slot_id: 'slot_legacy' }));
-
-    await expect(loadConfig()).resolves.toMatchObject({ slot_id: 'slot_legacy' });
-    expect(getConfigPath()).toBe(join(home, '.agent-presence', 'config.json'));
-
-    vi.unstubAllEnvs();
-    await rm(home, { recursive: true, force: true });
   });
 });
 

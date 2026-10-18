@@ -1,5 +1,5 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
-import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import * as z from 'zod/mini';
 import { hasNodeErrorCode, readJsonFile, writeJsonAtomic } from '../../src/json-file.js';
@@ -61,22 +61,6 @@ function withoutAgentSignatureHookGroups(groups: HookGroup[]): HookGroup[] {
   });
 }
 
-function withoutAgentSignatureHooks(input: HookSettingsInput): HookSettings {
-  const settings: HookSettings = {
-    ...input,
-    hooks: {}
-  };
-
-  for (const [event, groups] of Object.entries(input.hooks ?? {})) {
-    const nextGroups = withoutAgentSignatureHookGroups(groups);
-    if (nextGroups.length > 0) {
-      settings.hooks[event] = nextGroups;
-    }
-  }
-
-  return settings;
-}
-
 function normalizeOpenCodePlugins(plugin: unknown): unknown[] {
   const entries = z.safeParse(z.array(z.unknown()), plugin);
   if (entries.success) {
@@ -95,19 +79,6 @@ function withOpenCodeAgentSignaturePluginConfig(input: OpenCodeConfig): OpenCode
     plugins.push(OPENCODE_PLUGIN_REF);
   }
   return { ...input, plugin: plugins };
-}
-
-function withoutOpenCodeAgentSignaturePluginConfig(input: OpenCodeConfig): OpenCodeConfig {
-  const plugins = normalizeOpenCodePlugins(input.plugin).filter(
-    (plugin) => plugin !== OPENCODE_PLUGIN_REF && plugin !== LEGACY_OPENCODE_PLUGIN_REF
-  );
-  const next = { ...input };
-  if (plugins.length > 0) {
-    next.plugin = plugins;
-  } else {
-    delete next.plugin;
-  }
-  return next;
 }
 
 interface PiSettings {
@@ -148,17 +119,6 @@ function withPiAgentPresenceExtension(input: PiSettings, extensionPath: string):
   return next;
 }
 
-function withoutPiAgentPresenceExtension(input: PiSettings, extensionPath: string): PiSettings {
-  const extensions = normalizePiExtensions(input.extensions).filter((entry) => entry !== extensionPath);
-  const next = { ...input };
-  if (extensions.length > 0) {
-    next.extensions = extensions;
-  } else {
-    delete next.extensions;
-  }
-  return next;
-}
-
 interface PiExtensionPaths {
   extensionPath: string;
   settingsPath: string;
@@ -166,14 +126,6 @@ interface PiExtensionPaths {
 
 interface PiInstallResult {
   status: 'installed' | 'refused';
-  extensionPath: string;
-  settingsPath: string;
-  settingsUpdated: boolean;
-  settingsError?: string;
-}
-
-interface PiUninstallResult {
-  status: 'removed' | 'skipped';
   extensionPath: string;
   settingsPath: string;
   settingsUpdated: boolean;
@@ -197,33 +149,6 @@ async function readManagedExtension(
 
 function describeInstallerError(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
-}
-
-async function uninstallPiExtension(paths: PiExtensionPaths): Promise<PiUninstallResult> {
-  const existing = await readManagedExtension(paths.extensionPath);
-  let status: PiUninstallResult['status'] = 'skipped';
-  if (existing.status === 'managed') {
-    await rm(paths.extensionPath, { force: true });
-    status = 'removed';
-  }
-
-  let settingsUpdated = false;
-  let settingsError: string | undefined;
-  try {
-    const settings = await readPiSettings(paths.settingsPath);
-    await writeJsonAtomic(paths.settingsPath, withoutPiAgentPresenceExtension(settings, paths.extensionPath));
-    settingsUpdated = true;
-  } catch (error) {
-    settingsError = describeInstallerError(error);
-  }
-
-  return {
-    status,
-    extensionPath: paths.extensionPath,
-    settingsPath: paths.settingsPath,
-    settingsUpdated,
-    settingsError
-  };
 }
 
 export type PreviousReleaseCommandMode = 'npx' | 'absolute';
@@ -541,7 +466,7 @@ function withGeminiAgentSignatureHooks(input: HookSettingsInput): HookSettings {
   return settings;
 }
 
-export const PREVIOUS_RELEASE_ARTIFACT_PATHS = {
+const PREVIOUS_RELEASE_ARTIFACT_PATHS = {
   claudeSettings: '.claude/settings.json',
   codexHooks: '.codex/hooks.json',
   geminiSettings: '.gemini/settings.json',
@@ -659,18 +584,4 @@ export async function installPreviousRelease(options: {
     );
     await installPiExtension({ extensionPath: paths.piExtension, settingsPath: paths.piSettings });
   });
-}
-
-export async function uninstallPreviousRelease(options: { homeDir: string }): Promise<void> {
-  const paths = previousReleasePaths(options.homeDir);
-  for (const path of [paths.claudeSettings, paths.codexHooks, paths.geminiSettings]) {
-    await writeJsonAtomic(path, withoutAgentSignatureHooks(await readHookSettings(path)));
-  }
-  await rm(paths.opencodePlugin, { force: true });
-  await rm(join(dirname(paths.opencodePlugin), 'agent-signature.js'), { force: true });
-  await writeJsonAtomic(
-    paths.opencodeConfig,
-    withoutOpenCodeAgentSignaturePluginConfig(await readOpenCodeConfig(paths.opencodeConfig))
-  );
-  await uninstallPiExtension({ extensionPath: paths.piExtension, settingsPath: paths.piSettings });
 }

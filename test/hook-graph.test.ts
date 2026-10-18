@@ -31,7 +31,6 @@ const forbiddenHookGraphModules = [
   'src/setup.ts',
   'src/installers.ts',
   'src/plugin-install.ts',
-  'src/migration.ts',
   'src/power-watcher.ts',
   'src/magic-token.ts',
   'src/cli/credential.ts',

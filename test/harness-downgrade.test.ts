@@ -53,11 +53,6 @@ vi.mock('../src/setup.js', () => ({
   runSetupScripts: boundary.setupScripts,
   runUninstallScripts: boundary.uninstallScripts
 }));
-vi.mock('../src/migration.js', () => ({
-  cleanupMigratedLegacyHome: async () => ({ from: '', to: '', removed: [] }),
-  hasLegacyHomeToMigrate: async () => false,
-  migrateLegacyHome: vi.fn<typeof import('../src/migration.js').migrateLegacyHome>()
-}));
 vi.mock('../src/secret.js', () => ({
   readCredential: boundary.credential,
   deleteCredential: boundary.process
@@ -446,7 +441,8 @@ describe('documented harness downgrade order', () => {
         doctor({ owner: 'agent-presence', agents: PRESENCE_AGENTS, markers: installedMarkers(bundle) })
       );
       expect(currentOnly.filter(({ name }) => name === 'duplicate-hook')).toEqual([]);
-      // Absolute old commands need the test-only dist/src marker; production doctor supplies neither legacy marker.
+      // Production doctor supplies `@rivus/agent-presence`, which matches the old npx commands; the absolute old
+      // commands need the test-only `dist/src/cli.js hook` marker, which production doctor does not supply.
       const checks = await fixture.run(
         doctor({
           owner: 'agent-presence',
