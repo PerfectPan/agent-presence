@@ -1,17 +1,47 @@
-import { readFile } from 'node:fs/promises';
+import { existsSync, globSync, readFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
-import { describe, expect, it } from 'vite-plus/test';
+import { fileURLToPath } from 'node:url';
+import { afterEach, describe, expect, it, vi } from 'vite-plus/test';
 
 import { SCAN_ENV } from '../src/cli/hook-context.js';
-import { getConfigPath, getHomeDir, getLogPath, getPluginsDir, getStatePath } from '../src/config.js';
+import {
+  DEFAULT_MAGIC_BUILDER_BASE_URL,
+  getConfigPath,
+  getHomeDir,
+  getLogPath,
+  getPluginsDir,
+  getStatePath,
+  magicBuilderBaseUrl
+} from '../src/config.js';
+import { resolveDshPluginPaths } from '../src/installers.js';
 import { kitPlatform } from '../src/kit-platform.js';
-import { collectWindowUsage, type BillableSource } from '../src/usage/index.js';
-import { TEST_HOME_PREFIX } from './isolated-home.js';
+import { envTreatment, isolateTestHome, TEST_HOME_PREFIX } from './isolated-home.js';
 
-const NOW = new Date(2026, 6, 14, 12, 0, 0, 0).getTime();
+const repoRoot = fileURLToPath(new URL('..', import.meta.url));
 
-// Nothing in this file sets HOME, so it is whatever the shared setup file left for this test file.
+// How src names an environment variable: a property of `process.env` or of an env parameter, or a quoted UPPER_SNAKE
+// name it hands to a helper (hook `envKeys`, `SCAN_ENV`, the setup's list of ignored overrides). This check is lexical.
+const ENV_NAME_PATTERNS = [
+  /\benv\.([A-Z][A-Z0-9_]*)/g,
+  /\benv\[['"]([A-Z][A-Z0-9_]*)['"]\]/g,
+  /['"]([A-Z][A-Z0-9]*_[A-Z0-9_]+)['"]/g
+];
+
+function envNamesReadBySrc(): string[] {
+  const names = new Set<string>();
+  for (const file of globSync('src/**/*.ts', { cwd: repoRoot })) {
+    const source = readFileSync(join(repoRoot, file), 'utf8');
+    for (const pattern of ENV_NAME_PATTERNS) {
+      for (const [, name] of source.matchAll(pattern)) {
+        names.add(name!);
+      }
+    }
+  }
+  return [...names].sort();
+}
+
+// Nothing in this file sets HOME outside `isolateTestHome`, so it is whatever the shared setup file left for this file.
 function testRoot(): string {
   return dirname(homedir());
 }
@@ -27,7 +57,11 @@ describe('test home isolation', () => {
     expect([getConfigPath(), getStatePath(), getLogPath(), getPluginsDir()]).toEqual(
       ['config.json', 'state.json', 'agent-presence.log', 'plugins'].map((name) => join(presenceHome, name))
     );
-    expect(Object.keys(process.env).filter((name) => /^AGENT_(?:PRESENCE|SIGNATURE)_/.test(name))).toEqual([]);
+    expect(resolveDshPluginPaths()).toEqual({
+      pluginPath: join(homedir(), '.dsh/plugins/agent-presence.mjs'),
+      patchPath: join(homedir(), '.dsh/cordis.patch.yml')
+    });
+    expect(Object.keys(process.env).filter((name) => envTreatment(name) === 'cleared')).toEqual([]);
 
     // The kit platform keeps its harness ledger under XDG_STATE_HOME, or under its home when that is unset.
     expect(kitPlatform().home).toBe(homedir());
@@ -39,17 +73,42 @@ describe('test home isolation', () => {
     expect(agentHomes).toEqual([join(root, 'xdg/data')]);
   });
 
-  it('logs a failed usage scan under the temporary presence home', async () => {
-    const boom: BillableSource = {
-      id: 'boom',
-      scanUsage: async () => {
-        throw new Error('unreadable transcript store');
-      }
-    };
+  it('isolates, clears or deliberately keeps every environment variable src reads', () => {
+    const names = envNamesReadBySrc();
+    // Direct reads and helper-listed names are both found, so the scan below is not vacuous.
+    expect(names).toEqual(
+      expect.arrayContaining(['DSH_AGENT_PRESENCE_PLUGIN_FILE', 'MAGIC_BASE_URL', 'CLAUDE_SESSION_ID'])
+    );
+    expect(names.filter((name) => envTreatment(name) === undefined)).toEqual([]);
+  });
+});
 
-    await collectWindowUsage({ days: 1, now: NOW, sources: [boom] });
+describe('isolateTestHome', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
 
-    const log = await readFile(join(testRoot(), 'home/.agent-presence/agent-presence.log'), 'utf8');
-    expect(log).toContain('usage scan failed source=boom');
+  it('clears the caller overrides while active, then restores them, HOME and the environment', () => {
+    const callerPlugin = '/caller/.dsh/plugins/agent-presence.mjs';
+    vi.stubEnv('DSH_AGENT_PRESENCE_PLUGIN_FILE', callerPlugin);
+    vi.stubEnv('MAGIC_BASE_URL', 'http://127.0.0.1:9/caller');
+    vi.stubEnv('PRESENCE_RACE_RUNS', '7');
+    const previousHome = homedir();
+
+    const restore = isolateTestHome();
+    const root = testRoot();
+    expect(process.env.DSH_AGENT_PRESENCE_PLUGIN_FILE).toBeUndefined();
+    expect(resolveDshPluginPaths().pluginPath).toBe(join(root, 'home/.dsh/plugins/agent-presence.mjs'));
+    expect(magicBuilderBaseUrl({})).toBe(DEFAULT_MAGIC_BUILDER_BASE_URL);
+    expect(process.env.PRESENCE_RACE_RUNS).toBe('7');
+    expect(root).not.toBe(dirname(previousHome));
+    process.env.AGENT_PRESENCE_HOME = join(root, 'set-by-a-test');
+    restore();
+
+    expect(process.env.DSH_AGENT_PRESENCE_PLUGIN_FILE).toBe(callerPlugin);
+    expect(process.env.MAGIC_BASE_URL).toBe('http://127.0.0.1:9/caller');
+    expect(process.env.AGENT_PRESENCE_HOME).toBeUndefined();
+    expect(homedir()).toBe(previousHome);
+    expect(existsSync(root)).toBe(false);
   });
 });
