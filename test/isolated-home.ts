@@ -31,7 +31,8 @@ const CLEARED_PREFIXES = [
   'GROK_',
   'OPENCODE_',
   'PI_',
-  // Provider endpoints and credentials, and the agent credentials the kit's agent detection reports.
+  // Provider endpoints and credentials. `ANTHROPIC_*` is cleared defensively: it holds provider credentials the caller
+  // may have set, and clearing it keeps every test from picking them up.
   'ANTHROPIC_',
   'FEISHU_',
   'MAGIC_',
@@ -45,7 +46,7 @@ const CLEARED_NAMES = new Set([
   'PWD',
   // The kit's last-resort terminal pane.
   'TMUX_PANE',
-  // Grok's credential, which the kit's agent detection reports.
+  // A provider credential the caller may have set, cleared defensively so no test can pick it up.
   'XAI_API_KEY'
 ]);
 

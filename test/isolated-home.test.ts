@@ -22,6 +22,9 @@ const repoRoot = fileURLToPath(new URL('..', import.meta.url));
 
 // How src names an environment variable: a property of `process.env` or of an env parameter, or a quoted UPPER_SNAKE
 // name it hands to a helper (hook `envKeys`, `SCAN_ENV`, the setup's list of ignored overrides). This check is lexical.
+// It scans src only: names the kit reads from the environment src hands it (terminal-pane and session variables in the
+// kit's hook dialects) are covered by the cleared prefixes, not by this scan. After a kit upgrade, check the kit's new
+// environment reads against the lists in `isolated-home.ts`.
 const ENV_NAME_PATTERNS = [
   /\benv\.([A-Z][A-Z0-9_]*)/g,
   /\benv\[['"]([A-Z][A-Z0-9_]*)['"]\]/g,
