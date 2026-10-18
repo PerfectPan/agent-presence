@@ -46,3 +46,5 @@ agent-presence config render --many "{total} 个 AI 牛马 | {details} | 今日 
 ```
 
 `{usage_1d}` is today; `{usage_7d}` (or any `{usage_Nd}`) is N calendar days.
+
+A badge whose window has rolled over renders as `—`: `{usage_1d}` after one local midnight, `{usage_Nd}` after N, and the bare `{usage}` when its default window rolls over (one midnight unless configured). The `usage.showInSignature` label is dropped instead. The number returns once session boundaries or `agent-presence update` have given every built-in source a snapshot for the day. A refresh whose scan fails keeps the previous cache, so the badge stays `—` until a later boundary or `update` succeeds. Only this machine renders and writes the signature (after hook events, `update`, deferred flushes and `reset`, including the resets macOS power events trigger), so when nothing writes after midnight — the machine is idle, asleep or off — the published signature keeps the last value, including yesterday's `今日`, until the next write.
