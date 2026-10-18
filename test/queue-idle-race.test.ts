@@ -34,7 +34,7 @@ vi.mock('node:child_process', async (importOriginal) => ({
   spawn: spawnMock
 }));
 
-// A release checks 1,000 runs by setting PRESENCE_RACE_RUNS=1000 before it.
+// PRESENCE_RACE_RUNS sets how many race runs this file does (default 100); CONTRIBUTING.md says when to raise it.
 const RUNS = catchInvalid(z.coerce.number().check(z.int(), z.minimum(1)), 100).parse(process.env.PRESENCE_RACE_RUNS);
 
 let home: QueueHome;
