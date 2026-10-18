@@ -42,7 +42,7 @@ export interface TakeoverOptions {
   readonly effects?: OwedWorkEffects;
   readonly platform?: ProcessLockPlatform;
   readonly waitMs?: number;
-  /** How long a command's dsh append waits for the log lock; the appends' default bound by default (Plan 0002 3.1). */
+  /** How long a command's dsh append waits for the log lock; the appends' default bound by default. */
   readonly logLockWaitMs?: number;
 }
 
@@ -106,7 +106,7 @@ function createTakeover(context: TakeoverContext, disabled: boolean): Takeover {
         return;
       }
       const attempts = createOwedAttempts();
-      // Off the hook path the log lock keeps the appends' bounded wait (Plan 0002 3.1, Plan 0003 6.3): unlike the
+      // Off the hook path the log lock keeps the appends' bounded wait (Plan 0003 6.3): unlike the
       // worker's follow-up lane (3.5), no handover needs to stop a command's dsh append. One deadline from the call's
       // start bounds all of its dsh appends together, so a command with several owed entries waits `logLockWaitMs`
       // once; an append the deadline ends stays owed for the worker this command starts when it leaves (3.6). A

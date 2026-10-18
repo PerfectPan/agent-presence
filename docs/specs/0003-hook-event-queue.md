@@ -19,7 +19,7 @@ In scope: when the hook returns, what happens to an event afterwards, ordering, 
 behavior, the commands that change state, uninstall, upgrade and downgrade.
 
 Out of scope: a resident system service (launchd, systemd); provider, render and usage behavior; how hook payloads are
-interpreted (Spec and Plan 0002).
+interpreted ([Hook Normalization](../architecture.md#hook-normalization)).
 
 ## Behavioral Requirements
 

@@ -142,6 +142,18 @@ The check cannot identify an old absolute-path hook command when its checkout pa
 
 The old uninstall also removes the dsh plugin and macOS watcher; setup offers dsh again and reinstalls the watcher. Moving Codex to the stable shim's `hook --agent` command is expected to require one hook re-trust cycle. Later upgrades that only replace the shim keep its installed hook definition stable.
 
+## Downgrade to 0.9.0 or earlier
+
+Downgrade in this order:
+
+1. `agent-presence uninstall` — removes the artifacts the harness ledger records and reports anything it kept.
+2. Move or remove everything the uninstall report lists as kept.
+3. `agent-presence doctor` — remove by hand any leftover new artifacts or entries overlapping the old locations that it reports.
+4. `agent-presence worker --stop` — applies pending queued events, then stops this version's hooks and worker from recording again.
+5. Install the old release and run its `agent-presence setup`. Each event must fire exactly once.
+
+The harness ledger lives under `$XDG_STATE_HOME/agent-kit/harness` (default `~/.local/state/agent-kit/harness`); deleting it is not a downgrade step. Do not run the old setup first: it adds a second command hook beside the kit registration, overwrites the ledgered opencode bridge without updating the ledger, and the old Pi installer refuses the kit bridge, leaving a partial installation.
+
 ## Installed locations
 
 These are the default user locations for selected agents. The plan shows the resolved paths when an agent home is overridden.
@@ -163,7 +175,7 @@ Setup reuses a runtime whose package version matches and whose CLI exists. After
 
 For command hooks, Claude Code, Codex and Grok receive `timeout: 5` in seconds, while Gemini receives `timeout: 5000` in milliseconds. The opencode/Pi bridges use a 5000 ms child-process timeout only for synchronous finish delivery; other events are sent asynchronously without a child-process timeout. Gemini uses `SessionStart`, `BeforeAgent`, `BeforeTool`, `AfterTool`, `AfterAgent` and `SessionEnd`. Claude's plugin placement avoids adding presence hooks to the settings file Cursor also reads; presence does not install a Cursor source.
 
-Switching existing Codex registrations to the shim's `hook --agent` command is expected to require one hook re-trust cycle. Review the prompts listed in the plan and approve through Codex; setup does not alter trust state. Later updates that only replace the shim keep the installed hook definition stable. Real Claude plugin loading, Cursor behavior, Codex trust prompts and Gemini extension loading still need separate real-agent acceptance; isolated artifact checks do not prove those behaviors. The minimum Gemini version with extension support is not yet confirmed.
+Switching existing Codex registrations to the shim's `hook --agent` command is expected to require one hook re-trust cycle. Review the prompts listed in the plan and approve through Codex; setup does not alter trust state. Later updates that only replace the shim keep the installed hook definition stable. The real-agent checks on the 0.11.0 release ran fresh installs in isolated temporary homes and did not exercise that migration re-trust: Claude Code 2.1.301 loaded the installed plugin and fired its hooks; Codex 0.162.1 asked one launch-time review, ran the hooks after approval, and asked for no new review after a setup rerun with no changes; Gemini CLI 0.64.0 loaded the extension; Cursor CLI 2026.10.16 ran tool calls without running presence's hooks. Older Gemini CLI versions and the Cursor desktop app are untested.
 
 ## Inspect and remove
 
