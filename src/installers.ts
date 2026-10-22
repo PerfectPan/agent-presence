@@ -274,16 +274,21 @@ export function apply(ctx) {
     }
   })
 
-  // agent/status fires on idle to running transitions. When the agent
-  // enters idle, no driver remains scheduled or active — the session has
-  // finished its current work. This is the primary session-finished signal
-  // for both headless and interactive runs.
-  // Sync so a one-shot (headless) dsh run still delivers Stop before exit.
+  // agent/status flips to running when a prompt (or a goal/schedule wake-up)
+  // starts the driver, and back to idle once the inbox drains. Idle therefore
+  // fires after every prompt, not only at session end: map it to Stop, the
+  // same per-turn signal as Claude Code's Stop hook, and map running to
+  // UserPromptSubmit so the next prompt reopens the finished session.
   ctx.on("agent/status", (payload) => {
-    if (payload?.status !== "idle") return
     const session = sessionFromAgent(payload?.agent) ?? lastSession
     if (!session) return
-    emit("Stop", session, true)
+    if (payload?.status === "running") {
+      lastSession = session
+      emit("UserPromptSubmit", session, false)
+    } else if (payload?.status === "idle") {
+      // Sync so a one-shot (headless) dsh run still delivers Stop before exit.
+      emit("Stop", session, true)
+    }
   })
 
   // agent/disposed fires when the agent leaves the registry. As a secondary
