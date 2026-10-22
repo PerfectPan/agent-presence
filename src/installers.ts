@@ -263,11 +263,50 @@ export function apply(ctx) {
     }, false)
   })
 
+  // A turn ending does not mean the session is over (the user may send
+  // another prompt). Treat it as a heartbeat so the session stays warm while
+  // waiting for the next turn.
   ctx.on("agent/turn-stopping", (payload) => {
     const session = sessionFromAgent(payload?.agent) ?? lastSession
+    if (session) {
+      lastSession = session
+      emit("Heartbeat", session, false)
+    }
+  })
+
+  // agent/status flips to running when a prompt (or a goal/schedule wake-up)
+  // starts the driver, and back to idle once the inbox drains. Idle therefore
+  // fires after every prompt, not only at session end: map it to Stop, the
+  // same per-turn signal as Claude Code's Stop hook, and map running to
+  // UserPromptSubmit so the next prompt reopens the finished session.
+  ctx.on("agent/status", (payload) => {
+    const session = sessionFromAgent(payload?.agent) ?? lastSession
     if (!session) return
-    // Sync so a one-shot (headless) dsh run still delivers Stop before exit.
+    if (payload?.status === "running") {
+      lastSession = session
+      emit("UserPromptSubmit", session, false)
+    } else if (payload?.status === "idle") {
+      // Sync so a one-shot (headless) dsh run still delivers Stop before exit.
+      emit("Stop", session, true)
+    }
+  })
+
+  // agent/disposed fires when the agent leaves the registry. As a secondary
+  // finish signal (some profiles may not emit agent/status idle before
+  // disposing), emit Stop here too.
+  ctx.on("agent/disposed", (payload) => {
+    const session = sessionFromAgent(payload?.agent) ?? lastSession
+    if (!session) return
     emit("Stop", session, true)
+  })
+
+  // session/disposed fires when the session leaves the store. The listener
+  // receives the session object directly (not wrapped in a payload).
+  ctx.on("session/disposed", (session) => {
+    const id = firstString(session?.header?.id, session?.id)
+    const resolved = id ? { session_id: id, cwd: firstString(session?.header?.cwd) ?? process.cwd() } : lastSession
+    if (!resolved) return
+    emit("Stop", resolved, true)
   })
 }
 `;
