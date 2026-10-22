@@ -99,7 +99,7 @@ export async function createHarnessFixture(
     }
   }
 
-  const platform = {
+  const platform: ReturnType<typeof createNodePlatform> = {
     ...node,
     os: 'linux' as const,
     clock: { now: () => HARNESS_NOW, monotonic: () => 1_000 },
@@ -115,7 +115,7 @@ export async function createHarnessFixture(
       }
     }
   };
-  const layer = Layer.mergeAll(
+  const layer: Layer.Layer<HarnessServices> = Layer.mergeAll(
     PlatformArtifactFilesLive,
     FileLedgerRepositoryLive,
     SqliteLedgerLockLive,

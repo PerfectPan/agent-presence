@@ -1,7 +1,8 @@
-import { builtinProbeRecipes, detectAgents, type ProbeProblem } from '@rivus/agent-kit/discovery';
+import { detectAgents, type ProbeProblem } from '@rivus/agent-kit/discovery';
 import { inventory } from '@rivus/agent-kit/harness';
 import { PlatformService } from '@rivus/agent-kit/platform/effect';
-import { Effect } from 'effect';
+import { builtinProviders } from '@rivus/agent-kit/providers';
+import { Effect, type Cause } from 'effect';
 import { PRESENCE_AGENTS } from '../harness/bundle.js';
 import { showInfo } from './ui.js';
 
@@ -44,11 +45,18 @@ function describeProblem(problem: ProbeProblem): string {
   }
 }
 
-const recipes = Object.fromEntries(
-  PRESENCE_AGENTS.map((agent) => [agent, { ...builtinProbeRecipes[agent], auth: {} }])
-);
+const providers = PRESENCE_AGENTS.flatMap((id) => {
+  const discovery = builtinProviders.find((provider) => provider.id === id)?.discovery;
+  return discovery ? [{ id, discovery: { ...discovery, auth: {} } }] : [];
+});
 
-export function selectSetupAgents(override?: readonly PresenceAgent[]) {
+export function selectSetupAgents(
+  override?: readonly PresenceAgent[]
+): Effect.Effect<
+  readonly PresenceAgent[],
+  Effect.Error<ReturnType<typeof inventory>> | Cause.UnknownError,
+  Effect.Services<ReturnType<typeof inventory>> | PlatformService
+> {
   return Effect.gen(function* () {
     let selected: readonly PresenceAgent[];
     if (override) {
@@ -56,7 +64,7 @@ export function selectSetupAgents(override?: readonly PresenceAgent[]) {
     } else {
       const platform = yield* PlatformService;
       const installations = yield* Effect.tryPromise(() =>
-        detectAgents(platform, { agents: PRESENCE_AGENTS, versionProbe: false, recipes })
+        detectAgents(platform, { agents: PRESENCE_AGENTS, versionProbe: false, providers })
       );
       for (const installation of installations) {
         if (installation.status === 'missing') {

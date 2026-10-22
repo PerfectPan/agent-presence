@@ -1451,9 +1451,9 @@ describe('setup agent selection', () => {
     expect(detected).toHaveBeenCalledExactlyOnceWith(fixture.platform, {
       agents: PRESENCE_AGENTS,
       versionProbe: false,
-      recipes: expect.any(Object)
+      providers: expect.any(Array)
     });
-    expect(Object.values(detected.mock.calls[0]?.[1]?.recipes ?? {}).map((recipe) => recipe?.auth)).toEqual(
+    expect((detected.mock.calls[0]?.[1]?.providers ?? []).map((provider) => provider.discovery?.auth)).toEqual(
       PRESENCE_AGENTS.map(() => ({}))
     );
     expect(plans).toHaveLength(1);
