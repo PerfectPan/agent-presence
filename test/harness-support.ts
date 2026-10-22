@@ -29,7 +29,7 @@ export const AGENT_HOME_VARIABLES = [
 
 export async function createHarnessFixture(
   options: { managedPaths?: ReadonlyMap<string, string>; homePrefix?: string } = {}
-) {
+): Promise<HarnessFixture> {
   const home = await mkdtemp(join(tmpdir(), options.homePrefix ?? 'presence-harness-'));
   const presenceHome = join(home, '.agent-presence');
   const binPath = join(home, 'bin');
@@ -163,7 +163,20 @@ export async function createHarnessFixture(
   };
 }
 
-export type HarnessFixture = Awaited<ReturnType<typeof createHarnessFixture>>;
+export interface HarnessFixture {
+  home: string;
+  presenceHome: string;
+  binPath: string;
+  platform: ReturnType<typeof createNodePlatform>;
+  layer: Layer.Layer<HarnessServices>;
+  cliCalls: AgentCommand[];
+  availableCalls: string[];
+  processCalls: string[];
+  managedPaths: Map<string, string>;
+  run<A, E>(program: Effect.Effect<A, E, HarnessServices>): Promise<A>;
+  writeShim(): Promise<void>;
+  dispose(): Promise<void>;
+}
 
 const commandSchema = z.object({ command: z.string(), timeout: z.optional(z.number()) });
 const hooksDocumentSchema = z.object({

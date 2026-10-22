@@ -1,7 +1,7 @@
 import { realpathSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { resolve, sep } from 'node:path';
-import { builtinCodingAgents, isBuiltinCodingAgentId } from '@rivus/agent-kit/catalog';
+import { isBuiltinCodingAgentId } from '@rivus/agent-kit/catalog';
 import {
   CONFLICT_CHOICES,
   locatorKey,
@@ -12,7 +12,8 @@ import {
   type PlanConflict,
   type TrustPrompt
 } from '@rivus/agent-kit/harness';
-import { Effect } from 'effect';
+import { builtinProviders } from '@rivus/agent-kit/providers';
+import { Effect, type Cause } from 'effect';
 import type { PRESENCE_AGENTS } from '../harness/bundle.js';
 import { shellQuote } from '../shell-quote.js';
 import { isInteractiveTerminal, promptSelect, showInfo, showNote } from './ui.js';
@@ -70,7 +71,9 @@ function entrySummary(plan: InstallPlan, path: string): string {
 }
 
 function agentName(agent: TrustPrompt['agent']): string {
-  return isBuiltinCodingAgentId(agent) ? builtinCodingAgents[agent].displayName : agent;
+  return isBuiltinCodingAgentId(agent)
+    ? (builtinProviders.find(({ id }) => id === agent)?.identity?.displayName ?? agent)
+    : agent;
 }
 
 function trustLines(prompts: InstallPlan['expectedTrustPrompts'], path: (value: string) => string): string[] {
@@ -148,7 +151,14 @@ function allowedChoices({ step, choices }: PlanConflict['conflicts'][number]): r
   return choices.filter((choice) => CONFLICT_CHOICES[reason].includes(choice));
 }
 
-export function planSetupInstall(bundle: Bundle, agents: readonly (typeof PRESENCE_AGENTS)[number][]) {
+export function planSetupInstall(
+  bundle: Bundle,
+  agents: readonly (typeof PRESENCE_AGENTS)[number][]
+): Effect.Effect<
+  InstallPlan | undefined,
+  Exclude<Effect.Error<ReturnType<typeof planInstall>>, PlanConflict> | Cause.UnknownError,
+  Effect.Services<ReturnType<typeof planInstall>>
+> {
   return Effect.gen(function* () {
     const choices: Record<string, ConflictChoice> = {};
     const selections: ConflictSelection[] = [];

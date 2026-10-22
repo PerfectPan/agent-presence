@@ -1,8 +1,9 @@
 import { existsSync } from 'node:fs';
 import { mkdir, readFile, realpath, rm, stat, symlink, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
-import { builtinProbeRecipes, detectAgents } from '@rivus/agent-kit/discovery';
+import { detectAgents } from '@rivus/agent-kit/discovery';
 import { ExternalOwner, applyInstall, doctor, planInstall, verify, type Bundle } from '@rivus/agent-kit/harness';
+import { builtinProviders } from '@rivus/agent-kit/providers';
 import { Effect, Layer } from 'effect';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 import * as z from 'zod/mini';
@@ -93,7 +94,9 @@ describe('ledger-backed uninstall', () => {
     const detected = await detectAgents(fixture.platform, {
       agents: ['grok'],
       versionProbe: false,
-      recipes: { grok: { ...builtinProbeRecipes.grok, auth: {} } }
+      providers: builtinProviders.flatMap(({ id, discovery }) =>
+        id === 'grok' && discovery ? [{ id, discovery: { ...discovery, auth: {} } }] : []
+      )
     });
     expect(detected.map(({ status }) => status)).toEqual(['missing']);
 

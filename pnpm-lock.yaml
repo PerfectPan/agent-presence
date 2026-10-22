@@ -170,14 +170,14 @@ importers:
         specifier: 1.8.1
         version: 1.8.1
       '@rivus/agent-kit':
-        specifier: 0.19.0
-        version: 0.19.0(effect@4.0.3)
+        specifier: 0.20.0
+        version: 0.20.0(effect@4.0.4)
       '@rivus/agent-kit-collab':
-        specifier: 0.19.0
-        version: 0.19.0(@rivus/agent-kit@0.19.0(effect@4.0.3))(effect@4.0.3)
+        specifier: 0.20.0
+        version: 0.20.0(@rivus/agent-kit@0.20.0(effect@4.0.4))(effect@4.0.4)
       effect:
-        specifier: 4.0.3
-        version: 4.0.3
+        specifier: 4.0.4
+        version: 4.0.4
       zod:
         specifier: ^4.6.5
         version: 4.6.5
@@ -1636,21 +1636,21 @@ packages:
   '@polka/url@1.0.0-next.29':
     resolution: {integrity: sha512-wwQAWhWSuHaag8c4q/KN/vCoeOJYshAIvMQwD4GpSb3OiZklFfvAgmj0VCBBImRpuF/aFgIRzllXlVX93Jevww==}
 
-  '@rivus/agent-kit-collab@0.19.0':
-    resolution: {integrity: sha512-w/2+EKc+tTTbyJ/L0jJEGdsKLkBL8WLrD9+NrhycLxq8lOdVuE/92duObvNZyXw8WMuNNTPiO4y9Lo5t2BgKeA==}
+  '@rivus/agent-kit-collab@0.20.0':
+    resolution: {integrity: sha512-dhQPgtZg1eTsdvXLF7SE9eRsJ5lPsxOrrcJxbFzhFl0ECpHwXiule9GfoQmyd6GfBiffo2JtNqvbuhfynnWe+A==}
     engines: {node: '>=22.13'}
     peerDependencies:
-      '@rivus/agent-kit': ^0.19.0
-      effect: 4.0.3
+      '@rivus/agent-kit': ^0.20.0
+      effect: 4.0.4
     peerDependenciesMeta:
       effect:
         optional: true
 
-  '@rivus/agent-kit@0.19.0':
-    resolution: {integrity: sha512-m0ubT68q9t3pTA4SZYhEi4ikW1qJ+DuKiI9/Kq/LuqbSVnT/p/OKYXcC7epDzfh3qaJ0D47GmcAiXrPBOLG/dw==}
+  '@rivus/agent-kit@0.20.0':
+    resolution: {integrity: sha512-i+Yywj4OuDC0ib1CgrIFmJeQAJdkrZqrKr6Z4m6tAj3FMI9g/mZNsR4uvGqoK6HtKZ6wxN815DWDfkDCeYWd6g==}
     engines: {node: '>=22.13'}
     peerDependencies:
-      effect: 4.0.3
+      effect: 4.0.4
     peerDependenciesMeta:
       effect:
         optional: true
@@ -2503,8 +2503,8 @@ packages:
     resolution: {integrity: sha512-2QF/g9/zTaPDc3BjNcVTGoBbXBgYfMTTceLaYcFJ/W9kggFUkhxD/hMEeuLKbugyef9SqAx8cpgwlIP/jinUTA==}
     engines: {node: '>=4'}
 
-  effect@4.0.3:
-    resolution: {integrity: sha512-LoWn/Uwwx0JjHSDmBAAahx8sB+klzM6vsZovnbYowBNw6B4QScJLRLBByO61plvNiycx7HPN8FnsWUCu0eXW5w==}
+  effect@4.0.4:
+    resolution: {integrity: sha512-Sr50OeVSC3M5UkoUYUhFf3EULryhGaZZUf6OzDHTvaznOw7HRlxOKdF3/4nvQXHL22StOyMG3Cvo8Bt7xUp+Ng==}
 
   entities@4.5.0:
     resolution: {integrity: sha512-V0hjH4dGPh9Ao5p0MoRY6BVqtwCjhz6vI5LT8AJ55H+4g9/4vbHx1I54fS0XuclLhDHArPQCiMjDxjaL8fPxhw==}
@@ -3539,14 +3539,17 @@ packages:
   zod@4.6.5:
     resolution: {integrity: sha512-v5l/aFXZQeai4awLbOpSoHecE9UiMrnfx75tEXLjNonXVARxQ5mOeipTjROUchszUNCqnE+hqAMujRsRHsut2Q==}
 
+  zod@4.6.7:
+    resolution: {integrity: sha512-g8W2D2kU6a8untc053fX1uVBKzM7yqAxW/3zwk83+6RyF2+SKOuV+c0wBDhUwzV1PaGapmZH+rmcUzPf+3CGwg==}
+
   zwitch@2.0.4:
     resolution: {integrity: sha512-bXE4cR/kVZhKZX/RjPEflHaKVhUVl85noU3v6b8apfQEc1x4A+zBxjZ4lN8LqGd6WZ3dl98pY4o717VFmoPp+A==}
 
 snapshots:
 
-  '@agentclientprotocol/sdk@1.8.0(zod@4.6.5)':
+  '@agentclientprotocol/sdk@1.8.0(zod@4.6.7)':
     dependencies:
-      zod: 4.6.5
+      zod: 4.6.7
 
   '@astrojs/compiler-binding-android-arm64@0.5.1':
     optional: true
@@ -4523,23 +4526,23 @@ snapshots:
 
   '@polka/url@1.0.0-next.29': {}
 
-  '@rivus/agent-kit-collab@0.19.0(@rivus/agent-kit@0.19.0(effect@4.0.3))(effect@4.0.3)':
+  '@rivus/agent-kit-collab@0.20.0(@rivus/agent-kit@0.20.0(effect@4.0.4))(effect@4.0.4)':
     dependencies:
-      '@rivus/agent-kit': 0.19.0(effect@4.0.3)
-      zod: 4.6.5
+      '@rivus/agent-kit': 0.20.0(effect@4.0.4)
+      zod: 4.6.7
     optionalDependencies:
-      effect: 4.0.3
+      effect: 4.0.4
 
-  '@rivus/agent-kit@0.19.0(effect@4.0.3)':
+  '@rivus/agent-kit@0.20.0(effect@4.0.4)':
     dependencies:
-      '@agentclientprotocol/sdk': 1.8.0(zod@4.6.5)
+      '@agentclientprotocol/sdk': 1.8.0(zod@4.6.7)
       '@decimalturn/toml-patch': 3.3.0
       es-toolkit: 1.52.0
       jsonc-parser: 3.3.1
       shell-quote: 1.12.0
-      zod: 4.6.5
+      zod: 4.6.7
     optionalDependencies:
-      effect: 4.0.3
+      effect: 4.0.4
 
   '@rolldown/binding-android-arm-eabi@1.2.12':
     optional: true
@@ -5204,7 +5207,7 @@ snapshots:
 
   dset@3.1.4: {}
 
-  effect@4.0.3: {}
+  effect@4.0.4: {}
 
   entities@4.5.0: {}
 
@@ -6477,5 +6480,7 @@ snapshots:
   zod@4.4.3: {}
 
   zod@4.6.5: {}
+
+  zod@4.6.7: {}
 
   zwitch@2.0.4: {}
