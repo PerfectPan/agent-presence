@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.12.1
+
+### Patch Changes
+
+- [#143](https://github.com/PerfectPan/agent-presence/pull/143) [`d765eeb`](https://github.com/PerfectPan/agent-presence/commit/d765eeb77f0b121bbe8dff86d876ffa6d64583fe) Thanks [@PerfectPan](https://github.com/PerfectPan)! - Upgrade `@rivus/agent-kit` and `@rivus/agent-kit-collab` to 0.21.1 with Effect 4.0.5 (the kit's required exact Effect peer). No kit API change. The kit's hook host sniffing fix reaches this app: a Claude Code hook event is no longer misattributed to Cursor when only the environment carries `CURSOR_VERSION`, so such events now drive Claude Code presence instead of being skipped with "no presence source". The kit's 0.21.1 session summary, redaction, Codex event id and ACP fixes touch transcript surfaces this app does not read.
+
+- [#83](https://github.com/PerfectPan/agent-presence/pull/83) [`8a7b279`](https://github.com/PerfectPan/agent-presence/commit/8a7b279e8422037776fa62269a9f6f596265363d) Thanks [@PerfectPan](https://github.com/PerfectPan)! - dsh sessions no longer show as finished after the first turn. The managed dsh plugin reports `Stop` when the agent goes idle and `UserPromptSubmit` when it starts running again, instead of reporting `Stop` on `agent/turn-stopping`, which fires on every turn and can be followed by more steps. Rerun `agent-presence setup` to rewrite an installed plugin.
+
+- [#138](https://github.com/PerfectPan/agent-presence/pull/138) [`970d2da`](https://github.com/PerfectPan/agent-presence/commit/970d2dac64a7aa978316cb7cb2ecb60b321d7e92) Thanks [@PerfectPan](https://github.com/PerfectPan)! - Upgrade `@rivus/agent-kit` and `@rivus/agent-kit-collab` to 0.20.0 with Effect 4.0.4. Migrate setup discovery and agent display names to provider descriptors while preserving agent selection, disabled authentication and version probes, and the isolated hook path. No user-visible behavior changes are intended.
+
 ## 0.12.0
 
 ### Minor Changes
