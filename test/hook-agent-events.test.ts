@@ -1076,9 +1076,9 @@ describe('hook --agent sniffing', () => {
     expect(await readLog()).not.toContain('hook failed:');
   });
 
-  // Kit 0.21.1: Cursor evidence is the payload's cursor_version field, so an
-  // inherited CURSOR_VERSION in the hook's environment no longer turns a Claude
-  // Code event into a Cursor skip ("no presence source").
+  // Cursor evidence is the payload's cursor_version field, so an inherited
+  // CURSOR_VERSION in the hook's environment does not turn a Claude Code event
+  // into a Cursor skip ("no presence source").
   it('attributes a Claude Code payload to claude when only the environment carries CURSOR_VERSION', async () => {
     await runAgent({
       agent: 'claude-code',
