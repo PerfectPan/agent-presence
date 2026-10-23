@@ -1075,6 +1075,20 @@ describe('hook --agent sniffing', () => {
     expect(await readLog()).toContain('hook skipped: no presence source for agent=cursor event=SessionStart');
     expect(await readLog()).not.toContain('hook failed:');
   });
+
+  // Cursor evidence is the payload's cursor_version field, so an inherited
+  // CURSOR_VERSION in the hook's environment does not turn a Claude Code event
+  // into a Cursor skip ("no presence source").
+  it('attributes a Claude Code payload to claude when only the environment carries CURSOR_VERSION', async () => {
+    await runAgent({
+      agent: 'claude-code',
+      env: { CURSOR_VERSION: '3.13.25' },
+      payload: claudePayload('SessionStart', 'claude-env-cursor-1')
+    });
+    const state = await readState();
+    expect(Object.keys(state.sessions)).toEqual(['claude-env-cursor-1']);
+    expect(startedView(state, 'claude-env-cursor-1')).toEqual(startedExpected('claude'));
+  });
 });
 
 describe('registered hook event sets', () => {
