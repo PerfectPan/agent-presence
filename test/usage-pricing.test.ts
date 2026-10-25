@@ -31,33 +31,57 @@ describe('resolvePricing', () => {
     expect(resolvePricing('anthropic/claude-sonnet-5')).toEqual(litellmPrices['claude-sonnet-5']);
   });
 
-  it('prices a suffixed variant the table does not name through the fallback alias for its model', () => {
+  it('prices a suffixed variant the table does not name at its model table price', () => {
     expect(resolvePricing('claude-opus-4-8-thinking')).toEqual(litellmPrices['claude-opus-4-8']);
     expect(resolvePricing('claude-opus-4-8[1m]')).toEqual(litellmPrices['claude-opus-4-8']);
+    expect(resolvePricing('us.anthropic.claude-opus-4-8-v1:0')).toEqual(litellmPrices['claude-opus-4-8']);
+    expect(resolvePricing('us.anthropic.claude-sonnet-4-5-20250929-v1:0')).toEqual(litellmPrices['claude-sonnet-4-5']);
+    expect(resolvePricing('us.anthropic.claude-haiku-4-5-20251001-v1:0')).toEqual(litellmPrices['claude-haiku-4-5']);
     expect(resolvePricing('gpt-5.4-codex')).toEqual(litellmPrices['gpt-5.4']);
     expect(resolvePricing('gpt-5.5-codex')).toEqual(litellmPrices['gpt-5.5']);
     expect(resolvePricing('gpt-5.6-sol-high')).toEqual(litellmPrices['gpt-5.6-sol']);
     expect(resolvePricing('deepseek-v4-pro-thinking')).toEqual(litellmPrices['deepseek-v4-pro']);
   });
 
-  it('charges a Claude family alias the table price of the model it stands for', () => {
-    expect(resolvePricing('claude-opus-4-9')).toEqual(litellmPrices['claude-opus-4-8']);
-    expect(resolvePricing('us.anthropic.claude-opus-4-8-v1:0')).toEqual(litellmPrices['claude-opus-4-8']);
-    expect(resolvePricing('us.anthropic.claude-sonnet-4-5-20250929-v1:0')).toEqual(litellmPrices['claude-sonnet-4-6']);
-    expect(resolvePricing('us.anthropic.claude-haiku-4-5-20251001-v1:0')).toEqual(litellmPrices['claude-haiku-4-5']);
+  it.each(
+    ['claude-sonnet-5', 'claude-fable-5', 'claude-haiku-5-5', 'claude-opus-5-5'].flatMap((model) =>
+      [`${model}-thinking`, `${model}[1m]`, `us.anthropic.${model}-v1:0`].map((variant) => [variant, model])
+    )
+  )('prices the Claude variant %s at the table price of %s', (variant, model) => {
+    expect(resolvePricing(variant)).toEqual(litellmPrices[model]);
   });
 
-  it('prices models LiteLLM no longer lists first-party at their last list prices', () => {
-    const opus41 = { input: 15, output: 75, cacheWrite: 18.75, cacheWrite1h: 30, cacheRead: 1.5 };
-    expect(resolvePricing('claude-opus-4-1')).toEqual(opus41);
-    // the longer `claude-opus-4-1` alias wins over the `opus` family alias
-    expect(resolvePricing('us.anthropic.claude-opus-4-1-20250805-v1:0')).toEqual(opus41);
+  it.each([
+    ['gpt-5.4-mini-high', 'gpt-5.4-mini'],
+    ['gpt-5.5-pro-high', 'gpt-5.5-pro'],
+    ['gpt-5.6-high', 'gpt-5.6'],
+    ['gpt-5.6-terra-high', 'gpt-5.6-terra'],
+    ['gpt-5.6-luna-high', 'gpt-5.6-luna']
+  ])('prices %s at the table price of %s, the longest model its id contains', (variant, model) => {
+    expect(resolvePricing(variant)).toEqual(litellmPrices[model]);
+  });
+
+  it('charges a Claude family alias the table price of the model it stands for', () => {
+    // ids that contain none of the table's models
+    expect(resolvePricing('claude-opus-4-9')).toEqual(litellmPrices['claude-opus-4-8']);
+    expect(resolvePricing('claude-sonnet-4-7')).toEqual(litellmPrices['claude-sonnet-4-6']);
+    expect(resolvePricing('claude-haiku-4-6')).toEqual(litellmPrices['claude-haiku-4-5']);
+  });
+
+  it('prices models the table does not name at their last list prices', () => {
+    const opus4 = { input: 15, output: 75, cacheWrite: 18.75, cacheWrite1h: 30, cacheRead: 1.5 };
+    // each retired key is longer than the `opus` family alias, which charges a third of these prices
+    expect(resolvePricing('claude-opus-4-1')).toEqual(opus4);
+    expect(resolvePricing('us.anthropic.claude-opus-4-1-20250805-v1:0')).toEqual(opus4);
+    expect(resolvePricing('claude-opus-4-20250514')).toEqual(opus4);
+    expect(resolvePricing('us.anthropic.claude-opus-4-20250514-v1:0')).toEqual(opus4);
+    expect(resolvePricing('claude-3-opus-20240229')).toEqual(opus4);
     expect(resolvePricing('gemini-3-pro-preview')).toEqual({ input: 2, output: 12, cacheWrite: 2, cacheRead: 0.2 });
   });
 
   it('returns null for unknown models', () => {
     expect(resolvePricing('some-unknown-model')).toBeNull();
-    // no GPT-5 family alias: an unlisted minor version is not priced as another
+    // neither a GPT-5 family alias nor bare `gpt-5` prices an unlisted version as another
     expect(resolvePricing('gpt-5.7')).toBeNull();
     expect(resolvePricing('gpt-5.7-codex')).toBeNull();
   });
