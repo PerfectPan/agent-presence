@@ -63,7 +63,7 @@ pnpm pack --dry-run
 Shared rules come from [`@perfectpan/lint-config`](https://github.com/PerfectPan/lint-config), installed as a git dependency pinned to a tag. This repository keeps only its own settings:
 
 - The `lint` block in `vite.config.ts` spreads the shared oxlint config (type-aware, warnings fail, `curly: all`, kebab-case file names, at most 1000 lines per non-test file) and ignores build output. It lints the docs site's scripts and `.astro` frontmatter too. `pnpm lint` runs it through Vite+ (`vp lint`).
-- The `fmt` block in `vite.config.ts` spreads the shared oxfmt options and keeps single quotes, the style the existing code used. It skips the files copied verbatim from the project template and the generated `CHANGELOG.md` and `src/usage/litellm-pricing.json`. `pnpm format` runs it through Vite+ (`vp fmt`).
+- The `fmt` block in `vite.config.ts` spreads the shared oxfmt options and keeps single quotes, the style the existing code used. It skips the files copied verbatim from the project template and the generated `CHANGELOG.md`. `pnpm format` runs it through Vite+ (`vp fmt`).
 - `tsconfig.json` extends the shared `node` tsconfig (strict, `noUncheckedIndexedAccess`, `verbatimModuleSyntax`) and adds only `types`, `declaration`, and `include`. `pnpm run typecheck` is `tsc -p tsconfig.json --noEmit`; `declaration` makes it also report the errors that would break the `.d.ts` files the build emits. The output settings live in the `pack` block of `vite.config.ts`. `pnpm run build` is `vp pack`: one output file per source file, so `dist/src/**/*.js` and `dist/scripts/*.js` stay on the paths already-installed hooks call, and the two shipped JSON files are copied next to the modules that read them.
 
 Upgrade the shared rules by bumping the tag in `package.json`, then fix or explicitly override what the new release reports.
@@ -103,9 +103,9 @@ Two settings surfaces must stay in sync:
 
 Trusted Publishing cannot be configured until the package exists on npm. To bootstrap a brand-new package, run one explicit publish with a short-lived granular npm token (outside the normal workflow), confirm the package exists, configure Trusted Publishing as above, then revoke the token and remove any temporary workflow changes.
 
-### Pricing Snapshot
+### Model Prices
 
-`src/usage/litellm-pricing.json` is generated, not hand-edited. `pnpm run update-pricing` regenerates it from LiteLLM for the supported model allowlist in `scripts/update-pricing.mjs`; add a model id to that allowlist when a source starts recording it. `.github/workflows/update-pricing.yml` runs the same script weekly and opens the PR `chore(usage): update LiteLLM pricing snapshot` when prices drift. Like the release PR, it is opened with `GITHUB_TOKEN`, so close and reopen it before merging to get CI. The snapshot is generated output, so `vp fmt` skips it.
+Model prices come from `@rivus/agent-kit/cost/prices`, the kit's snapshot of LiteLLM's price list, and update with the kit version: the kit refreshes the snapshot weekly and ships it in its next release, and upgrading `@rivus/agent-kit` brings those prices here. This repository keeps no price snapshot of its own. `src/usage/pricing.ts` holds only the fallback aliases for ids the kit's table does not name, such as suffixed variants (`gpt-5.5-codex`) and models LiteLLM no longer lists under their own provider; add an alias there when a source records such an id, and keep its price tied to the table model it stands for.
 
 ## SDD Workflow And Document Lifecycle
 
@@ -169,7 +169,7 @@ type(scope): summary
 
 Allowed types: `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `build`, `ci`, `chore`, `revert`.
 
-Titles are English; `gh repo-checks pr-title` rejects CJK characters. Bot-generated PRs follow the same rule: the Changesets release PR uses `chore(release): version packages`, the pricing snapshot PR `chore(usage): update LiteLLM pricing snapshot`, and dependency bots should emit titles such as `chore(deps): bump <package> to <version>`.
+Titles are English; `gh repo-checks pr-title` rejects CJK characters. Bot-generated PRs follow the same rule: the Changesets release PR uses `chore(release): version packages`, and dependency bots should emit titles such as `chore(deps): bump <package> to <version>`.
 
 Summary and Validation from the [PR template](.github/pull_request_template.md) must be present and contain real content, not template placeholders; other sections are optional. Do not include agent attribution lines such as "Generated with <tool>"; the author is accountable for the content. `gh repo-checks pr-body` enforces these rules, and the `PR description` job runs it on every pull request event, including description edits. PRs opened by bot accounts skip the description check, because dependency and release bots write their own bodies; they still must pass the title check. A skipped job still satisfies the required status check.
 
