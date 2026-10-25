@@ -21,8 +21,8 @@ describe('resolvePricing', () => {
   it('applies overrides over defaults', () => {
     const pricing = resolvePricing('claude-opus-4-8', { opus: { input: 99 } });
     expect(pricing?.input).toBe(99);
-    // unspecified fields fall back to the matched fallback alias
-    expect(pricing?.output).toBe(75);
+    // unspecified fields come from the id's own price, not the `opus` alias
+    expect(pricing?.output).toBe(25);
   });
 
   it('prefers the longest matching override key over a shorter one', () => {
