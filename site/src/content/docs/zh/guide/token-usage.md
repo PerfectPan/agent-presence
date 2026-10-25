@@ -33,7 +33,7 @@ Token 统计是驱动 presence 的同一张源表的一种能力：除 `dsh` 外
 
 徽标在这之上还有自己的规则：它在会话边界时刻刷新，且一天内只刷新该边界自己的来源。Claude 在当天最后一次 Claude 边界时仍未上报的请求，要等下一次 Claude 边界（且该会话已静默超过 30 分钟）才计入——如果当天没有下一次，徽标里当天就一直没有它们。`agent-presence usage` 按当前时间扫描，会更早报出这些请求。
 
-无价目表的模型成本显示 `n/a`；token 数始终精确。Pi、opencode 与 Grok 会记录真实成本，直接采用。其余源按 `@rivus/agent-kit` 自带的 LiteLLM 价目表（kit 的 `/cost/prices` 入口）计价，价格随 kit 版本更新。价目表覆盖 Anthropic、OpenAI、Google Gemini、xAI、DeepSeek、Z.ai、Moonshot 和 MiniMax 的聊天模型，按模型 id 精确匹配，或去掉日期后缀后匹配。表里没有的 id 由一份小的兜底价目表计价：`gpt-5.5-codex`、`claude-opus-4-8-thinking` 这类带后缀的变体按对应模型的价格，其他 Claude Opus、Sonnet、Haiku 按当前一代的价格。其余未收录的模型（例如比价目表新的 GPT 版本）显示 `n/a`，等 kit 更新收录后才有价格。若你的部署使用私有或未收录模型，可在 `~/.agent-presence/config.json` 按模型覆盖单价。
+无价目表的模型成本显示 `n/a`；token 数始终精确。Pi、opencode 与 Grok 会记录真实成本，直接采用。其余源按 `@rivus/agent-kit` 自带的 LiteLLM 价目表（kit 的 `/cost/prices` 入口）计价，价格随 kit 版本更新。价目表覆盖 Anthropic、OpenAI、Google Gemini、xAI、DeepSeek、Z.ai、Moonshot 和 MiniMax 的聊天模型，按模型 id 精确匹配，或去掉日期后缀后匹配。表里没有的 id 由一份小的兜底价目表计价：`gpt-5.5-codex`、`claude-opus-4-8-thinking` 这类带后缀的变体按对应模型的价格，其他 Claude Opus、Sonnet、Haiku 分别按 Claude Opus 4.8、Sonnet 4.6、Haiku 4.5 的价格。其余未收录的模型（例如比价目表新的 GPT 版本）显示 `n/a`，等 kit 更新收录后才有价格。若你的部署使用私有或未收录模型，可在 `~/.agent-presence/config.json` 按模型覆盖单价。
 
 dsh 是唯一不扫 transcript 的源：`agent-presence setup` 会提示是否安装一个小型 Cordis 插件到 `~/.dsh/plugins/`（注册在对所有 profile 生效的 home 级 `~/.dsh/cordis.patch.yml`）。插件在每次模型调用后把 token 用量随 presence heartbeat 一起上报，`agent-presence` 追加到本地 usage 日志，`usage` 命令和签名徽标读回这份日志。随时可用 `pnpm run install:dsh-plugin` / `pnpm run uninstall:dsh-plugin`（或 `node dist/scripts/install-dsh-plugin.js`）安装或移除。
 

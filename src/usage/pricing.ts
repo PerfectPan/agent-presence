@@ -16,10 +16,12 @@ interface ModelPricing {
  * An id the table has no key for, such as a suffixed variant
  * (`claude-opus-4-8-thinking`, `gpt-5.5-codex`, `gpt-5.6-sol-high`) or a model
  * newer than the kit's snapshot, takes the longest alias its id contains
- * (case-insensitive). A family alias charges its current generation's price,
- * so `opus` prices `claude-opus-4-9` like `claude-opus-4-8`. GPT-5 has no
- * family alias: its minor versions differ in price up to fourfold, so an
- * unlisted one such as `gpt-5.7` stays unpriced rather than priced as another.
+ * (case-insensitive). A Claude family alias charges one model's price, so
+ * `opus` prices `claude-opus-4-9` like `claude-opus-4-8`; a variant of a model
+ * priced differently from its family's alias, such as a Haiku 5.5 one, needs
+ * an alias of its own. GPT-5 has no family alias: its minor versions differ in
+ * price up to fourfold, so an unlisted one such as `gpt-5.7` stays unpriced
+ * rather than priced as another.
  */
 const ALIAS_MODELS: Record<string, string> = {
   opus: 'claude-opus-4-8',

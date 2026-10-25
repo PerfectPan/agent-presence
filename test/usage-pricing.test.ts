@@ -40,7 +40,7 @@ describe('resolvePricing', () => {
     expect(resolvePricing('deepseek-v4-pro-thinking')).toEqual(litellmPrices['deepseek-v4-pro']);
   });
 
-  it("charges a Claude family alias its current generation's table price", () => {
+  it('charges a Claude family alias the table price of the model it stands for', () => {
     expect(resolvePricing('claude-opus-4-9')).toEqual(litellmPrices['claude-opus-4-8']);
     expect(resolvePricing('us.anthropic.claude-opus-4-8-v1:0')).toEqual(litellmPrices['claude-opus-4-8']);
     expect(resolvePricing('us.anthropic.claude-sonnet-4-5-20250929-v1:0')).toEqual(litellmPrices['claude-sonnet-4-6']);
