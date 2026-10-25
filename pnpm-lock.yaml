@@ -170,11 +170,11 @@ importers:
         specifier: 1.8.1
         version: 1.8.1
       '@rivus/agent-kit':
-        specifier: 0.21.1
-        version: 0.21.1(effect@4.0.5)
+        specifier: 0.22.0
+        version: 0.22.0(effect@4.0.5)
       '@rivus/agent-kit-collab':
-        specifier: 0.21.1
-        version: 0.21.1(@rivus/agent-kit@0.21.1(effect@4.0.5))(effect@4.0.5)
+        specifier: 0.22.0
+        version: 0.22.0(@rivus/agent-kit@0.22.0(effect@4.0.5))(effect@4.0.5)
       effect:
         specifier: 4.0.5
         version: 4.0.5
@@ -1636,18 +1636,18 @@ packages:
   '@polka/url@1.0.0-next.29':
     resolution: {integrity: sha512-wwQAWhWSuHaag8c4q/KN/vCoeOJYshAIvMQwD4GpSb3OiZklFfvAgmj0VCBBImRpuF/aFgIRzllXlVX93Jevww==}
 
-  '@rivus/agent-kit-collab@0.21.1':
-    resolution: {integrity: sha512-BYvWL9EERHJRQxDPV4vHirPHspPW8sD27k2zF8DrcvGXT1AoPFJKknkWQXm9Z5K/jQZNTZETCgeml1XRdByLCw==}
+  '@rivus/agent-kit-collab@0.22.0':
+    resolution: {integrity: sha512-ZBXfxEk8VhwRLZ34pqPBTtYykXd142lO1PKWlVK2XY7HXPjFqMe4LrbiFu1DrYdHpFqNqbvaNMj+uGMJDl5K/g==}
     engines: {node: '>=22.13'}
     peerDependencies:
-      '@rivus/agent-kit': ^0.21.1
+      '@rivus/agent-kit': ^0.22.0
       effect: 4.0.5
     peerDependenciesMeta:
       effect:
         optional: true
 
-  '@rivus/agent-kit@0.21.1':
-    resolution: {integrity: sha512-/kAVVgKjykG8sgk4YqcPWQzT5LVDWDoggarUW+tHd211dthTSbVDIMbny+YrEHht6/WemgpRx1U1VYQ+sNhM7w==}
+  '@rivus/agent-kit@0.22.0':
+    resolution: {integrity: sha512-Tb6Ca7Z/g2JTlI+SQdeVwsvY9NZXVc5+bgmxzEaPlFYNURR/5fgLQM0wviseD6W+Xrnyd/Ui5jpyKaQeobwbYA==}
     engines: {node: '>=22.13'}
     peerDependencies:
       effect: 4.0.5
@@ -4444,14 +4444,14 @@ snapshots:
 
   '@polka/url@1.0.0-next.29': {}
 
-  '@rivus/agent-kit-collab@0.21.1(@rivus/agent-kit@0.21.1(effect@4.0.5))(effect@4.0.5)':
+  '@rivus/agent-kit-collab@0.22.0(@rivus/agent-kit@0.22.0(effect@4.0.5))(effect@4.0.5)':
     dependencies:
-      '@rivus/agent-kit': 0.21.1(effect@4.0.5)
+      '@rivus/agent-kit': 0.22.0(effect@4.0.5)
       zod: 4.6.7
     optionalDependencies:
       effect: 4.0.5
 
-  '@rivus/agent-kit@0.21.1(effect@4.0.5)':
+  '@rivus/agent-kit@0.22.0(effect@4.0.5)':
     dependencies:
       '@agentclientprotocol/sdk': 1.8.0(zod@4.6.7)
       '@decimalturn/toml-patch': 3.3.0

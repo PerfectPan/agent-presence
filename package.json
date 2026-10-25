@@ -31,7 +31,6 @@
     "release": "changeset publish",
     "test": "vp test",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "update-pricing": "node scripts/update-pricing.mjs",
     "version-packages": "changeset version"
   },
   "publishConfig": {
@@ -60,8 +59,8 @@
   },
   "dependencies": {
     "@clack/prompts": "1.8.1",
-    "@rivus/agent-kit": "0.21.1",
-    "@rivus/agent-kit-collab": "0.21.1",
+    "@rivus/agent-kit": "0.22.0",
+    "@rivus/agent-kit-collab": "0.22.0",
     "effect": "4.0.5",
     "zod": "^4.6.5"
   }
