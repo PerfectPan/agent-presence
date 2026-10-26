@@ -10,6 +10,7 @@ This repository is public and publishes `@rivus/agent-presence` to npm. Treat ev
 - Do not add private tokens, internal hostnames, private repository names, or personal filesystem paths.
 - Use `rg` for searches when available.
 - Update tests and documentation when behavior changes.
+- Put unit tests next to the code they test (for TypeScript, `foo.test.ts` beside `foo.ts`; other languages follow their own convention). Integration tests, which cross modules, run a built artifact, or go through an external boundary such as HTTP or a database, live in the package's `test/` directory, with shared fixtures under `test/fixtures/`.
 - Lint, format, and TypeScript rules come from `@perfectpan/lint-config` (a git dependency pinned to a tag). Keep only repository-specific settings in the `lint` and `fmt` blocks of `vite.config.ts`, and in `tsconfig.json`; extend the shared configs instead of copying them.
 - Never run `agent-presence setup`, the `install:*` / `uninstall:*` scripts, or a hook command against your real home directory. Run them with `HOME="$(mktemp -d)"` so the real `~/.agent-presence`, agent configs, Keychain entries, and LaunchAgents stay untouched.
 
