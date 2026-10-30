@@ -187,7 +187,8 @@ describe('power watcher artifacts', () => {
       }
       await expect(stat(missingLogPath)).rejects.toMatchObject({ code: 'ENOENT' });
     },
-    20_000
+    // The test compiles and runs Swift on the runner; 20 s was tight enough to time out once under load.
+    60_000
   );
 
   it.runIf(process.platform === 'darwin')(
