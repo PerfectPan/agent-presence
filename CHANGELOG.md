@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.13.0
+
+### Minor Changes
+
+- [#145](https://github.com/PerfectPan/agent-presence/pull/145) [`a0b5e60`](https://github.com/PerfectPan/agent-presence/commit/a0b5e604c0f4f4c399a4f10aaaccee5977f88a49) Thanks [@PerfectPan](https://github.com/PerfectPan)! - Price token usage from the LiteLLM table that ships with `@rivus/agent-kit` 0.22.0 (`@rivus/agent-kit/cost/prices`) instead of a committed 15-model snapshot, and upgrade `@rivus/agent-kit` and `@rivus/agent-kit-collab` to 0.22.0 (Effect stays 4.0.5). Prices now update with the kit version, and the chat models of Anthropic, OpenAI, Google Gemini, xAI, DeepSeek, Z.ai, Moonshot and MiniMax are priced, so models such as `glm-5.1`, `grok-4.20`, `kimi-k2.6` and `gemini-3.1-pro-preview` no longer show `n/a`. Costs follow current LiteLLM prices, for example `gpt-5.6-sol` at $4/$20 per million input/output tokens (was $5/$30) and `deepseek-v4-pro` at $1.32/$3.96 (was $0.435/$0.87).
+  
+  A table key now prices only its own model and its dated ids. `gpt-5.4-mini` and `gpt-5.5-pro`, which took the price of `gpt-5.4` and `gpt-5.5` because their ids contain them, get their own table prices, as do `claude-opus-4-5` through `claude-opus-4-7`, which took the `opus` alias's $15/$75. A suffixed variant of a model the table names, such as `gpt-5.5-codex`, `gpt-5.6-high`, `claude-sonnet-5[1m]` or a Bedrock `us.anthropic.…-v1:0` id, takes that model's price. The `opus` alias, which prices other Claude Opus ids the table does not name, charges `claude-opus-4-8`'s $5/$25 instead of $15/$75; Claude Opus 4, Opus 4.1 and Claude 3 Opus keep their $15/$75. GPT versions the table does not name, such as `gpt-5.7`, show `n/a` instead of GPT-5's price. A partial `usage.pricing` override now takes its missing rates from the model's own price, so `{ "opus": { "input": 9 } }` keeps `claude-opus-4-8`'s $25 output price instead of $75.
+
+### Patch Changes
+
+- [#143](https://github.com/PerfectPan/agent-presence/pull/143) [`d765eeb`](https://github.com/PerfectPan/agent-presence/commit/d765eeb77f0b121bbe8dff86d876ffa6d64583fe) Thanks [@PerfectPan](https://github.com/PerfectPan)! - Upgrade `@rivus/agent-kit` and `@rivus/agent-kit-collab` to 0.21.1 with Effect 4.0.5 (the kit's required exact Effect peer). No kit API change. The kit's hook host sniffing fix reaches this app: a Claude Code hook event is no longer misattributed to Cursor when only the environment carries `CURSOR_VERSION`, so such events now drive Claude Code presence instead of being skipped with "no presence source". The kit's 0.21.1 session summary, redaction, Codex event id and ACP fixes touch transcript surfaces this app does not read.
+
+- [#83](https://github.com/PerfectPan/agent-presence/pull/83) [`8a7b279`](https://github.com/PerfectPan/agent-presence/commit/8a7b279e8422037776fa62269a9f6f596265363d) Thanks [@PerfectPan](https://github.com/PerfectPan)! - dsh sessions no longer show as finished after the first turn. The managed dsh plugin reports `Stop` when the agent goes idle and `UserPromptSubmit` when it starts running again, instead of reporting `Stop` on `agent/turn-stopping`, which fires on every turn and can be followed by more steps. Rerun `agent-presence setup` to rewrite an installed plugin.
+
+- [#138](https://github.com/PerfectPan/agent-presence/pull/138) [`970d2da`](https://github.com/PerfectPan/agent-presence/commit/970d2dac64a7aa978316cb7cb2ecb60b321d7e92) Thanks [@PerfectPan](https://github.com/PerfectPan)! - Upgrade `@rivus/agent-kit` and `@rivus/agent-kit-collab` to 0.20.0 with Effect 4.0.4. Migrate setup discovery and agent display names to provider descriptors while preserving agent selection, disabled authentication and version probes, and the isolated hook path. No user-visible behavior changes are intended.
+
 ## 0.12.0
 
 ### Minor Changes
