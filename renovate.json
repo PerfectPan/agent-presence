@@ -1,0 +1,72 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended"],
+  "enabledManagers": ["npm"],
+  "ignorePaths": ["**/node_modules/**"],
+  "timezone": "Asia/Shanghai",
+  "schedule": ["* 0-6 * * 1"],
+  "minimumReleaseAge": "7 days",
+  "rangeStrategy": "bump",
+  "prConcurrentLimit": 5,
+  "osvVulnerabilityAlerts": true,
+  "semanticCommits": "enabled",
+  "semanticCommitType": "chore",
+  "semanticCommitScope": "deps",
+  "prBodyNotes": [
+    "Bot PRs carry no changeset. If this PR changes a published package's behavior, add a patch changeset per [Changesets](https://github.com/PerfectPan/agent-presence/blob/main/CONTRIBUTING.md#changesets) before merging."
+  ],
+  "lockFileMaintenance": {
+    "enabled": true,
+    "schedule": ["* 0-6 1 * *"],
+    "prBodyNotes": [
+      "Lock-file-only updates need no changeset. Check whether a bundled dependency changed a published package's behavior and add a patch changeset if so; see [Changesets](https://github.com/PerfectPan/agent-presence/blob/main/CONTRIBUTING.md#changesets)."
+    ]
+  },
+  "packageRules": [
+    {
+      "matchManagers": ["npm"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "npm minor and patch"
+    },
+    {
+      "matchManagers": ["npm"],
+      "matchUpdateTypes": ["major"],
+      "groupName": "npm major"
+    },
+    {
+      "extends": ["packages:vitePlus"],
+      "groupName": "vite-plus toolchain"
+    },
+    {
+      "matchPackageNames": ["@rivus/agent-kit", "@rivus/agent-kit-collab", "effect"],
+      "groupName": "rivus agent-kit and effect",
+      "prBodyNotes": [
+        "agent-kit declares the exact optional peer `effect`, so the kit packages and `effect` must move in one PR: updating either alone fails strict peer resolution."
+      ]
+    },
+    {
+      "matchPackageNames": ["@rivus/*"],
+      "minimumReleaseAge": null
+    },
+    {
+      "matchDepTypes": ["packageManager"],
+      "groupName": "pnpm"
+    },
+    {
+      "matchDepTypes": ["engines", "devEngines.runtime"],
+      "enabled": false
+    },
+    {
+      "matchPackageNames": ["@types/node"],
+      "matchUpdateTypes": ["major"],
+      "enabled": false
+    },
+    {
+      "matchPackageNames": ["@perfectpan/lint-config"],
+      "enabled": false
+    }
+  ],
+  "vulnerabilityAlerts": {
+    "rangeStrategy": "bump"
+  }
+}
