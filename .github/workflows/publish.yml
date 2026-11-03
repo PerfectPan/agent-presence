@@ -35,10 +35,9 @@ jobs:
       - run: pnpm run build
 
       # With pending changesets, opens or updates the release PR. The PR is
-      # opened with GITHUB_TOKEN, and GitHub does not start workflows for events
-      # that token causes, so CI does not run on it by itself: before merging,
-      # close and reopen it as a person (`gh pr close <n> && gh pr reopen <n>`)
-      # or push an empty commit to its branch.
+      # opened with GITHUB_TOKEN, so its PR workflows may await maintainer
+      # approval. See CONTRIBUTING.md#releasing for the Ready/approval handoff,
+      # then verify that CI and Review actually passed for the release PR head.
       #
       # Without pending changesets, `pnpm release` runs `changeset publish`,
       # which runs `pnpm publish` for an unpublished version: pnpm sends it to

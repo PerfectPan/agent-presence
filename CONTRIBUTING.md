@@ -36,7 +36,9 @@ Small fixes, typo corrections, dependency metadata updates, and narrow documenta
 
 ## Required Checks
 
-CI (`.github/workflows/ci.yml` and `.github/workflows/review.yml`) runs these on every pull request; run them locally before opening review:
+Full CI (`.github/workflows/ci.yml`) runs on pushes to `main` and on Ready PRs when they are opened, receive new commits (`synchronize`), are reopened, or move from Draft to Ready. The Ubuntu and macOS test jobs skip Draft PR events, so keep work in Draft until local checks are finished. A skipped job is reported as successful by GitHub but does not prove that tests ran; before merging, verify that both platform jobs actually ran and passed for the current PR head and merge result.
+
+The separate, lightweight Review workflow (`.github/workflows/review.yml`) still checks repository conventions, PR titles, and descriptions while a PR is Draft, including metadata edits. It does not install the project dependencies or run the full test suite. These early checks remain useful while full CI waits for Ready. Run the following checks locally before marking a PR Ready:
 
 ```bash
 # Repository checks:
@@ -88,7 +90,7 @@ Only the published package gets changesets. The private docs site package (`site
 The package is published as `@rivus/agent-presence` through Changesets and npm Trusted Publishing (OIDC); the release workflow carries no long-lived npm write token.
 
 1. When changesets land on `main`, `.github/workflows/publish.yml` opens or updates the release PR `chore(release): version packages` on the branch `changeset-release/main` by running `pnpm version-packages` (`changeset version`). Later changesets fold into the same PR.
-2. The release PR is opened with the workflow's `GITHUB_TOKEN`, and GitHub does not start workflows for events that token causes, so CI does not run on it by itself. Before merging, a person closes and reopens it (`gh pr close <n> && gh pr reopen <n>`) or pushes an empty commit to its branch. `gh workflow run ci.yml` does not count: a dispatched run is not attached to the PR and does not satisfy required checks.
+2. The release PR uses the workflow's `GITHUB_TOKEN`; this workflow does not force it back to Draft. GitHub can create approval-required PR runs when that token opens, updates, or reopens a PR. If the PR shows **Approve workflows to run**, a maintainer with write access approves those runs. If no PR run is available, a maintainer can move the PR to Draft and then Ready to request CI through `ready_for_review`. Before merging, verify that the current release PR head has executed, successful Ubuntu and macOS CI jobs plus Review; a skipped Draft job is not sufficient. This repository's CI has no manual-dispatch trigger. See [GitHub's workflow-trigger behavior](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/trigger-a-workflow#triggering-a-workflow-from-a-workflow).
 3. Merging the release PR runs `publish.yml` again: gates, then `pnpm release` (`changeset publish`) publishes the unpublished version to npm through OIDC trusted publishing with provenance, and `changesets/action` pushes the tag and creates the matching GitHub Release.
 
 Before merging the release PR, run the hook event queue's idle-exit race tests at 1,000 iterations; CI runs them at the default 100:
@@ -276,7 +278,7 @@ If `core.hooksPath` is already set to another path, `scripts/install-git-hooks.s
 
 ## Repository Setup
 
-`main` is covered by the repository ruleset `Default`, which blocks deletion and force pushes. Required review checks are not configured yet. Preview the template's protection payload for this repository with:
+`main` is covered by the repository ruleset `Default`, which blocks deletion and force pushes. Required pull requests and status checks are not configured yet, so maintainers must confirm the actual CI and Review results before merging; a skipped check is not validation evidence. Preview the template's protection payload for this repository with:
 
 ```bash
 gh repo-checks protect --repo PerfectPan/agent-presence --approvals 0 --check "test (ubuntu-latest)" --check "test (macos-latest)"
