@@ -107,8 +107,9 @@ Trusted Publishing cannot be configured until the package exists on npm. To boot
 ### Bot Pull Requests
 
 - **Renovate version PRs**: [`renovate.json`](renovate.json) enables the npm (including pnpm) and GitHub Actions
-  managers. Renovate owns regular version updates for both ecosystems; do not also configure Dependabot version
-  updates for them. Automerge is disabled: require the CI and Review workflows to pass before a maintainer merges.
+  managers. Renovate is the target owner of regular version updates for both ecosystems. During the two-stage
+  Actions handoff below, Dependabot's existing Actions version updates remain active to preserve coverage.
+  Automerge is disabled: require the CI and Review workflows to pass before a maintainer merges.
   Renovate checks on Mondays from 00:00 to 06:59 in Asia/Shanghai, waits seven days after a release, and opens at
   most five concurrent version-update PRs. The waiting period stays above the workspace's one-day install policy in
   [`pnpm-workspace.yaml`](pnpm-workspace.yaml). `@rivus/*` packages are exempt from the Renovate wait except for
@@ -141,13 +142,19 @@ Trusted Publishing cannot be configured until the package exists on npm. To boot
   `vulnerabilityAlerts.rangeStrategy: "bump"` keeps security fixes on the tested `pnpm install` path. Security PRs
   can bypass release-age and schedule limits.
 
-- **Handoff before merging the migration**: confirm that the existing Renovate App installation includes this
-  repository, has permission to update workflow files, and has completed a real hosted run with the npm and
-  GitHub Actions managers. Record the run and dependency PR evidence, including passing CI, before removing the
-  current Dependabot Actions coverage on `main`. A local extraction, lookup or config validation does not prove
-  hosted operation or GitHub permission coverage. Keep the migration PR in draft while that evidence is missing;
-  its deletion of `.github/dependabot.yml` must not land early. If hosted Actions updates fail after the handoff,
-  restore the Dependabot Actions configuration and pause Renovate's Actions updates to keep one active owner.
+- **Two-stage Actions handoff**: the first stage enables Renovate's GitHub Actions manager while keeping the
+  existing [Dependabot Actions configuration](.github/dependabot.yml) unchanged. Both bots may temporarily open
+  PRs for the same Action version; review one and close the redundant PR after confirming equivalent coverage.
+  This initial configuration PR does not require a hosted Actions run before it can land: Dependabot remains
+  active while Renovate's operation is verified.
+
+  A separate follow-up PR may remove the Dependabot Actions version configuration only after confirming that the
+  existing Renovate App installation includes this repository, has permission to update workflow files, and has
+  completed real hosted npm and GitHub Actions runs. Record the hosted run and Actions update PR evidence,
+  including passing CI, in that follow-up PR. A local extraction, lookup or config validation does not prove
+  hosted operation or GitHub permission coverage. If that evidence remains unavailable, keep Dependabot's Actions
+  coverage. After the second stage, Renovate is the sole regular version-update owner. If its hosted Actions
+  updates subsequently fail, restore the Dependabot Actions configuration and pause Renovate's Actions updates.
 
 - **Security is a separate settings decision**: dependency graph and Dependabot alerts remain part of the target
   setup. Removing a Dependabot version-update file does not enable alerts or transfer security coverage. At the
