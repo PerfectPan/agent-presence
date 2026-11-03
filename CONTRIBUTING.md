@@ -106,14 +106,17 @@ Trusted Publishing cannot be configured until the package exists on npm. To boot
 
 ### Bot Pull Requests
 
-- **Renovate npm PRs**: [`renovate.json`](renovate.json) enables only the npm manager; GitHub Actions stay with Dependabot.
+- **Renovate version PRs**: [`renovate.json`](renovate.json) enables the npm (including pnpm) and GitHub Actions
+  managers. Renovate owns regular version updates for both ecosystems; do not also configure Dependabot version
+  updates for them. Automerge is disabled: require the CI and Review workflows to pass before a maintainer merges.
   Renovate checks on Mondays from 00:00 to 06:59 in Asia/Shanghai, waits seven days after a release, and opens at
   most five concurrent version-update PRs. The waiting period stays above the workspace's one-day install policy in
   [`pnpm-workspace.yaml`](pnpm-workspace.yaml). `@rivus/*` packages are exempt from the Renovate wait except for
   the kit/Effect group below; the workspace's install-time exclusions remain unchanged. `rangeStrategy: "bump"`
   updates declared ranges and regenerates the pnpm lockfile through `pnpm install`.
 
-  The catch-all groups separate minor/patch updates from majors. Later rules give the `packages:vitePlus` toolchain
+  GitHub Actions minor/patch updates have their own group; Actions major updates stay separate for individual
+  review. The npm catch-all groups separate minor/patch updates from majors. Later rules give the `packages:vitePlus` toolchain
   its own group, and `@rivus/agent-kit`, `@rivus/agent-kit-collab` and `effect` a shared group. That group overrides
   the `@rivus/*` exemption with a seven-day wait for all three packages and sets `separateMajorMinor: false`.
   This removes policy and update-type splits, but different publication dates can still make versions eligible
@@ -127,17 +130,35 @@ Trusted Publishing cannot be configured until the package exists on npm. To boot
   The Vite+ exceptions name the current Vitest consumers and alias version exactly. Recheck them when upgrading
   the toolchain; do not widen them to suppress unrelated peer errors.
 
-  Node upgrades remain deliberate: `engines`, `devEngines.runtime` and major `@types/node` updates are disabled.
+  Node upgrades remain deliberate: `engines`, `devEngines.runtime`, GitHub Actions Node runtime inputs and major
+  `@types/node` updates are disabled. Enabling Actions updates does not enable Node runtime upgrades.
   `@perfectpan/lint-config` stays disabled because it is a Git dependency whose upgrades need accompanying code fixes.
 
   Lock-file maintenance runs on the first day of each month from 00:00 to 06:59 in Asia/Shanghai.
 
-  Renovate opens a **Dependency Dashboard** issue through `config:recommended`; use its checkboxes to retry or
-  recreate an update. npm security findings come from Renovate's OSV checks (`osvVulnerabilityAlerts`), and
+  `config:recommended` requests a **Dependency Dashboard** issue; after the hosted app creates it, use its
+  checkboxes to retry or recreate an update. npm security findings can come from Renovate's OSV checks (`osvVulnerabilityAlerts`), and
   `vulnerabilityAlerts.rangeStrategy: "bump"` keeps security fixes on the tested `pnpm install` path. Security PRs
   can bypass release-age and schedule limits.
 
-- **Dependabot actions PRs**: `.github/dependabot.yml` updates GitHub Actions weekly with the `chore(deps)` prefix.
+- **Handoff before merging the migration**: confirm that the existing Renovate App installation includes this
+  repository, has permission to update workflow files, and has completed a real hosted run with the npm and
+  GitHub Actions managers. Record the run and dependency PR evidence, including passing CI, before removing the
+  current Dependabot Actions coverage on `main`. A local extraction, lookup or config validation does not prove
+  hosted operation or GitHub permission coverage. Keep the migration PR in draft while that evidence is missing;
+  its deletion of `.github/dependabot.yml` must not land early. If hosted Actions updates fail after the handoff,
+  restore the Dependabot Actions configuration and pause Renovate's Actions updates to keep one active owner.
+
+- **Security is a separate settings decision**: dependency graph and Dependabot alerts remain part of the target
+  setup. Removing a Dependabot version-update file does not enable alerts or transfer security coverage. At the
+  migration audit, the [repository security settings](https://github.com/PerfectPan/agent-presence/settings/security_analysis)
+  showed dependency graph, Dependabot alerts and automatic security PRs disabled; this change does not alter those
+  settings. The owner must separately enable the dependency graph and alerts, then
+  verify that Renovate has permission to read vulnerability alerts and demonstrate a real hosted alert-to-fix PR
+  with passing CI. OSV checks and `vulnerabilityAlerts` configuration alone do not establish that coverage. Agree
+  on one primary security-PR owner only after that verification; do not disable existing security updates during
+  a future handoff until the replacement is proven. If coverage cannot be demonstrated, retain any current
+  coverage and explicitly arrange the interim security-PR owner with the maintainer.
 
 - **Changesets**: bot PRs carry none. Dependency updates that do not change a published package's behavior need no
   changeset. If a bot PR changes published behavior (for example a bundled dependency changed), the reviewer adds a
@@ -231,7 +252,7 @@ The review checks come from [`PerfectPan/gh-repo-checks`](https://github.com/Per
 
 Run `gh repo-checks repository` locally before opening review. It does not replace the pnpm gates, but it catches missing template files, tracked local artifacts, obvious secrets, private paths, and drift between the GitHub PR and GitLab MR templates.
 
-Workflows reference actions by their latest major version tag, such as `actions/checkout@v7`, not by commit SHA. The runtime follows the current Node.js Active LTS major in `.node-version`, and moves to the next LTS line in one change when it starts. Workflow files copied from the project template take action upgrades from the template rather than local edits.
+Workflows reference actions by their latest major version tag, such as `actions/checkout@v7`, not by commit SHA. The runtime follows the current Node.js Active LTS major in `.node-version`, and moves to the next LTS line in one change when it starts. Keep workflow structure copied from the project template in sync with that template. Renovate manages Action version updates in those workflows too; review and merge them through the same CI gates as other dependency PRs.
 
 ## Local Git Hooks
 

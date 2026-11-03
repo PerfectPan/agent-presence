@@ -1,7 +1,8 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": ["config:recommended"],
-  "enabledManagers": ["npm"],
+  "enabledManagers": ["npm", "github-actions"],
+  "automerge": false,
   "ignorePaths": ["**/node_modules/**"],
   "timezone": "Asia/Shanghai",
   "schedule": ["* 0-6 * * 1"],
@@ -23,6 +24,21 @@
     ]
   },
   "packageRules": [
+    {
+      "matchManagers": ["github-actions"],
+      "matchDatasources": ["node-version"],
+      "enabled": false
+    },
+    {
+      "matchManagers": ["github-actions"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "GitHub Actions minor and patch"
+    },
+    {
+      "matchManagers": ["github-actions"],
+      "matchUpdateTypes": ["major"],
+      "groupName": null
+    },
     {
       "matchManagers": ["npm"],
       "matchUpdateTypes": ["minor", "patch"],
