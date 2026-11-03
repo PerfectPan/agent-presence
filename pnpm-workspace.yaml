@@ -20,6 +20,13 @@ blockExoticSubdeps: true
 strictDepBuilds: true
 engineStrict: true
 verifyDepsBeforeRun: error
+# Vite+ supplies Vite under its own version. Limit the exception to the pinned
+# consumers and alias version; other peers, including the kit's Effect peer,
+# are still checked by `pnpm peers check --lockfile-only` in CI.
+peerDependencyRules:
+  allowedVersions:
+    'vitest@5.0.5>vite': '1.3.0'
+    '@vitest/mocker@5.0.5>vite': '1.3.0'
 # pmOnFail stays at pnpm's default, download: a pnpm whose version differs from
 # packageManager, such as a pnpm 12 that a build image ships (Vercel), downloads
 # and runs the pinned version. `error` fails those installs with

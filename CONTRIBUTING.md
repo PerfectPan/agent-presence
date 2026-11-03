@@ -48,6 +48,7 @@ gh repo-checks pr-body pr-body.md
 
 # Install and CI gates:
 pnpm install --frozen-lockfile
+pnpm peers check --lockfile-only
 pnpm format:check
 pnpm test
 pnpm run typecheck
@@ -102,6 +103,45 @@ Two settings surfaces must stay in sync:
 - **npm**: `npmjs.com` → Packages → `@rivus/agent-presence` → Settings → Trusted publishing, using owner `PerfectPan`, repository `agent-presence`, workflow filename `publish.yml`. Renaming the workflow file breaks publishing until this setting changes too.
 
 Trusted Publishing cannot be configured until the package exists on npm. To bootstrap a brand-new package, run one explicit publish with a short-lived granular npm token (outside the normal workflow), confirm the package exists, configure Trusted Publishing as above, then revoke the token and remove any temporary workflow changes.
+
+### Bot Pull Requests
+
+- **Renovate npm PRs**: [`renovate.json`](renovate.json) enables only the npm manager; GitHub Actions stay with Dependabot.
+  Renovate checks on Mondays from 00:00 to 06:59 in Asia/Shanghai, waits seven days after a release, and opens at
+  most five concurrent version-update PRs. The waiting period stays above the workspace's one-day install policy in
+  [`pnpm-workspace.yaml`](pnpm-workspace.yaml). `@rivus/*` packages are exempt from the Renovate wait except for
+  the kit/Effect group below; the workspace's install-time exclusions remain unchanged. `rangeStrategy: "bump"`
+  updates declared ranges and regenerates the pnpm lockfile through `pnpm install`.
+
+  The catch-all groups separate minor/patch updates from majors. Later rules give the `packages:vitePlus` toolchain
+  its own group, and `@rivus/agent-kit`, `@rivus/agent-kit-collab` and `effect` a shared group. That group overrides
+  the `@rivus/*` exemption with a seven-day wait for all three packages and sets `separateMajorMinor: false`.
+  This removes policy and update-type splits, but different publication dates can still make versions eligible
+  separately. Renovate grouping does not solve the kit's exact optional Effect peers or guarantee compatible
+  versions. `pnpm test` first runs `pnpm peers check --lockfile-only` because frozen installs skip peer resolution; the narrow
+  Vite+ alias exceptions in `pnpm-workspace.yaml` do not exempt kit/Effect peers. Review the generated lockfile
+  and require that peer check and the single-Effect alignment test in `pnpm test` to pass before
+  merging; if it fails, select compatible versions or wait for matching releases. A token-free local Renovate
+  lookup does not generate or validate the final lockfile.
+
+  The Vite+ exceptions name the current Vitest consumers and alias version exactly. Recheck them when upgrading
+  the toolchain; do not widen them to suppress unrelated peer errors.
+
+  Node upgrades remain deliberate: `engines`, `devEngines.runtime` and major `@types/node` updates are disabled.
+  `@perfectpan/lint-config` stays disabled because it is a Git dependency whose upgrades need accompanying code fixes.
+
+  Lock-file maintenance runs on the first day of each month from 00:00 to 06:59 in Asia/Shanghai.
+
+  Renovate opens a **Dependency Dashboard** issue through `config:recommended`; use its checkboxes to retry or
+  recreate an update. npm security findings come from Renovate's OSV checks (`osvVulnerabilityAlerts`), and
+  `vulnerabilityAlerts.rangeStrategy: "bump"` keeps security fixes on the tested `pnpm install` path. Security PRs
+  can bypass release-age and schedule limits.
+
+- **Dependabot actions PRs**: `.github/dependabot.yml` updates GitHub Actions weekly with the `chore(deps)` prefix.
+
+- **Changesets**: bot PRs carry none. Dependency updates that do not change a published package's behavior need no
+  changeset. If a bot PR changes published behavior (for example a bundled dependency changed), the reviewer adds a
+  patch changeset before merging, per the section above.
 
 ### Model Prices
 
