@@ -38,15 +38,17 @@
       "groupName": "vite-plus toolchain"
     },
     {
-      "matchPackageNames": ["@rivus/agent-kit", "@rivus/agent-kit-collab", "effect"],
-      "groupName": "rivus agent-kit and effect",
-      "prBodyNotes": [
-        "agent-kit declares the exact optional peer `effect`, so the kit packages and `effect` must move in one PR: updating either alone fails strict peer resolution."
-      ]
-    },
-    {
       "matchPackageNames": ["@rivus/*"],
       "minimumReleaseAge": null
+    },
+    {
+      "matchPackageNames": ["@rivus/agent-kit", "@rivus/agent-kit-collab", "effect"],
+      "groupName": "rivus agent-kit and effect",
+      "minimumReleaseAge": "7 days",
+      "separateMajorMinor": false,
+      "prBodyNotes": [
+        "This group shares a seven-day release-age policy and allows mixed major/minor updates. Different publication dates can still make packages eligible separately; grouping does not solve exact Effect peers. Require `pnpm peers check --lockfile-only` and the single-Effect alignment test in `pnpm test` to pass before merging."
+      ]
     },
     {
       "matchDepTypes": ["packageManager"],
