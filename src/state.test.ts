@@ -4,7 +4,8 @@ import {
   createEmptyState,
   expireStaleSessions,
   finishAllSessions,
-  getActiveSessions
+  getActiveSessions,
+  isSessionBoundaryEvent
 } from './state.js';
 
 describe('agent state lifecycle', () => {
@@ -204,5 +205,29 @@ describe('agent state lifecycle', () => {
       project: '/repo'
     });
     expect(getActiveSessions(state, 5_000, 180_000).map((session) => session.id)).toEqual(['claude-session-1']);
+  });
+});
+
+describe('isSessionBoundaryEvent', () => {
+  it('treats start and finish events as boundaries', () => {
+    expect(isSessionBoundaryEvent('SessionStart')).toBe(true);
+    expect(isSessionBoundaryEvent('Stop')).toBe(true);
+    expect(isSessionBoundaryEvent('SessionEnd')).toBe(true);
+    expect(isSessionBoundaryEvent('StopFailure')).toBe(true);
+    expect(isSessionBoundaryEvent('start')).toBe(true);
+    expect(isSessionBoundaryEvent('finish')).toBe(true);
+  });
+
+  it('excludes subagent boundaries to avoid per-subagent rescans', () => {
+    expect(isSessionBoundaryEvent('SubagentStart')).toBe(false);
+    expect(isSessionBoundaryEvent('SubagentStop')).toBe(false);
+  });
+
+  it('treats tool/heartbeat events as non-boundaries', () => {
+    expect(isSessionBoundaryEvent('PreToolUse')).toBe(false);
+    expect(isSessionBoundaryEvent('PostToolUse')).toBe(false);
+    expect(isSessionBoundaryEvent('Heartbeat')).toBe(false);
+    expect(isSessionBoundaryEvent('UserPromptSubmit')).toBe(false);
+    expect(isSessionBoundaryEvent('heartbeat')).toBe(false);
   });
 });

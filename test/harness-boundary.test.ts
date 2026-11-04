@@ -12,7 +12,10 @@ const forbidden =
 describe('harness runtime boundary', () => {
   it('keeps runner names at the CLI harness root', () => {
     // This check is lexical; comments and strings count, and aliases are out of scope.
-    for (const file of globSync('src/**/*.ts', { cwd: repoRoot }).filter((file) => file !== rootFile)) {
+    // Colocated tests are not part of the production runtime boundary.
+    for (const file of globSync('src/**/*.ts', { cwd: repoRoot }).filter(
+      (file) => file !== rootFile && !file.endsWith('.test.ts')
+    )) {
       const source = readFileSync(join(repoRoot, file), 'utf8');
       expect({ file, match: source.match(forbidden)?.[0] }).toEqual({ file, match: undefined });
     }

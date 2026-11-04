@@ -28,7 +28,7 @@ describe('deferred rendered update', () => {
   });
 
   it('spawns a cached-state flush instead of an explicit usage-refreshing update', async () => {
-    const { scheduleDeferredRenderedUpdate } = await import('./deferred-update.js');
+    const { scheduleDeferredRenderedUpdate } = await import('../src/cli/deferred-update.js');
 
     await scheduleDeferredRenderedUpdate({
       statePath: join(tempDir, 'state.json'),

@@ -5,25 +5,25 @@ import { join } from 'node:path';
 
 const publishValueMock = vi.hoisted(() => vi.fn<(value: string) => Promise<void>>());
 
-vi.mock('../../providers/registry.js', () => ({
+vi.mock('../src/providers/registry.js', () => ({
   createProvider: () => ({
     id: 'feishu-signature',
     publishValue: publishValueMock
   })
 }));
 
-vi.mock('../../secret.js', () => ({
+vi.mock('../src/secret.js', () => ({
   readCredential: vi
-    .fn<typeof import('../../secret.js').readCredential>()
+    .fn<typeof import('../src/secret.js').readCredential>()
     .mockResolvedValue({ token: 'test-token', slotId: 'test-slot' })
 }));
 
-describe('flush command', () => {
+describe('reset command', () => {
   let homeDir: string;
-  const now = new Date(2026, 6, 14, 21, 20).getTime();
+  const now = new Date(2026, 6, 14, 21, 28, 10).getTime();
 
   beforeEach(async () => {
-    homeDir = await mkdtemp(join(tmpdir(), 'agent-presence-flush-command-'));
+    homeDir = await mkdtemp(join(tmpdir(), 'agent-presence-reset-command-'));
     process.env.AGENT_PRESENCE_HOME = homeDir;
     publishValueMock.mockReset().mockResolvedValue(undefined);
     vi.spyOn(Date, 'now').mockReturnValue(now);
@@ -32,7 +32,10 @@ describe('flush command', () => {
       join(homeDir, 'config.json'),
       JSON.stringify({
         provider: 'feishu-signature',
-        debounceMs: 60_000,
+        debounceMs: 0,
+        render: {
+          zero: 'AI 牛马正在摸鱼中 | 今日 {usage_1d}'
+        },
         usage: {
           showInSignature: true,
           signatureWindowDays: 1
@@ -45,27 +48,17 @@ describe('flush command', () => {
         sessions: {
           running: {
             id: 'running',
-            source: 'opencode',
+            source: 'codex',
             kind: 'coding',
             status: 'running',
             startedAt: now - 10_000,
             lastHeartbeatAt: now - 1_000
           }
         },
-        lastSlotUpdateAt: now - 1_000,
-        lastValue: 'AI 牛马暂未开工 | 今日 470M · $128.00',
-        pendingSlotFlushAt: now,
+        lastSlotUpdateAt: 0,
+        lastValue: '',
         usageBadges: { '1': '472M · $129.20' },
-        usageBadgesAt: now - 60_000,
-        usageSnapshots: {
-          '1': {
-            opencode: {
-              totalTokens: 1_647_973,
-              costUsd: 1.24451,
-              scannedAt: now - 60_000
-            }
-          }
-        }
+        usageBadgesAt: now - 60_000
       })
     );
   });
@@ -76,17 +69,14 @@ describe('flush command', () => {
     await rm(homeDir, { recursive: true, force: true });
   });
 
-  it('publishes cached presence without rescanning usage snapshots', async () => {
-    const { flush } = await import('./flush.js');
+  it('keeps cached usage visible while clearing active sessions for a power event', async () => {
+    const { reset } = await import('../src/cli/commands/reset.js');
 
-    await flush(['--force', '--silent']);
+    await reset(['--force', '--silent']);
 
-    expect(publishValueMock).toHaveBeenCalledWith('1 个 AI 牛马正在搬砖 | opencode 1 | 今日 472M · $129.20');
+    expect(publishValueMock).toHaveBeenCalledWith('AI 牛马正在摸鱼中 | 今日 472M · $129.20');
     const state = JSON.parse(await readFile(join(homeDir, 'state.json'), 'utf8'));
-    expect(state.usageSnapshots['1'].opencode).toEqual({
-      totalTokens: 1_647_973,
-      costUsd: 1.24451,
-      scannedAt: now - 60_000
-    });
+    expect(state.sessions.running.status).toBe('finished');
+    expect(state.usageBadges).toEqual({ '1': '472M · $129.20' });
   });
 });

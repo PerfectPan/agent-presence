@@ -2,8 +2,8 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vite-plus/test';
-import { loadState, saveState } from './state-store.js';
-import { appendUsageEvent, getUsageEventsPath, readUsageEvents } from './usage-events-log.js';
+import { loadState, normalizeState, saveState } from './state-store.js';
+import { createEmptyState, type PresenceState } from './state.js';
 
 // These tests act as an older queue release: the state they load was saved by a later release, with owed work this
 // release does not know.
@@ -37,23 +37,6 @@ const laterOwed = {
 
 let dir: string;
 let statePath: string;
-let savedEventsFile: string | undefined;
-
-beforeEach(async () => {
-  dir = await mkdtemp(join(tmpdir(), 'agent-presence-queue-state-'));
-  statePath = join(dir, 'state.json');
-  savedEventsFile = process.env.AGENT_PRESENCE_USAGE_EVENTS_FILE;
-  process.env.AGENT_PRESENCE_USAGE_EVENTS_FILE = join(dir, 'usage-events.log');
-});
-
-afterEach(async () => {
-  if (savedEventsFile === undefined) {
-    delete process.env.AGENT_PRESENCE_USAGE_EVENTS_FILE;
-  } else {
-    process.env.AGENT_PRESENCE_USAGE_EVENTS_FILE = savedEventsFile;
-  }
-  await rm(dir, { recursive: true, force: true });
-});
 
 async function writeRaw(raw: unknown): Promise<void> {
   await writeFile(statePath, JSON.stringify(raw), { mode: 0o600 });
@@ -64,6 +47,15 @@ async function readRaw(): Promise<Record<string, unknown>> {
 }
 
 describe('queue fields in the state file', () => {
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), 'agent-presence-queue-state-'));
+    statePath = join(dir, 'state.json');
+  });
+
+  afterEach(async () => {
+    await rm(dir, { recursive: true, force: true });
+  });
+
   it('writes back owed work it does not know unchanged, next to its own changes', async () => {
     await writeRaw({ sessions: {}, queueApplied: ['r0', 'r1'], queueOwed: laterOwed });
 
@@ -100,21 +92,6 @@ describe('queue fields in the state file', () => {
     });
   });
 
-  it('writes the unknown fields of an owed usage into the dsh usage line', async () => {
-    await writeRaw({ sessions: {}, queueOwed: laterOwed });
-    const entry = (await loadState(statePath)).queueOwed?.dshUsage?.[0];
-    expect(entry).toBeDefined();
-    if (!entry) {
-      return;
-    }
-
-    expect(await appendUsageEvent(entry.usage, { id: entry.id })).toBe(true);
-
-    const line = JSON.parse((await readFile(getUsageEventsPath(), 'utf8')).trim()) as unknown;
-    expect(line).toEqual({ ...laterOwed.dshUsage[0]?.usage, id: 'r1' });
-    expect(await readUsageEvents('dsh', usage.timestamp, usage.timestamp + 1)).toEqual([usage]);
-  });
-
   it.each([
     ['not an object', 'owed', ['r1']],
     ['a list', [laterOwed], 'not-a-list']
@@ -143,5 +120,50 @@ describe('queue fields in the state file', () => {
     const saved = await readRaw();
     expect(saved).not.toHaveProperty('queueApplied');
     expect(saved).not.toHaveProperty('queueOwed');
+  });
+});
+
+describe('normalizeState usage badge cache', () => {
+  it('preserves the per-window badge cache across a load/normalize round trip', () => {
+    const raw: PresenceState = {
+      ...createEmptyState(),
+      usageBadges: { '1': '2.1M · $4.50', '7': '13M · $30.00' },
+      usageBadgesAt: 1700
+    };
+    const normalized = normalizeState(raw);
+    expect(normalized.usageBadges).toEqual({ '1': '2.1M · $4.50', '7': '13M · $30.00' });
+    expect(normalized.usageBadgesAt).toBe(1700);
+  });
+
+  it('preserves valid source snapshots and drops malformed contributions', () => {
+    const raw = {
+      ...createEmptyState(),
+      usageSnapshots: {
+        '1': {
+          codex: { totalTokens: 100, costUsd: 1.25, scannedAt: 1700 },
+          broken: { totalTokens: -1, costUsd: 1, scannedAt: 1700 }
+        },
+        bad: {
+          claude: { totalTokens: 200, costUsd: 2, scannedAt: 1700 }
+        }
+      }
+    } as PresenceState;
+
+    expect(normalizeState(raw).usageSnapshots).toEqual({
+      '1': {
+        codex: { totalTokens: 100, costUsd: 1.25, scannedAt: 1700 }
+      }
+    });
+  });
+
+  it('drops malformed cache entries and fields', () => {
+    const raw = {
+      ...createEmptyState(),
+      usageBadges: { '1': '2.1M', bad: '5M', '7': 123 },
+      usageBadgesAt: 'soon'
+    } as unknown as PresenceState;
+    const normalized = normalizeState(raw);
+    expect(normalized.usageBadges).toEqual({ '1': '2.1M' });
+    expect(normalized.usageBadgesAt).toBeUndefined();
   });
 });

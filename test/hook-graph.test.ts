@@ -25,7 +25,7 @@ const producerEntry = resolve(repoRoot, 'src/queue/produce.ts');
 // whole graph into every hook run just as one in the hook command does.
 const usageDir = resolve(repoRoot, 'src/usage');
 const usageScanners = readdirSync(usageDir)
-  .filter((name) => name.startsWith('scan-') && name.endsWith('.ts'))
+  .filter((name) => name.startsWith('scan-') && name.endsWith('.ts') && !name.endsWith('.test.ts'))
   .map((name) => resolve(usageDir, name));
 const forbiddenHookGraphModules = [
   'src/setup.ts',

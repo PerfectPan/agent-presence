@@ -5,8 +5,8 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vite-plus/test';
 
-import { collectWindowUsage, type BillableSource, type PricingOverrides } from './index.js';
-import type { ScanEnvironment, WindowUsage } from './types.js';
+import { collectWindowUsage, type BillableSource, type PricingOverrides } from '../src/usage/index.js';
+import type { ScanEnvironment, WindowUsage } from '../src/usage/types.js';
 
 // A fixed local calendar date at noon: fixture timestamps and mtimes are built
 // from it, so every scan runs inside one calendar window (days: 1), the quiet
@@ -562,7 +562,7 @@ describe('kit scan: grok', () => {
 
 describe('kit scan source mapping', () => {
   it('maps the built-in table entry to its kit agent id and scans its transcripts', async () => {
-    const { billableSources } = await import('./billable-sources.js');
+    const { billableSources } = await import('../src/usage/billable-sources.js');
     const claude = (await billableSources({})).find((entry) => entry.id === 'claude');
     expect(claude?.kitAgent).toBe('claude-code');
     if (claude?.kitAgent === undefined) {
