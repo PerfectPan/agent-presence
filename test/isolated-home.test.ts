@@ -33,7 +33,8 @@ const ENV_NAME_PATTERNS = [
 
 function envNamesReadBySrc(): string[] {
   const names = new Set<string>();
-  for (const file of globSync('src/**/*.ts', { cwd: repoRoot })) {
+  // Test-only environment probes do not add runtime environment requirements.
+  for (const file of globSync('src/**/*.ts', { cwd: repoRoot }).filter((file) => !file.endsWith('.test.ts'))) {
     const source = readFileSync(join(repoRoot, file), 'utf8');
     for (const pattern of ENV_NAME_PATTERNS) {
       for (const [, name] of source.matchAll(pattern)) {

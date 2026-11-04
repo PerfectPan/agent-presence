@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, readdir, rm, stat, utimes, writeFile } from 'node:fs/pr
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test';
-import { queuePaths, type QueueClock } from '../src/queue/files.js';
+import { queuePaths, type QueueClock } from './files.js';
 
 const failingRecordReads = vi.hoisted(() => ({ enabled: false }));
 
@@ -29,7 +29,7 @@ import {
   removeExpiredFiles,
   TEMPORARY_MAX_AGE_MS,
   type QueueFile
-} from '../src/queue/reader.js';
+} from './reader.js';
 
 const NOW = 1_760_000_000_000;
 

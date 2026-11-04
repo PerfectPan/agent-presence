@@ -2,7 +2,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test';
-import { readMagicToken } from '../src/magic-token.js';
+import { readMagicToken } from './magic-token.js';
 
 // In-memory stand-in for the OS keyring so no test in this file touches the
 // real Keychain or secret-tool. Entries are keyed by "<service>:<account>";
@@ -24,7 +24,7 @@ const keyring = vi.hoisted(() => {
   };
 });
 
-vi.mock('../src/secret.js', () => ({ createGenericSecretStore: keyring.createGenericSecretStore }));
+vi.mock('./secret.js', () => ({ createGenericSecretStore: keyring.createGenericSecretStore }));
 
 describe('readMagicToken', () => {
   let originalEnv: string | undefined;

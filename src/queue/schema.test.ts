@@ -1,11 +1,5 @@
 import { describe, expect, it } from 'vite-plus/test';
-import {
-  parseQueueApplied,
-  parseQueueOwed,
-  parseQueueRecord,
-  readRecordVersion,
-  type QueueOwed
-} from '../src/queue/schema.js';
+import { parseQueueApplied, parseQueueOwed, parseQueueRecord, readRecordVersion, type QueueOwed } from './schema.js';
 
 const header = { v: 1, id: '1760000000000-42-ab12', recordedAt: 1_760_000_000_000, epoch: 0 };
 

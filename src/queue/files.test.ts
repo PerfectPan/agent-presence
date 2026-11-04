@@ -14,7 +14,7 @@ import {
   removeTombstone,
   writeTombstone,
   writeWorkerVersion
-} from '../src/queue/files.js';
+} from './files.js';
 
 let dir: string;
 let statePath: string;

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vite-plus/test';
 
-import { usageEventFromPayload } from '../src/usage-events.js';
+import { usageEventFromPayload } from './usage-events.js';
 
 const NOW = Date.now();
 

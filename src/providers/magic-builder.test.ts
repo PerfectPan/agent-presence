@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vite-plus/test';
-import { MagicBuilderProvider } from '../src/providers/magic-builder.js';
+import { MagicBuilderProvider } from './magic-builder.js';
 
 const originalFetch = globalThis.fetch;
 

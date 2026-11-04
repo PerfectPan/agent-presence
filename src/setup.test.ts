@@ -7,7 +7,7 @@ import {
   platformUninstallScriptNames,
   runSetupScripts,
   runUninstallScripts
-} from '../src/setup.js';
+} from './setup.js';
 
 describe('runSetupScripts', () => {
   it('runs only the local watcher installer', async () => {

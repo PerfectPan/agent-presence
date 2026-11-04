@@ -3,8 +3,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vite-plus/test';
 
-import type { UsageEvent } from '../src/usage-events.js';
-import { appendUsageEvent, getUsageEventsPath, readUsageEvents } from '../src/usage-events-log.js';
+import type { UsageEvent } from './usage-events.js';
+import { appendUsageEvent, getUsageEventsPath, readUsageEvents } from './usage-events-log.js';
 
 const NOW = Date.now();
 const HOUR = 60 * 60 * 1000;

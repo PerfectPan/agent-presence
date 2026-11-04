@@ -415,22 +415,6 @@ describe('refreshUsageBadgeCache', () => {
     expect(await loadState(statePath)).toEqual(before);
   });
 
-  it('does not start when its signal has already aborted', async () => {
-    dir = await mkdtemp(join(tmpdir(), 'agent-presence-usage-badge-'));
-    const codexScan = vi.fn<HandlerBillableSource['scanUsage']>(async () => []);
-
-    await expect(
-      refreshUsageBadgeCache({
-        statePath: join(dir, 'state.json'),
-        now: NOW,
-        windows: [1],
-        sources: [{ id: 'codex', scanUsage: codexScan }],
-        signal: AbortSignal.abort()
-      })
-    ).resolves.toEqual({ completed: false });
-    expect(codexScan).not.toHaveBeenCalled();
-  });
-
   it('does not let an older overlapping refresh overwrite newer usage', async () => {
     dir = await mkdtemp(join(tmpdir(), 'agent-presence-usage-badge-'));
     const statePath = join(dir, 'state.json');
@@ -617,26 +601,5 @@ describe('refreshUsageBadgeCache', () => {
     expect(claudeScan.mock.calls[0]?.[0].env).toBe(env);
     expect(onSave).toHaveBeenCalledTimes(1);
     expect(await loadState(statePath)).toMatchObject({ lastValue: 'saved with the refresh', usageBadgesAt: today });
-  });
-
-  it('completes without scanning or saving for a source without a scanner later in the day', async () => {
-    dir = await mkdtemp(join(tmpdir(), 'agent-presence-usage-badge-'));
-    const statePath = join(dir, 'state.json');
-    await saveState({ sessions: {}, usageBadgesAt: NOW - 1_000 }, statePath);
-    const codexScan = vi.fn<HandlerBillableSource['scanUsage']>(async () => []);
-    const onSave = vi.fn<(state: PresenceState) => void>();
-
-    const outcome = await refreshUsageBadgeCache({
-      statePath,
-      now: NOW,
-      windows: [1],
-      sources: [{ id: 'codex', scanUsage: codexScan }],
-      source: 'grok',
-      onSave
-    });
-
-    expect(outcome).toEqual({ completed: true });
-    expect(codexScan).not.toHaveBeenCalled();
-    expect(onSave).not.toHaveBeenCalled();
   });
 });

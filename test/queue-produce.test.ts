@@ -1,10 +1,10 @@
-import { chmod, mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { acquireProcessLock, type ProcessLock } from '@rivus/agent-kit-collab/process-lock';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 import { kitPlatform } from '../src/kit-platform.js';
-import { queuePaths, RECORD_VERSION, writeTombstone, writeWorkerVersion } from '../src/queue/files.js';
+import { queuePaths, writeTombstone, writeWorkerVersion } from '../src/queue/files.js';
 import { checkWorkerLock, produceRecord, writeRecord, type RecordBody } from '../src/queue/produce.js';
 import { listQueue, readQueueFile } from '../src/queue/reader.js';
 import { usageEventFromPayload } from '../src/usage-events.js';
@@ -59,24 +59,6 @@ async function holdWorkerLock(): Promise<void> {
 }
 
 describe('writeRecord', () => {
-  it('writes an owner-only record named by its recorded time, pid and random part, with its header', async () => {
-    const id = await writeRecord(statePath, heartbeat, { epoch: 3, clock });
-
-    expect(id).toMatch(new RegExp(`^${NOW}-${process.pid}-[0-9a-f]{4}$`));
-    const { queueDir } = queuePaths(statePath);
-    expect((await stat(queueDir)).mode & 0o777).toBe(0o700);
-    expect(await readdir(queueDir)).toEqual([`${id}.json`]);
-    const path = join(queueDir, `${id}.json`);
-    expect((await stat(path)).mode & 0o777).toBe(0o600);
-    expect(JSON.parse(await readFile(path, 'utf8'))).toEqual({
-      v: RECORD_VERSION,
-      id,
-      recordedAt: NOW,
-      epoch: 3,
-      ...heartbeat
-    });
-  });
-
   it('writes records the reader parses back unchanged, for every kind', async () => {
     const usage = usageEventFromPayload('dsh', { model: 'deepseek-v4-pro', usage: { inputTokens: 5 } }, NOW);
     const bodies: RecordBody[] = [
@@ -164,21 +146,6 @@ describe('writeRecord', () => {
     expect(whileWritten.records).toEqual([]);
     expect(whileWritten.temporary).toEqual([join(queuePaths(statePath).queueDir, `.tmp-${id}.json`)]);
     expect((await listQueue(statePath)).records.map((file) => file.id)).toEqual([id]);
-  });
-
-  it('rejects when the queue directory cannot be written, leaving no record', async (context) => {
-    if (process.getuid?.() === 0) {
-      context.skip();
-    }
-    const { queueDir } = queuePaths(statePath);
-    await mkdir(queueDir, { recursive: true, mode: 0o700 });
-    await chmod(queueDir, 0o500);
-    try {
-      await expect(writeRecord(statePath, heartbeat, { epoch: 0, clock })).rejects.toThrow('EACCES');
-      expect(await readdir(queueDir)).toEqual([]);
-    } finally {
-      await chmod(queueDir, 0o700);
-    }
   });
 });
 

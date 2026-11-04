@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vite-plus/test';
 
-import { collectWindowUsage, type BillableSource, type UsageRecord } from '../src/usage/index.js';
+import { collectWindowUsage, type BillableSource, type UsageRecord } from './index.js';
 
 // A fixed point inside a calendar day: the window math below is asserted
 // relative to it, so no assertion depends on the real clock.

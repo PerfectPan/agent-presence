@@ -61,6 +61,22 @@ pnpm pack --dry-run
 
 `pnpm format` applies the formatting. `pnpm lint` is type-aware and also checks the docs site, whose modules import `astro:content`; in a fresh checkout, generate those types first with `pnpm -C site run docs:sync` (a site build also does it).
 
+### Test Placement
+
+Put unit tests beside the module they test (`foo.test.ts` beside `foo.ts`). Keep tests of collaboration between
+modules, built artifacts, real child processes, HTTP, SQLite, Keychain, or LaunchAgents in `test/`, with shared
+fixtures under `test/fixtures/`. Split mixed files by the contract each case verifies; do not replace real
+boundaries with mocks just to move a test beside its source.
+
+Temporary files alone do not make a test an integration test. A reader, writer, or installer can test its own
+file contract in isolation. In-memory aggregation and injected fetch/runner contracts also remain unit tests.
+Command-to-state/provider flows, transcript ingestion through the usage scanner, and assertions about a
+provider's persisted logs exercise collaborating modules and stay in `test/`.
+
+`pnpm test` discovers both `src/**/*.test.ts` and `test/**/*.test.ts`; both use the same per-file HOME isolation.
+The build excludes colocated tests, and source-boundary checks inspect production files only. After changing
+test placement, run the required checks and inspect `pnpm pack --dry-run` to ensure no tests or fixtures ship.
+
 ### Lint, Format, And TypeScript Config
 
 Shared rules come from [`@perfectpan/lint-config`](https://github.com/PerfectPan/lint-config), installed as a git dependency pinned to a tag. This repository keeps only its own settings:

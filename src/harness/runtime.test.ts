@@ -9,10 +9,10 @@ import {
   removePresenceRuntime,
   withPresenceRuntimeLock,
   type RuntimeNpmRunner
-} from '../src/harness/runtime.js';
-import { acquireLock } from '../src/process-lock.js';
+} from './runtime.js';
+import { acquireLock } from '../process-lock.js';
 
-vi.mock('../src/process-lock.js', () => ({ acquireLock: vi.fn<typeof acquireLock>() }));
+vi.mock('../process-lock.js', () => ({ acquireLock: vi.fn<typeof acquireLock>() }));
 
 let home: string;
 let presenceHome: string;

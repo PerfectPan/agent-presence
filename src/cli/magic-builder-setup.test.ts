@@ -1,31 +1,31 @@
 import { beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 
-import type { AppConfig } from '../src/config.js';
-import type { MagicBuilderProvider } from '../src/providers/magic-builder.js';
+import type { AppConfig } from '../config.js';
+import type { MagicBuilderProvider } from '../providers/magic-builder.js';
 
 type AcquireToken = () => Promise<string | undefined>;
 
-const readMagicToken = vi.hoisted(() => vi.fn<typeof import('../src/magic-token.js').readMagicToken>());
-const writeMagicToken = vi.hoisted(() => vi.fn<typeof import('../src/magic-token.js').writeMagicToken>());
-const readCredential = vi.hoisted(() => vi.fn<typeof import('../src/secret.js').readCredential>());
-const loadConfig = vi.hoisted(() => vi.fn<typeof import('../src/config.js').loadConfig>());
-const saveConfig = vi.hoisted(() => vi.fn<typeof import('../src/config.js').saveConfig>());
+const readMagicToken = vi.hoisted(() => vi.fn<typeof import('../magic-token.js').readMagicToken>());
+const writeMagicToken = vi.hoisted(() => vi.fn<typeof import('../magic-token.js').writeMagicToken>());
+const readCredential = vi.hoisted(() => vi.fn<typeof import('../secret.js').readCredential>());
+const loadConfig = vi.hoisted(() => vi.fn<typeof import('../config.js').loadConfig>());
+const saveConfig = vi.hoisted(() => vi.fn<typeof import('../config.js').saveConfig>());
 const publishFaas = vi.hoisted(() => vi.fn<MagicBuilderProvider['publishFaas']>());
 const buildFaasCode = vi.hoisted(() => vi.fn<MagicBuilderProvider['buildFaasCode']>(() => 'module.exports = ...'));
 const buildSignatureUrl = vi.hoisted(() =>
   vi.fn<MagicBuilderProvider['buildSignatureUrl']>((id: string) => `https://magic.solutionsuite.cn/r?fid=${id}`)
 );
 
-vi.mock('../src/magic-token.js', () => ({
+vi.mock('../magic-token.js', () => ({
   readMagicToken,
   writeMagicToken
 }));
 
-vi.mock('../src/secret.js', () => ({
+vi.mock('../secret.js', () => ({
   readCredential
 }));
 
-vi.mock('../src/config.js', () => ({
+vi.mock('../config.js', () => ({
   loadConfig,
   saveConfig,
   getConfigPath: () => '/tmp/config.json',
@@ -49,7 +49,7 @@ vi.mock('../src/config.js', () => ({
   })
 }));
 
-vi.mock('../src/providers/magic-builder.js', () => ({
+vi.mock('../providers/magic-builder.js', () => ({
   DEFAULT_MAGIC_BUILDER_FAAS_NAME: 'agent_presence_preview',
   MagicBuilderProvider: class {
     buildFaasCode = buildFaasCode;
@@ -59,7 +59,7 @@ vi.mock('../src/providers/magic-builder.js', () => ({
 }));
 
 describe('publishMagicBuilderFaas', () => {
-  let publishMagicBuilderFaas: typeof import('../src/cli/magic-builder-setup.js').publishMagicBuilderFaas;
+  let publishMagicBuilderFaas: typeof import('./magic-builder-setup.js').publishMagicBuilderFaas;
 
   beforeEach(async () => {
     vi.clearAllMocks();
@@ -73,7 +73,7 @@ describe('publishMagicBuilderFaas', () => {
       faasPath: '/api/faas/rec_new',
       previewPath: '/r?fid=rec_new'
     });
-    ({ publishMagicBuilderFaas } = await import('../src/cli/magic-builder-setup.js'));
+    ({ publishMagicBuilderFaas } = await import('./magic-builder-setup.js'));
   });
 
   it('publishes with an existing keyring token without prompting', async () => {

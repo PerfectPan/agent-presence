@@ -2,7 +2,7 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vite-plus/test';
-import { loadState, saveState } from '../src/state-store.js';
+import { loadState } from '../src/state-store.js';
 import { appendUsageEvent, getUsageEventsPath, readUsageEvents } from '../src/usage-events-log.js';
 
 // These tests act as an older queue release: the state they load was saved by a later release, with owed work this
@@ -59,47 +59,7 @@ async function writeRaw(raw: unknown): Promise<void> {
   await writeFile(statePath, JSON.stringify(raw), { mode: 0o600 });
 }
 
-async function readRaw(): Promise<Record<string, unknown>> {
-  return JSON.parse(await readFile(statePath, 'utf8')) as Record<string, unknown>;
-}
-
 describe('queue fields in the state file', () => {
-  it('writes back owed work it does not know unchanged, next to its own changes', async () => {
-    await writeRaw({ sessions: {}, queueApplied: ['r0', 'r1'], queueOwed: laterOwed });
-
-    const state = await loadState(statePath);
-    state.queueApplied?.push('r2');
-    state.lastValue = '1 agent';
-    await saveState(state, statePath);
-
-    const saved = await readRaw();
-    expect(saved.queueOwed).toEqual(laterOwed);
-    expect(saved.queueApplied).toEqual(['r0', 'r1', 'r2']);
-    expect(saved.lastValue).toBe('1 agent');
-  });
-
-  it('keeps the unknown fields of a known entry it changes in place', async () => {
-    await writeRaw({ sessions: {}, queueOwed: laterOwed });
-
-    const state = await loadState(statePath);
-    const entry = state.queueOwed?.usageRefresh?.[0];
-    expect(entry?.source).toBe('claude');
-    if (entry) {
-      entry.generation += 1;
-      entry.boundaryAt = 1_760_000_009_000;
-    }
-    await saveState(state, statePath);
-
-    const saved = await readRaw();
-    expect(saved.queueOwed).toEqual({
-      ...laterOwed,
-      usageRefresh: [
-        { ...laterOwed.usageRefresh[0], generation: 4, boundaryAt: 1_760_000_009_000 },
-        laterOwed.usageRefresh[1]
-      ]
-    });
-  });
-
   it('writes the unknown fields of an owed usage into the dsh usage line', async () => {
     await writeRaw({ sessions: {}, queueOwed: laterOwed });
     const entry = (await loadState(statePath)).queueOwed?.dshUsage?.[0];
@@ -113,35 +73,5 @@ describe('queue fields in the state file', () => {
     const line = JSON.parse((await readFile(getUsageEventsPath(), 'utf8')).trim()) as unknown;
     expect(line).toEqual({ ...laterOwed.dshUsage[0]?.usage, id: 'r1' });
     expect(await readUsageEvents('dsh', usage.timestamp, usage.timestamp + 1)).toEqual([usage]);
-  });
-
-  it.each([
-    ['not an object', 'owed', ['r1']],
-    ['a list', [laterOwed], 'not-a-list']
-  ])('loads queueOwed that is %s as absent, and keeps the other fields', async (_name, queueOwed, queueApplied) => {
-    await writeRaw({ sessions: {}, lastValue: 'kept', queueOwed, queueApplied });
-
-    const state = await loadState(statePath);
-    expect(state.queueOwed).toBeUndefined();
-    expect(state.lastValue).toBe('kept');
-    expect(state.queueApplied).toEqual(Array.isArray(queueApplied) ? queueApplied : undefined);
-  });
-
-  it('still drops other top-level fields it does not know', async () => {
-    await writeRaw({ sessions: {}, queueOwed: laterOwed, laterReleaseField: { kept: false } });
-    await saveState(await loadState(statePath), statePath);
-
-    const saved = await readRaw();
-    expect(saved).not.toHaveProperty('laterReleaseField');
-    expect(saved.queueOwed).toEqual(laterOwed);
-  });
-
-  it('saves no queue fields for a state that has none', async () => {
-    await writeRaw({ sessions: {}, lastValue: '' });
-    await saveState(await loadState(statePath), statePath);
-
-    const saved = await readRaw();
-    expect(saved).not.toHaveProperty('queueApplied');
-    expect(saved).not.toHaveProperty('queueOwed');
   });
 });

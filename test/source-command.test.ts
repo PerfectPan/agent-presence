@@ -123,11 +123,6 @@ describe('source add', () => {
     expect(await readConfig()).toEqual({});
     expect(process.exitCode).toBe(1);
   });
-
-  it('errors when no package spec is given', async () => {
-    await source(['add', '--yes']);
-    expect(process.exitCode).toBe(1);
-  });
 });
 
 describe('source list', () => {

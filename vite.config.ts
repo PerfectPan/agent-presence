@@ -25,14 +25,14 @@ export default defineConfig({
   },
   test: {
     environment: 'node',
-    include: ['test/**/*.test.ts'],
+    include: ['src/**/*.test.ts', 'test/**/*.test.ts'],
     setupFiles: ['test/isolated-home-setup.ts']
   },
   pack: {
     // Modules locate shipped files from import.meta.url: sources.default.json, ../scripts/<name>,
     // and cli.js. One output file per source file keeps those URLs on the paths
     // already-installed hooks call (`dist/src/cli.js`).
-    entry: ['src/**/*.ts', 'scripts/**/*.ts'],
+    entry: ['src/**/*.ts', 'scripts/**/*.ts', '!src/**/*.test.ts'],
     unbundle: true,
     root: '.',
     format: 'esm',

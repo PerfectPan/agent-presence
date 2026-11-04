@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vite-plus/test';
-import { formatCost, formatTokens, renderUsageBadge } from '../src/usage/format.js';
+import { formatCost, formatTokens, renderUsageBadge } from './format.js';
 
 describe('formatTokens', () => {
   it('renders compact magnitudes', () => {
