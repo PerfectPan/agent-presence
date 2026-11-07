@@ -50,14 +50,12 @@ function commandIsWaiting(): boolean {
 }
 
 setInterval(() => {
-  if (
-    Atomics.load(control, 0) !== 1n ||
-    process.hrtime.bigint() - Atomics.load(control, 1) < staleNs ||
-    !commandIsWaiting()
-  ) {
+  const observed = Atomics.load(control, 0);
+  if (observed <= 0n || process.hrtime.bigint() - observed < staleNs || !commandIsWaiting()) {
     return;
   }
-  if (Atomics.compareExchange(control, 0, 1n, -1n) === 1n) {
+  // A heartbeat or release during request I/O invalidates the observation before termination can win.
+  if (Atomics.compareExchange(control, 0, observed, -1n) === observed) {
     // All threads have this pid. It cannot be reused while this thread is executing the syscall.
     process.kill(process.pid, 'SIGKILL');
   }

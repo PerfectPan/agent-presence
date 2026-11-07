@@ -1,4 +1,4 @@
-import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
+import { execFileSync, spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { once } from 'node:events';
 import { mkdir, readFile, rm, utimes, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
@@ -130,6 +130,7 @@ describe('heartbeat lifetime', () => {
   });
 });
 
+const watchdogThreadUrl = new URL('../src/queue/worker-watchdog-thread.ts', import.meta.url).href;
 const watchdogUrl = new URL('../src/queue/worker-watchdog.ts', import.meta.url).href;
 const lockUrl = new URL('../src/queue/worker-lock.ts', import.meta.url).href;
 const platformUrl = new URL('../src/kit-platform.ts', import.meta.url).href;
@@ -142,31 +143,60 @@ registerHooks({ resolve(specifier, context, next) {
     throw error;
   }
 }});
-const [statePath, mode] = process.argv.slice(1);
+const [statePath, mode, stopPath] = process.argv.slice(1);
 const { startWorkerWatchdog } = await import(${JSON.stringify(watchdogUrl)});
 const { tryWorkerLock } = await import(${JSON.stringify(lockUrl)});
 const { kitPlatform } = await import(${JSON.stringify(platformUrl)});
 const lock = await tryWorkerLock(statePath, kitPlatform());
 if (!lock) { throw new Error('no lock'); }
-const monitor = await startWorkerWatchdog(statePath, { staleMs: 200, pollMs: 20 });
-process.stdout.write('ready\\n');
-if (mode === 'blocked') {
-  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0);
-} else {
-  const timer = mode === 'healthy' ? setInterval(() => monitor.beat(), 20) : undefined;
-  if (mode === 'released') { await monitor.stop(); await lock.release(); }
+if (mode.startsWith('raced-')) {
+  const { Worker } = await import('node:worker_threads');
+  const { openSync, writeSync, closeSync } = await import('node:fs');
+  const control = new BigInt64Array(new SharedArrayBuffer(8));
+  Atomics.store(control, 0, process.hrtime.bigint() - 1_000_000_000n);
+  const thread = new Worker(new URL(${JSON.stringify(watchdogThreadUrl)}), {
+    workerData: { control: control.buffer, stopRequestPrefix: stopPath.slice(0, -4), staleMs: 200, pollMs: 20, requestFreshMs: 6000 },
+    execArgv: ['--experimental-transform-types']
+  });
+  process.stdout.write('ready\\n');
+  // Opening the FIFO writer waits until the monitor has observed a stale heartbeat and opened its reader.
+  // Keep it blocked in request I/O until progress or release changes the shared state.
+  const fd = openSync(stopPath, 'w');
+  Atomics.store(control, 0, mode === 'raced-release' ? 0n : process.hrtime.bigint() + 1_000_000_000n);
+  writeSync(fd, String(process.ppid));
+  closeSync(fd);
   await sleep(500);
-  clearInterval(timer);
-  await monitor.stop();
+  await thread.terminate();
   await lock.release();
-  process.stdout.write('done\\n');
+} else {
+  const monitor = await startWorkerWatchdog(statePath, { staleMs: 200, pollMs: 20 });
+  process.stdout.write('ready\\n');
+  if (mode === 'blocked') {
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0);
+  } else {
+    const timer = mode === 'healthy' ? setInterval(() => monitor.beat(), 20) : undefined;
+    if (mode === 'released') { await monitor.stop(); await lock.release(); }
+    await sleep(500);
+    clearInterval(timer);
+    await monitor.stop();
+    await lock.release();
+    process.stdout.write('done\\n');
+  }
 }
 `;
 
 async function startChild(mode: string): Promise<ChildProcessWithoutNullStreams> {
   const child = spawn(
     process.execPath,
-    ['--experimental-transform-types', '--input-type=module', '-e', childScript, home.statePath, mode],
+    [
+      '--experimental-transform-types',
+      '--input-type=module',
+      '-e',
+      childScript,
+      home.statePath,
+      mode,
+      `${queuePaths(home.statePath).stopRequestPrefix}test`
+    ],
     {
       cwd: fileURLToPath(new URL('..', import.meta.url)),
       env: process.env,
@@ -211,6 +241,15 @@ describe('self-termination in a real worker process', () => {
       const exit = once(child, 'exit');
       await request();
       expect(await exit).toEqual([0, null]);
+    }
+  );
+
+  it.each(['raced-progress', 'raced-release'])(
+    'invalidates a stale observation on %s during request I/O',
+    async (mode) => {
+      execFileSync('mkfifo', [`${queuePaths(home.statePath).stopRequestPrefix}test`]);
+      const child = await startChild(mode);
+      expect(await once(child, 'exit')).toEqual([0, null]);
     }
   );
 
