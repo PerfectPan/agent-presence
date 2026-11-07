@@ -1,6 +1,6 @@
 import type { AgentSession, PresenceState } from './state.js';
 import { expireStaleSessions, getActiveSessions } from './state.js';
-import { calendarDaysBetween } from './time.js';
+import { badgeExpiryMs, calendarDaysBetween } from './time.js';
 
 export interface RenderTemplates {
   zero?: string;
@@ -71,7 +71,29 @@ export type SlotSyncDecision =
       value: string;
       previousLastSlotUpdateAt: number;
       claimedLastSlotUpdateAt: number;
+      /**
+       * The earliest local midnight at which a usage badge in `value` turns
+       * stale, as absolute epoch ms; `undefined` when the value carries no
+       * badge or its compute time is unknown. The slot sync publishes it with
+       * the value, so a generated preview can fall back once its clock passes
+       * it without waiting for a local write.
+       */
+      usageResetDeadlineMs?: number;
     };
+
+/**
+ * The deadline of a published value's usage badges: the earliest midnight at
+ * which any window the templates reference turns stale, or `undefined` when
+ * nothing is published from a badge (no badge cached, or a legacy cache whose
+ * compute time is unknown — such a badge is treated as fresh, so it has no
+ * deadline either).
+ */
+export function usageResetDeadlineMs(computedAt: number | undefined, windows: readonly number[]): number | undefined {
+  if (computedAt === undefined || windows.length === 0) {
+    return undefined;
+  }
+  return Math.min(...windows.map((days) => badgeExpiryMs(computedAt, days)));
+}
 
 export class SlotRateLimitError extends Error {
   readonly retryAfterMs?: number;
@@ -81,6 +103,21 @@ export class SlotRateLimitError extends Error {
     this.name = 'SlotRateLimitError';
     this.retryAfterMs = retryAfterMs;
   }
+}
+
+/**
+ * The fallback title a generated preview shows when it cannot read the slot:
+ * with the `{usage*}` tokens removed, so a template that owns its usage label
+ * does not fall back to a title that leaks a raw token. Empty segments around
+ * a separator go with it.
+ */
+export function renderFallbackTitleWithoutUsageTokens(template: string): string {
+  const stripped = template.replace(USAGE_TOKEN, '');
+  return stripped
+    .split('|')
+    .map((segment) => segment.trim())
+    .filter((segment) => segment.length > 0)
+    .join(' | ');
 }
 
 /** Human label for a usage window: 1→"今日", 7→"近7天", N→"近N天". */
@@ -204,6 +241,15 @@ export function prepareSlotSync(state: PresenceState, options: SlotSyncDecisionO
     usageVars,
     autoAppend
   );
+  // The windows whose badges the value displays: the tokens the templates
+  // reference, plus the default window when the zero-config auto-append owns
+  // its label — the deadline covers every badge the published value carries.
+  const defaultWindow = options.usage?.defaultWindow ?? 1;
+  const windows = referencedUsageWindows(options.renderTemplates ?? {}, defaultWindow);
+  const deadline = usageResetDeadlineMs(
+    options.usage?.enabled === true ? state.usageBadgesAt : undefined,
+    autoAppend.length > 0 && !windows.includes(defaultWindow) ? [...windows, defaultWindow] : windows
+  );
   const elapsedMs = options.now - (state.lastSlotUpdateAt ?? 0);
 
   if (!options.force && state.lastValue === value) {
@@ -220,7 +266,8 @@ export function prepareSlotSync(state: PresenceState, options: SlotSyncDecisionO
     action: 'update',
     value,
     previousLastSlotUpdateAt,
-    claimedLastSlotUpdateAt: options.now
+    claimedLastSlotUpdateAt: options.now,
+    ...(deadline === undefined ? {} : { usageResetDeadlineMs: deadline })
   };
 }
 
@@ -230,6 +277,7 @@ export function markSlotSyncSuccess(state: PresenceState, decision: SlotSyncDeci
   }
   if ((state.lastSlotUpdateAt ?? 0) === decision.claimedLastSlotUpdateAt) {
     state.lastValue = decision.value;
+    state.usageResetDeadlineMs = decision.usageResetDeadlineMs;
   }
 }
 

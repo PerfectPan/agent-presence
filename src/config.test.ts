@@ -166,6 +166,12 @@ describe('magic-builder config accessors', () => {
     expect(magicBuilderFallbackTitle({ render: { zero: 'AI 牛马下班了' } })).toBe('AI 牛马下班了');
   });
 
+  it('drops the usage tokens from the fallback title, so the idle preview never leaks a raw token', () => {
+    expect(magicBuilderFallbackTitle({ render: { zero: 'AI 牛马下班了 | {usage}' } })).toBe('AI 牛马下班了');
+    expect(magicBuilderFallbackTitle({ render: { zero: '暂未开工 {usage_7d}' } })).toBe('暂未开工');
+    expect(magicBuilderFallbackTitle({ render: { zero: 'plain' } })).toBe('plain');
+  });
+
   it('prefers configured fallback over the render template', () => {
     expect(
       magicBuilderFallbackTitle({

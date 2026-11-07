@@ -1,6 +1,15 @@
 import { describe, expect, it, vi } from 'vite-plus/test';
-import { markSlotSyncSuccess, prepareSlotSync, renderPresence, rollbackSlotSyncClaim, syncSlot } from './render.js';
+import {
+  markSlotSyncSuccess,
+  prepareSlotSync,
+  renderFallbackTitleWithoutUsageTokens,
+  renderPresence,
+  rollbackSlotSyncClaim,
+  syncSlot,
+  usageResetDeadlineMs
+} from './render.js';
 import { applyAgentEvent, createEmptyState, type AgentSession, type PresenceState } from './state.js';
+import { badgeExpiryMs, startOfLocalDayMs } from './time.js';
 
 function session(id: string, source: string): AgentSession {
   return {
@@ -223,6 +232,81 @@ describe('prepareSlotSync usage badges', () => {
         many: '{total} 个 AI 牛马并行搬砖 | {details}'
       })
     ).toBe('AI 牛马下班了');
+  });
+});
+
+describe('the published usage deadline', () => {
+  function stateWith(badges?: Record<string, string>): PresenceState {
+    return {
+      sessions: { s1: session('s1', 'claude') },
+      lastSlotUpdateAt: 0,
+      lastValue: '',
+      usageBadges: badges
+    };
+  }
+
+  // A badge computed at 23:50 local on 2026-11-07 turns stale at the next midnight.
+  const lateEvening = new Date(2026, 10, 7, 23, 50).getTime();
+
+  it('expires a window at the midnight that completes its span', () => {
+    expect(badgeExpiryMs(lateEvening, 1)).toBe(startOfLocalDayMs(lateEvening) + 24 * 60 * 60 * 1000);
+    expect(badgeExpiryMs(lateEvening, 7)).toBe(startOfLocalDayMs(lateEvening) + 7 * 24 * 60 * 60 * 1000);
+    // At the deadline itself the badge reads the wrong day, exactly like the staleness check.
+    expect(usageResetDeadlineMs(lateEvening, [1])).toBe(startOfLocalDayMs(lateEvening) + 24 * 60 * 60 * 1000);
+  });
+
+  it('is the earliest referenced midnight, and none without a badge or a compute time', () => {
+    expect(usageResetDeadlineMs(lateEvening, [1, 7])).toBe(usageResetDeadlineMs(lateEvening, [1]));
+    expect(usageResetDeadlineMs(undefined, [1])).toBeUndefined();
+    expect(usageResetDeadlineMs(lateEvening, [])).toBeUndefined();
+  });
+
+  it('rides on the slot sync decision and is published with the value', () => {
+    const state = { ...stateWith({ '1': '2.1M · $4.50' }), usageBadgesAt: lateEvening };
+    const decision = prepareSlotSync(state, {
+      force: true,
+      now: lateEvening,
+      debounceMs: 0,
+      ttlMs: 60_000,
+      usage: { enabled: true, defaultWindow: 1 }
+    });
+    if (decision.action !== 'update') {
+      throw new Error('no update');
+    }
+    expect(decision.usageResetDeadlineMs).toBe(startOfLocalDayMs(lateEvening) + 24 * 60 * 60 * 1000);
+    markSlotSyncSuccess(state, decision);
+    expect(state.usageResetDeadlineMs).toBe(startOfLocalDayMs(lateEvening) + 24 * 60 * 60 * 1000);
+  });
+
+  it('is absent when usage is off or the cache predates the deadline fields', () => {
+    const decision = prepareSlotSync(stateWith(), {
+      force: true,
+      now: lateEvening,
+      debounceMs: 0,
+      ttlMs: 60_000,
+      usage: { enabled: true, defaultWindow: 1 }
+    });
+    expect(decision.action === 'update' && decision.usageResetDeadlineMs).toBeUndefined();
+    const legacy = prepareSlotSync(
+      { ...stateWith({ '1': '2.1M' }), usageBadgesAt: undefined },
+      {
+        force: true,
+        now: lateEvening,
+        debounceMs: 0,
+        ttlMs: 60_000,
+        usage: { enabled: true, defaultWindow: 1 }
+      }
+    );
+    expect(legacy.action === 'update' && legacy.usageResetDeadlineMs).toBeUndefined();
+  });
+});
+
+describe('the fallback title', () => {
+  it('drops the usage tokens and the segments that held only them', () => {
+    expect(renderFallbackTitleWithoutUsageTokens('AI 牛马暂未开工 | {usage}')).toBe('AI 牛马暂未开工');
+    expect(renderFallbackTitleWithoutUsageTokens('{usage} 个会话')).toBe('个会话');
+    expect(renderFallbackTitleWithoutUsageTokens('a | {usage_7d} | b')).toBe('a | b');
+    expect(renderFallbackTitleWithoutUsageTokens('no tokens here')).toBe('no tokens here');
   });
 });
 

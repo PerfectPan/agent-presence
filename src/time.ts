@@ -18,3 +18,14 @@ export function startOfLocalDayMs(now: number): number {
 export function calendarDaysBetween(from: number, to: number): number {
   return Math.round((startOfLocalDayMs(to) - startOfLocalDayMs(from)) / DAY_MS);
 }
+
+/**
+ * Epoch ms of the midnight at which a badge for a window of `days` days,
+ * computed at `computedAt`, has fully rolled over: the first moment
+ * `calendarDaysBetween(computedAt, then)` reaches `days`. This is the
+ * deadline a published usage figure turns stale at, even when nothing
+ * writes again to re-render it.
+ */
+export function badgeExpiryMs(computedAt: number, days: number): number {
+  return startOfLocalDayMs(computedAt) + days * DAY_MS;
+}
