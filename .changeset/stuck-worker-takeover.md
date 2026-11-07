@@ -2,4 +2,4 @@
 '@rivus/agent-presence': minor
 ---
 
-A command whose 10-second wait for the worker lock runs out now recovers a stuck holder without a manual kill: the holder beats (`<state>.worker.v.beat`, written when it takes the lock and after every finished iteration), and a holder whose beat is at least 90 seconds stale is signaled to leave (SIGTERM, SIGKILL after 2 seconds) so the command can take the lock the kernel frees. A holder that beats, or one without a readable beat, is left alone and the command fails as before.
+Dedicated workers now run a watchdog that terminates only its own process when the main thread has been unresponsive for 90 seconds and a command is waiting. Commands never send signals to pids from heartbeat files and never terminate other commands. Heartbeats run independently of long asynchronous work; release stops the monitor and removes metadata before unlocking. A command allows one bounded recovery interval after its normal lock wait. Older workers, suspended processes and hung asynchronous operations with responsive event loops still require manual recovery.

@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, readdirSync, renameSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, readdirSync, renameSync, utimesSync, writeFileSync } from 'node:fs';
 import { readdir } from 'node:fs/promises';
 import { basename, dirname, join } from 'node:path';
 import type { ProcessLock, ProcessLockPlatform } from '@rivus/agent-kit-collab/process-lock';
@@ -23,8 +23,7 @@ import {
   type WorkerExitReason,
   type WorkerOptions
 } from '../src/queue/worker.js';
-import { tryWorkerLock, waitForWorkerLock, WORKER_STUCK_MS } from '../src/queue/worker-lock.js';
-import { readWorkerBeat, workerBeatPath, writeWorkerBeat } from '../src/queue/worker-beat.js';
+import { tryWorkerLock } from '../src/queue/worker-lock.js';
 import {
   createQueueHome,
   createWorkerPool,
@@ -113,10 +112,6 @@ async function holdLockAs(version: number): Promise<ProcessLock> {
     await writeWorkerVersion(home.statePath, version);
   }
   return lock;
-}
-
-function workerBeatPathOf(): string {
-  return workerBeatPath(home.statePath);
 }
 
 async function releaseLock(lock: ProcessLock): Promise<void> {
@@ -879,108 +874,5 @@ describe('the leaving order', () => {
     await takeOver(home.statePath, (takeover) => takeover.workOffOwed(), options);
     expect(starts).toBe(2);
     expect(readdirSync(queuePaths(home.statePath).queueDir).filter((name) => name.endsWith('.json'))).toEqual([]);
-  });
-});
-
-describe('the worker beat', () => {
-  it('is written when a holder takes the lock and refreshed after every iteration', async () => {
-    await recordAt(home.statePath, T0, eventBody('SessionStart', 's1'));
-    const pool = workers({ idleMs: 0 });
-    expect(await pool.start()).toBe('idle');
-
-    const beat = await readWorkerBeat(home.statePath);
-    expect(beat).toMatchObject({ v: 1, pid: process.pid });
-    // The wall clock the tests run is the virtual one: the beat is dated in it.
-    expect(beat?.at).toBeGreaterThanOrEqual(T0);
-    // The holder left; its version went with the release, and its last beat stays for a takeover to read.
-    expect(await readWorkerVersion(home.statePath)).toBe(0);
-  });
-
-  it('a command whose wait ran out signals a stuck holder and then takes the lock', async () => {
-    const holder = await holdLockAs(0);
-    const holderPid = 424_242;
-    await writeWorkerBeat(home.statePath, holderPid, 0);
-    const signals: Array<[number, string]> = [];
-    const wall = { now: () => WORKER_STUCK_MS * 2 };
-
-    const lock = await waitForWorkerLock(home.statePath, {
-      platform: kitPlatform(),
-      monotonic: vt.monotonic,
-      delay: vt.delay,
-      waitMs: 20,
-      retryMs: 5,
-      wall,
-      signal: (pid, name) => {
-        signals.push([pid, name]);
-        // The holder dies of the signal: the kernel frees the lock, as a real kill would.
-        void holder.release();
-      },
-      isPidAlive: () => true
-    });
-    expect(signals).toEqual([[holderPid, 'SIGTERM']]);
-    expect(lock).toBeDefined();
-    await releaseLock(lock);
-  });
-
-  it('leaves a holder that beats, or one without a readable beat, alone and runs out', async () => {
-    const holder = await holdLockAs(0);
-    await writeWorkerBeat(home.statePath, 424_242, WORKER_STUCK_MS * 2);
-    const signals: Array<[number, string]> = [];
-    const wall = { now: () => WORKER_STUCK_MS * 2 };
-
-    await expect(
-      waitForWorkerLock(home.statePath, {
-        platform: kitPlatform(),
-        monotonic: vt.monotonic,
-        delay: vt.delay,
-        waitMs: 20,
-        retryMs: 5,
-        wall,
-        signal: (pid, name) => {
-          signals.push([pid, name]);
-        }
-      })
-    ).rejects.toThrow(/timed out waiting for the worker lock/);
-    expect(signals).toEqual([]);
-
-    // No beat at all: the wait runs out without signaling, too.
-    rmSync(workerBeatPathOf());
-    await expect(
-      waitForWorkerLock(home.statePath, {
-        platform: kitPlatform(),
-        monotonic: vt.monotonic,
-        delay: vt.delay,
-        waitMs: 20,
-        retryMs: 5,
-        wall,
-        signal: (pid, name) => {
-          signals.push([pid, name]);
-        }
-      })
-    ).rejects.toThrow(/timed out waiting for the worker lock/);
-    expect(signals).toEqual([]);
-    await releaseLock(holder);
-  });
-
-  it('never signals this process, which the in-memory turns already keep out of the lock', async () => {
-    const holder = await holdLockAs(0);
-    await writeWorkerBeat(home.statePath, process.pid, 0);
-    const signals: Array<[number, string]> = [];
-
-    await expect(
-      waitForWorkerLock(home.statePath, {
-        platform: kitPlatform(),
-        monotonic: vt.monotonic,
-        delay: vt.delay,
-        waitMs: 20,
-        retryMs: 5,
-        wall: { now: () => WORKER_STUCK_MS * 2 },
-        signal: (pid, name) => {
-          signals.push([pid, name]);
-        }
-      })
-    ).rejects.toThrow(/timed out waiting for the worker lock/);
-    expect(signals).toEqual([]);
-    await releaseLock(holder);
   });
 });
