@@ -1,6 +1,6 @@
-import { renderFallbackTitleWithoutUsageTokens } from './render.js';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
+import { renderFallbackTitleWithoutUsageTokens } from './render.js';
 import { readJsonFile, writeJsonAtomic } from './json-file.js';
 import type { RenderTemplates } from './render.js';
 import type { PricingOverrides } from './usage/index.js';
@@ -207,10 +207,7 @@ export function magicBuilderFallbackTitle(config: AppConfig): string {
     magicBuilderConfig(config).fallbackTitle ??
     config.render?.zero ??
     'AI 牛马暂未开工';
-  // The preview shows this title when it cannot read the slot, and a read
-  // that succeeded after midnight shows the rolled-over badge as `—`; a
-  // template that owns its usage label must not fall back to a raw token.
-  return renderFallbackTitleWithoutUsageTokens(title);
+  return renderFallbackTitleWithoutUsageTokens(title) || 'AI 牛马暂未开工';
 }
 
 export function setMagicBuilderConfig(config: AppConfig, patch: Partial<MagicBuilderProviderConfig>): AppConfig {

@@ -27,5 +27,7 @@ export function calendarDaysBetween(from: number, to: number): number {
  * writes again to re-render it.
  */
 export function badgeExpiryMs(computedAt: number, days: number): number {
-  return startOfLocalDayMs(computedAt) + days * DAY_MS;
+  const expiry = new Date(startOfLocalDayMs(computedAt));
+  expiry.setDate(expiry.getDate() + days);
+  return expiry.getTime();
 }

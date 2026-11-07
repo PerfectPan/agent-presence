@@ -70,10 +70,19 @@ async function writeSlotUpdateLog(
   }
 }
 
-/** The value `state` renders with `options`, worked out on a copy so `state` stays as it is. */
-function renderedValue(state: PresenceState, options: RenderedSlotOptions): string {
-  const decision = prepareSlotSync(structuredClone(state), { ...options, force: true });
-  return decision.action === 'update' ? decision.value : decision.result.value;
+/** Check both published value and deadline without claiming another interval in state. */
+function renderedValueMatches(
+  state: PresenceState,
+  options: RenderedSlotOptions,
+  published: SlotSyncDecision
+): boolean {
+  const current = prepareSlotSync(structuredClone(state), { ...options, force: true });
+  return (
+    current.action === 'update' &&
+    published.action === 'update' &&
+    current.value === published.value &&
+    current.usageResetDeadlineMs === published.usageResetDeadlineMs
+  );
 }
 
 async function applySlotSyncDecision(
@@ -145,9 +154,9 @@ export async function syncRenderedSlotWithStateLock(
 
   const claimed = requireDecision(decision);
   // The owed rendered sync stays owed while the publish runs, so a holder that dies during it leaves it
-  // for the next one. Records applied during the publish leave it owed too, unless they render the same value.
+  // for the next one. Records applied during the publish leave it owed too, unless they render the same value and deadline.
   return applySlotSyncDecision(statePath, claimed, updateSlot, (state) => {
-    if (claimed.action === 'update' && renderedValue(state, options) === claimed.value) {
+    if (renderedValueMatches(state, options, claimed)) {
       settleRenderedSync(state);
     }
   });

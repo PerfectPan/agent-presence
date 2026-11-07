@@ -26,11 +26,10 @@ export interface PresenceState {
   usageBadges?: Record<string, string>;
   usageBadgesAt?: number;
   /**
-   * The deadline the slot sync last published with the value: the earliest
+   * The locally saved deadline of the last successfully published value: the earliest
    * local midnight at which a usage badge in `lastValue` turns stale, as
    * absolute epoch ms; `undefined` when the value carries no badge. The
-   * generated preview reads it with its transport to fall back once its clock
-   * passes it.
+   * transport to a generated preview is not implemented yet.
    */
   usageResetDeadlineMs?: number;
   /** Per-window source contributions used to rebuild aggregate usage badges. */

@@ -195,12 +195,17 @@ describe('loadState', () => {
       pendingSlotFlushAt: 100,
       usageBadges: { '1': '2.1M · $4.50' },
       usageBadgesAt: 50,
+      usageResetDeadlineMs: 100,
       usageSnapshots: { '1': { codex: { totalTokens: 100, costUsd: null, scannedAt: 50 } } }
     };
 
     await saveState(state, statePath);
 
     expect(await loadState(statePath)).toEqual(state);
+  });
+
+  it.each([undefined, null, 'tomorrow', -1, 0, {}, []])('ignores invalid usage deadlines %s', async (deadline) => {
+    expect((await loadRaw({ usageResetDeadlineMs: deadline })).usageResetDeadlineMs).toBeUndefined();
   });
 
   it('reads the agent of a session written before sources existed from its kind', async () => {

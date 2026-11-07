@@ -170,6 +170,8 @@ describe('magic-builder config accessors', () => {
     expect(magicBuilderFallbackTitle({ render: { zero: 'AI 牛马下班了 | {usage}' } })).toBe('AI 牛马下班了');
     expect(magicBuilderFallbackTitle({ render: { zero: '暂未开工 {usage_7d}' } })).toBe('暂未开工');
     expect(magicBuilderFallbackTitle({ render: { zero: 'plain' } })).toBe('plain');
+    expect(magicBuilderFallbackTitle({ render: { zero: ' a|b ' } })).toBe(' a|b ');
+    expect(magicBuilderFallbackTitle({ render: { zero: '{usage}' } })).toBe('AI 牛马暂未开工');
   });
 
   it('prefers configured fallback over the render template', () => {
