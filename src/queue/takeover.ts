@@ -44,6 +44,12 @@ export interface TakeoverOptions {
   readonly waitMs?: number;
   /** How long a command's dsh append waits for the log lock; the appends' default bound by default. */
   readonly logLockWaitMs?: number;
+  /** Wall clock for a stuck holder's beat age; the system clock by default. */
+  readonly wall?: QueueClock;
+  /** Signals a stuck holder's pid to leave; `process.kill` by default. */
+  readonly signal?: (pid: number, name: 'SIGTERM' | 'SIGKILL') => void;
+  /** Whether a signaled pid is alive; the default checks with kill 0. */
+  readonly isPidAlive?: (pid: number) => boolean;
 }
 
 /** What a command that took over does with the queue before it runs its own code. */
@@ -184,13 +190,19 @@ export async function takeOver<T>(
       monotonic: context.monotonic,
       delay: options.delay ?? sleepDelay,
       waitMs: options.waitMs ?? TAKEOVER_WAIT_MS,
-      retryMs: TAKEOVER_RETRY_MS
+      retryMs: TAKEOVER_RETRY_MS,
+      wall: options.wall,
+      signal: options.signal,
+      isPidAlive: options.isPidAlive
     });
   } finally {
     await request.release();
   }
 
-  const hold = await holdWorkerLock(statePath, context.version, lock);
+  const hold = await holdWorkerLock(statePath, context.version, lock, {
+    pid: process.pid,
+    at: (options.clock ?? systemClock).now()
+  });
   try {
     return await work(createTakeover(context, await isDisabled(statePath)));
   } finally {

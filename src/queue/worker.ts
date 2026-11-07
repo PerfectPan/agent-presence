@@ -21,6 +21,7 @@ import { listQueue, removeExpiredFiles } from './reader.js';
 import { startWorkerProcess, type StartWorker } from './start-worker.js';
 import { isPidAlive, liveStopRequests, type Delay, type PidAlive } from './stop-request.js';
 import { holdWorkerLock, tryWorkerLock, type WorkerLockHold } from './worker-lock.js';
+import { writeWorkerBeat } from './worker-beat.js';
 
 /** The apply lane's iteration and a started worker's round. */
 export const WORKER_ROUND_MS = 250;
@@ -96,7 +97,13 @@ function hasLiveStopRequest(context: WorkerContext): Promise<boolean> {
 
 async function takeLockNow(context: WorkerContext): Promise<WorkerLockHold | undefined> {
   const lock = await tryWorkerLock(context.statePath, context.platform);
-  return lock && holdWorkerLock(context.statePath, context.version, lock);
+  return (
+    lock &&
+    holdWorkerLock(context.statePath, context.version, lock, {
+      pid: process.pid,
+      at: context.clock.now()
+    })
+  );
 }
 
 /** Whether owed work this release can do remains, the items this holder set aside included. */
@@ -264,6 +271,9 @@ async function applyWhileHolding(
       if (batch.applied > 0) {
         lastAppliedAt = context.monotonic.now();
       }
+      // The holder beats after every iteration it finished, so a takeover can tell a stuck holder from one that is
+      // merely slow; the beat is diagnostic and its failure changes nothing.
+      await writeWorkerBeat(statePath, process.pid, context.clock.now()).catch(() => undefined);
       if (batch.appliedEvents) {
         lane.renderedSyncOwedAgain();
       }
