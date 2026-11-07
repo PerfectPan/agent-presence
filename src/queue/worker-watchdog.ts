@@ -12,18 +12,23 @@ export interface WorkerWatchdog {
 
 /**
  * The monitor shares this process's lifetime: it can only terminate itself, never a pid read from disk. The active
- * flag arbitrates release versus termination, so a monitor cannot outlive its lock and kill a later command.
+ * heartbeat arbitrates progress, release and termination, so a stale observation cannot kill a resumed worker or
+ * outlive its lock and kill a later command.
  */
 export async function startWorkerWatchdog(
   statePath: string,
   options: { readonly staleMs?: number; readonly pollMs?: number } = {}
 ): Promise<WorkerWatchdog> {
-  const control = new BigInt64Array(new SharedArrayBuffer(16));
-  Atomics.store(control, 0, 1n);
+  const control = new BigInt64Array(new SharedArrayBuffer(8));
+  Atomics.store(control, 0, process.hrtime.bigint());
   const beat = (): void => {
-    Atomics.store(control, 1, process.hrtime.bigint());
+    for (;;) {
+      const previous = Atomics.load(control, 0);
+      if (previous <= 0n || Atomics.compareExchange(control, 0, previous, process.hrtime.bigint()) === previous) {
+        return;
+      }
+    }
   };
-  beat();
   const source = import.meta.url.endsWith('.ts');
   const thread = new Worker(
     new URL(source ? './worker-watchdog-thread.ts' : './worker-watchdog-thread.js', import.meta.url),
@@ -52,8 +57,14 @@ export async function startWorkerWatchdog(
     stop() {
       clearInterval(heartbeat);
       // A terminating monitor owns the process until it dies. Release must not progress after it won the CAS.
-      if (Atomics.compareExchange(control, 0, 1n, 0n) === -1n) {
-        return new Promise(() => undefined);
+      for (;;) {
+        const previous = Atomics.load(control, 0);
+        if (previous === -1n) {
+          return new Promise(() => undefined);
+        }
+        if (Atomics.compareExchange(control, 0, previous, 0n) === previous) {
+          break;
+        }
       }
       stopped ??= thread.terminate().then(() => undefined);
       return stopped;
