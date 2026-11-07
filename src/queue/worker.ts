@@ -21,7 +21,6 @@ import { listQueue, removeExpiredFiles } from './reader.js';
 import { startWorkerProcess, type StartWorker } from './start-worker.js';
 import { isPidAlive, liveStopRequests, type Delay, type PidAlive } from './stop-request.js';
 import { holdWorkerLock, tryWorkerLock, type WorkerLockHold } from './worker-lock.js';
-import { writeWorkerBeat } from './worker-beat.js';
 
 /** The apply lane's iteration and a started worker's round. */
 export const WORKER_ROUND_MS = 250;
@@ -57,6 +56,8 @@ export interface WorkerOptions {
   readonly startWorker?: StartWorker;
   readonly effects?: OwedWorkEffects;
   readonly idleMs?: number;
+  /** Enable self-termination from a watchdog thread; only the dedicated worker CLI opts in. */
+  readonly watchdog?: boolean;
   readonly platform?: ProcessLockPlatform;
   /** Called at each step of an apply-lane batch; tests pause or kill the worker there. */
   readonly onBatchStep?: (step: BatchStep) => Promise<void>;
@@ -72,6 +73,7 @@ interface WorkerContext {
   readonly startWorker: StartWorker;
   readonly effects: OwedWorkEffects;
   readonly idleMs: number;
+  readonly watchdog: boolean;
   readonly platform: ProcessLockPlatform;
   readonly onBatchStep: ((step: BatchStep) => Promise<void>) | undefined;
 }
@@ -100,8 +102,9 @@ async function takeLockNow(context: WorkerContext): Promise<WorkerLockHold | und
   return (
     lock &&
     holdWorkerLock(context.statePath, context.version, lock, {
-      pid: process.pid,
-      at: context.clock.now()
+      clock: context.clock,
+      delay: context.delay,
+      watchdog: context.watchdog
     })
   );
 }
@@ -271,9 +274,6 @@ async function applyWhileHolding(
       if (batch.applied > 0) {
         lastAppliedAt = context.monotonic.now();
       }
-      // The holder beats after every iteration it finished, so a takeover can tell a stuck holder from one that is
-      // merely slow; the beat is diagnostic and its failure changes nothing.
-      await writeWorkerBeat(statePath, process.pid, context.clock.now()).catch(() => undefined);
       if (batch.appliedEvents) {
         lane.renderedSyncOwedAgain();
       }
@@ -321,6 +321,7 @@ function resolveOptions(options: WorkerOptions): WorkerContext {
     startWorker: options.startWorker ?? startWorkerProcess,
     effects: options.effects ?? defaultOwedWorkEffects,
     idleMs: options.idleMs ?? WORKER_IDLE_MS,
+    watchdog: options.watchdog ?? false,
     platform: options.platform ?? kitPlatform(),
     onBatchStep: options.onBatchStep
   };

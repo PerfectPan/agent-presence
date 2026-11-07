@@ -14,5 +14,5 @@ export async function worker(args: string[]): Promise<void> {
     await stopWorker(statePath);
     return;
   }
-  await runWorker({ statePath });
+  await runWorker({ statePath, watchdog: true });
 }

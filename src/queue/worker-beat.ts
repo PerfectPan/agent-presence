@@ -1,79 +1,80 @@
 import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
-import { hasNodeErrorCode } from '../json-file.js';
-import { randomHex, queuePaths } from './files.js';
+import { setTimeout as sleep } from 'node:timers/promises';
+import * as z from 'zod/mini';
+import { randomHex, queuePaths, type QueueClock } from './files.js';
+import { startWorkerWatchdog } from './worker-watchdog.js';
+import type { Delay } from './stop-request.js';
 
-// Two processes of different releases read the beat: the holder writes it and a command whose wait for the worker
-// lock ran out reads it to tell a stuck holder from one that is merely between rounds. Like every queue file its
-// format is fixed for all releases, and it stays free of schemas: the fields are JSON with plain numbers.
+// Version 1 identified only a pid. It cannot distinguish a reused pid or a different lock acquisition.
+const beatSchema = z.object({
+  v: z.literal(2),
+  recovery: z.literal('self-watchdog'),
+  pid: z.number().check(z.int(), z.minimum(1)),
+  at: z.number().check(z.minimum(0))
+});
 
-/** The beat format version; a reader that does not know it leaves the file alone. */
-const BEAT_VERSION = 1;
-
-/** What the holder of the worker lock last wrote: the round it finished, and the pid to signal when it is stuck. */
-export interface WorkerBeat {
-  readonly v: number;
-  readonly pid: number;
-  /** Wall-clock milliseconds of the holder's clock when it wrote the beat. */
-  readonly at: number;
-}
+export type WorkerBeat = z.infer<typeof beatSchema>;
+export const WORKER_BEAT_MS = 2_000;
 
 export function workerBeatPath(statePath: string): string {
   return `${queuePaths(statePath).workerVersion}.beat`;
 }
 
-/** A beat a reader can act on: the fields are the right types and in range, or there is no beat. */
-function parseBeat(raw: unknown): WorkerBeat | undefined {
-  if (typeof raw !== 'object' || raw === null) {
-    return undefined;
-  }
-  const { v, pid, at } = raw as Record<string, unknown>;
-  if (
-    v !== BEAT_VERSION ||
-    typeof pid !== 'number' ||
-    !Number.isInteger(pid) ||
-    pid <= 0 ||
-    typeof at !== 'number' ||
-    !Number.isInteger(at) ||
-    at < 0
-  ) {
-    return undefined;
-  }
-  return { v, pid, at };
-}
-
-/** The holder's last beat, or `undefined` when there is none or it does not parse. */
+/** Unreadable, legacy and unknown beats never authorize recovery. */
 export async function readWorkerBeat(statePath: string): Promise<WorkerBeat | undefined> {
-  let text: string;
   try {
-    text = await readFile(workerBeatPath(statePath), 'utf8');
-  } catch (error) {
-    if (hasNodeErrorCode(error, 'ENOENT')) {
-      return undefined;
-    }
-    throw error;
-  }
-  try {
-    return parseBeat(JSON.parse(text));
+    const parsed = beatSchema.safeParse(JSON.parse(await readFile(workerBeatPath(statePath), 'utf8')));
+    return parsed.success ? parsed.data : undefined;
   } catch {
     return undefined;
   }
 }
 
-/**
- * Write the holder's beat, replacing the file atomically. A failed write throws: the caller treats it like any
- * failed iteration, and a holder that cannot beat is one a takeover may soon replace.
- */
-export async function writeWorkerBeat(statePath: string, pid: number, at: number): Promise<void> {
+async function writeWorkerBeat(statePath: string, beat: WorkerBeat): Promise<void> {
   const path = workerBeatPath(statePath);
   await mkdir(dirname(path), { recursive: true, mode: 0o700 });
-  const temporary = `${path}.${pid}.${randomHex(4)}.tmp`;
-  const beat: WorkerBeat = { v: BEAT_VERSION, pid, at };
+  const temporary = `${path}.${process.pid}.${randomHex(4)}.tmp`;
   try {
     await writeFile(temporary, `${JSON.stringify(beat)}\n`, { mode: 0o600, flag: 'wx' });
     await rename(temporary, path);
-  } catch (error) {
+  } finally {
     await rm(temporary, { force: true });
+  }
+}
+
+/**
+ * Only workers opt into recovery. Beat independently of batch/scan/publish completion: a healthy asynchronous
+ * operation can exceed the recovery threshold. Stop and join this writer before deleting the beat or unlocking.
+ */
+export async function holdWorkerBeat(
+  statePath: string,
+  clock: QueueClock,
+  delay: Delay = (ms, signal) => sleep(ms, undefined, { signal, ref: false }).catch(() => undefined)
+): Promise<() => Promise<void>> {
+  const monitor = await startWorkerWatchdog(statePath);
+  try {
+    await writeWorkerBeat(statePath, { v: 2, recovery: 'self-watchdog', pid: process.pid, at: clock.now() });
+  } catch (error) {
+    await monitor.stop();
     throw error;
   }
+  const controller = new AbortController();
+  const running = (async () => {
+    for (;;) {
+      await delay(WORKER_BEAT_MS, controller.signal);
+      if (controller.signal.aborted) {
+        return;
+      }
+      monitor.beat();
+      await writeWorkerBeat(statePath, { v: 2, recovery: 'self-watchdog', pid: process.pid, at: clock.now() }).catch(
+        () => undefined
+      );
+    }
+  })().catch(() => undefined);
+  return async () => {
+    const stopped = monitor.stop();
+    controller.abort();
+    await Promise.all([running, stopped]);
+  };
 }
