@@ -44,6 +44,8 @@ export interface TakeoverOptions {
   readonly waitMs?: number;
   /** How long a command's dsh append waits for the log lock; the appends' default bound by default. */
   readonly logLockWaitMs?: number;
+  /** Wall clock for a stuck holder's beat age; the system clock by default. */
+  readonly wall?: QueueClock;
 }
 
 /** What a command that took over does with the queue before it runs its own code. */
@@ -184,7 +186,8 @@ export async function takeOver<T>(
       monotonic: context.monotonic,
       delay: options.delay ?? sleepDelay,
       waitMs: options.waitMs ?? TAKEOVER_WAIT_MS,
-      retryMs: TAKEOVER_RETRY_MS
+      retryMs: TAKEOVER_RETRY_MS,
+      wall: options.wall
     });
   } finally {
     await request.release();

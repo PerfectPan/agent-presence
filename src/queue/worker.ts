@@ -56,6 +56,8 @@ export interface WorkerOptions {
   readonly startWorker?: StartWorker;
   readonly effects?: OwedWorkEffects;
   readonly idleMs?: number;
+  /** Enable self-termination from a watchdog thread; only the dedicated worker CLI opts in. */
+  readonly watchdog?: boolean;
   readonly platform?: ProcessLockPlatform;
   /** Called at each step of an apply-lane batch; tests pause or kill the worker there. */
   readonly onBatchStep?: (step: BatchStep) => Promise<void>;
@@ -71,6 +73,7 @@ interface WorkerContext {
   readonly startWorker: StartWorker;
   readonly effects: OwedWorkEffects;
   readonly idleMs: number;
+  readonly watchdog: boolean;
   readonly platform: ProcessLockPlatform;
   readonly onBatchStep: ((step: BatchStep) => Promise<void>) | undefined;
 }
@@ -96,7 +99,14 @@ function hasLiveStopRequest(context: WorkerContext): Promise<boolean> {
 
 async function takeLockNow(context: WorkerContext): Promise<WorkerLockHold | undefined> {
   const lock = await tryWorkerLock(context.statePath, context.platform);
-  return lock && holdWorkerLock(context.statePath, context.version, lock);
+  return (
+    lock &&
+    holdWorkerLock(context.statePath, context.version, lock, {
+      clock: context.clock,
+      delay: context.delay,
+      watchdog: context.watchdog
+    })
+  );
 }
 
 /** Whether owed work this release can do remains, the items this holder set aside included. */
@@ -311,6 +321,7 @@ function resolveOptions(options: WorkerOptions): WorkerContext {
     startWorker: options.startWorker ?? startWorkerProcess,
     effects: options.effects ?? defaultOwedWorkEffects,
     idleMs: options.idleMs ?? WORKER_IDLE_MS,
+    watchdog: options.watchdog ?? false,
     platform: options.platform ?? kitPlatform(),
     onBatchStep: options.onBatchStep
   };
