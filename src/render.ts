@@ -1,6 +1,6 @@
 import type { AgentSession, PresenceState } from './state.js';
 import { expireStaleSessions, getActiveSessions } from './state.js';
-import { calendarDaysBetween } from './time.js';
+import { badgeExpiryMs, calendarDaysBetween } from './time.js';
 
 export interface RenderTemplates {
   zero?: string;
@@ -71,7 +71,28 @@ export type SlotSyncDecision =
       value: string;
       previousLastSlotUpdateAt: number;
       claimedLastSlotUpdateAt: number;
+      /**
+       * The earliest local midnight at which a usage badge in `value` turns
+       * stale, as absolute epoch ms; `undefined` when the value carries no
+       * badge or its compute time is unknown. Saved locally with the successful
+       * value; transport to a generated preview is a separate feature.
+       */
+      usageResetDeadlineMs?: number;
     };
+
+/**
+ * The deadline of a published value's usage badges: the earliest midnight at
+ * which any window the templates reference turns stale, or `undefined` when
+ * nothing is published from a badge (no badge cached, or a legacy cache whose
+ * compute time is unknown — such a badge is treated as fresh, so it has no
+ * deadline either).
+ */
+export function usageResetDeadlineMs(computedAt: number | undefined, windows: readonly number[]): number | undefined {
+  if (computedAt === undefined || windows.length === 0) {
+    return undefined;
+  }
+  return Math.min(...windows.map((days) => badgeExpiryMs(computedAt, days)));
+}
 
 export class SlotRateLimitError extends Error {
   readonly retryAfterMs?: number;
@@ -81,6 +102,24 @@ export class SlotRateLimitError extends Error {
     this.name = 'SlotRateLimitError';
     this.retryAfterMs = retryAfterMs;
   }
+}
+
+/**
+ * The fallback title a generated preview shows when it cannot read the slot:
+ * with the `{usage*}` tokens removed, so a template that owns its usage label
+ * does not fall back to a title that leaks a raw token. Empty segments around
+ * a separator go with it.
+ */
+export function renderFallbackTitleWithoutUsageTokens(template: string): string {
+  const stripped = template.replace(USAGE_TOKEN, '');
+  if (stripped === template) {
+    return template;
+  }
+  return stripped
+    .split('|')
+    .map((segment) => segment.trim())
+    .filter((segment) => segment.length > 0)
+    .join(' | ');
 }
 
 /** Human label for a usage window: 1→"今日", 7→"近7天", N→"近N天". */
@@ -99,25 +138,50 @@ function renderDetails(activeSessions: AgentSession[]): string {
     .join(' · ');
 }
 
-function formatTemplate(
-  template: string,
-  variables: { total: number; details: string; usageVars: Record<string, string> }
-): string {
-  const base = template.replaceAll('{total}', String(variables.total)).replaceAll('{details}', variables.details);
-  // Substitute every `{usage}` / `{usage_Nd}` token from the provided vars; any
-  // referenced-but-unavailable window collapses to empty rather than leaking the token.
-  return base.replace(USAGE_TOKEN, (_match, days?: string) => {
-    const key = days ? `usage_${days}d` : 'usage';
-    return variables.usageVars[key] ?? '';
-  });
-}
-
 function resolveRenderTemplates(templates: RenderTemplates): Required<RenderTemplates> {
   return {
     zero: templates.zero ?? DEFAULT_RENDER_TEMPLATES.zero,
     one: templates.one ?? DEFAULT_RENDER_TEMPLATES.one,
     many: templates.many ?? DEFAULT_RENDER_TEMPLATES.many
   };
+}
+
+/** Collect only badges visible before the provider's 200-character limit, using the selected session template. */
+function renderPresenceContent(
+  activeSessions: AgentSession[],
+  templates: RenderTemplates,
+  usageVars: Record<string, string>,
+  autoAppend: string,
+  defaultDays: number
+): { value: string; windows: number[] } {
+  const resolved = resolveRenderTemplates(templates);
+  const total = activeSessions.length;
+  const template = total === 0 ? resolved.zero : total === 1 ? resolved.one : resolved.many;
+  const base = template.replaceAll('{total}', String(total)).replaceAll('{details}', renderDetails(activeSessions));
+  const windows = new Set<number>();
+  let rendered = '';
+  let cursor = 0;
+  let hasUsageToken = false;
+  for (const match of base.matchAll(USAGE_TOKEN)) {
+    hasUsageToken = true;
+    rendered += base.slice(cursor, match.index);
+    const key = match[1] ? `usage_${match[1]}d` : 'usage';
+    const badge = usageVars[key] ?? '';
+    if (rendered.length < 200 && badge.length > 0 && badge !== STALE_USAGE_PLACEHOLDER) {
+      windows.add(match[1] ? Number(match[1]) : defaultDays);
+    }
+    rendered += badge;
+    cursor = match.index + match[0].length;
+  }
+  rendered += base.slice(cursor);
+  if (!hasUsageToken && autoAppend.length > 0) {
+    const badgeLength = usageVars.usage?.length ?? 0;
+    if (badgeLength > 0 && rendered.length + autoAppend.length - badgeLength < 200) {
+      windows.add(defaultDays);
+    }
+    rendered += autoAppend;
+  }
+  return { value: rendered.slice(0, 200), windows: [...windows] };
 }
 
 /**
@@ -133,19 +197,7 @@ export function renderPresence(
   usageVars: Record<string, string> = {},
   autoAppend = ''
 ): string {
-  const resolvedTemplates = resolveRenderTemplates(templates);
-  const details = renderDetails(activeSessions);
-  const total = activeSessions.length;
-
-  const template = total === 0 ? resolvedTemplates.zero : total === 1 ? resolvedTemplates.one : resolvedTemplates.many;
-  const hasUsageToken = USAGE_TOKEN.test(template);
-  USAGE_TOKEN.lastIndex = 0;
-
-  let rendered = formatTemplate(template, { total, details, usageVars });
-  if (!hasUsageToken && autoAppend.length > 0) {
-    rendered = `${rendered}${autoAppend}`;
-  }
-  return rendered.slice(0, 200);
+  return renderPresenceContent(activeSessions, templates, usageVars, autoAppend, 1).value;
 }
 
 /**
@@ -198,15 +250,17 @@ export function resolveUsageForRender(
 export function prepareSlotSync(state: PresenceState, options: SlotSyncDecisionOptions): SlotSyncDecision {
   expireStaleSessions(state, options.now, options.ttlMs);
   const { usageVars, autoAppend } = resolveUsageForRender(state, options.usage, options.now);
-  const value = renderPresence(
+  const { value, windows } = renderPresenceContent(
     getActiveSessions(state, options.now, options.ttlMs),
-    options.renderTemplates,
+    options.renderTemplates ?? {},
     usageVars,
-    autoAppend
+    autoAppend,
+    options.usage?.defaultWindow ?? 1
   );
+  const deadline = usageResetDeadlineMs(state.usageBadgesAt, windows);
   const elapsedMs = options.now - (state.lastSlotUpdateAt ?? 0);
 
-  if (!options.force && state.lastValue === value) {
+  if (!options.force && state.lastValue === value && state.usageResetDeadlineMs === deadline) {
     return { action: 'skip', result: { status: 'skipped', reason: 'unchanged', value } };
   }
 
@@ -220,7 +274,8 @@ export function prepareSlotSync(state: PresenceState, options: SlotSyncDecisionO
     action: 'update',
     value,
     previousLastSlotUpdateAt,
-    claimedLastSlotUpdateAt: options.now
+    claimedLastSlotUpdateAt: options.now,
+    ...(deadline === undefined ? {} : { usageResetDeadlineMs: deadline })
   };
 }
 
@@ -230,6 +285,7 @@ export function markSlotSyncSuccess(state: PresenceState, decision: SlotSyncDeci
   }
   if ((state.lastSlotUpdateAt ?? 0) === decision.claimedLastSlotUpdateAt) {
     state.lastValue = decision.value;
+    state.usageResetDeadlineMs = decision.usageResetDeadlineMs;
   }
 }
 

@@ -164,3 +164,109 @@ describe('slot sync debounce', () => {
     expect(persisted.lastSlotUpdateAt).toBe(0);
   });
 });
+
+describe('published usage metadata across state reloads', () => {
+  const now = new Date(2026, 10, 7, 23, 50).getTime();
+  const deadline = new Date(2026, 10, 8).getTime();
+  const options = { force: true, now, debounceMs: 0, ttlMs: 60_000, usage: { enabled: true, defaultWindow: 1 } };
+
+  it('roundtrips a rendered publish through load/save and clears the deadline on an explicit publish', async () => {
+    const { statePath } = await useTempFiles();
+    const { loadState, saveState } = await import('../src/state-store.js');
+    await syncRenderedSlotWithStateLock(
+      statePath,
+      options,
+      async () => undefined,
+      (state) => {
+        state.usageBadges = { '1': '2.1M' };
+        state.usageBadgesAt = now;
+      }
+    );
+    const loaded = await loadState(statePath);
+    expect(loaded.usageResetDeadlineMs).toBe(deadline);
+    expect(loaded.lastValue).toContain('2.1M');
+    applyAgentEvent(loaded, { source: 'codex', event: 'SessionStart', sessionId: 's1', now });
+    await saveState(loaded, statePath);
+    expect((await loadState(statePath)).usageResetDeadlineMs).toBe(deadline);
+    await syncExplicitSlotValueWithStateLock(
+      statePath,
+      { force: true, now: now + 1, debounceMs: 0, value: 'manual' },
+      async () => undefined
+    );
+    expect(await loadState(statePath)).toMatchObject({ lastValue: 'manual', usageResetDeadlineMs: undefined });
+  });
+
+  it('retains the previous published deadline when the provider fails or rate limits', async () => {
+    const { statePath } = await useTempFiles();
+    const { loadState } = await import('../src/state-store.js');
+    await syncRenderedSlotWithStateLock(
+      statePath,
+      options,
+      async () => undefined,
+      (state) => {
+        state.usageBadges = { '1': '2.1M' };
+        state.usageBadgesAt = now;
+      }
+    );
+    const later = { ...options, now: new Date(2026, 10, 8, 23, 50).getTime() };
+    await expect(
+      syncRenderedSlotWithStateLock(
+        statePath,
+        later,
+        async () => {
+          throw new Error('failed');
+        },
+        (state) => {
+          state.usageBadgesAt = later.now;
+        }
+      )
+    ).rejects.toThrow('failed');
+    expect((await loadState(statePath)).usageResetDeadlineMs).toBe(deadline);
+    await syncRenderedSlotWithStateLock(statePath, later, async () => {
+      throw new SlotRateLimitError();
+    });
+    expect((await loadState(statePath)).usageResetDeadlineMs).toBe(deadline);
+  });
+
+  it('publishes equal text again when a new day gives that text a different deadline', async () => {
+    const { statePath } = await useTempFiles();
+    const { loadState } = await import('../src/state-store.js');
+    const publish = vi.fn<(value: string) => Promise<void>>().mockResolvedValue(undefined);
+    await syncRenderedSlotWithStateLock(statePath, options, publish, (state) => {
+      state.usageBadges = { '1': '0' };
+      state.usageBadgesAt = now;
+    });
+    const later = { ...options, force: false, now: new Date(2026, 10, 8, 23, 50).getTime() };
+    await syncRenderedSlotWithStateLock(statePath, later, publish, (state) => {
+      state.usageBadgesAt = later.now;
+    });
+    expect(publish).toHaveBeenCalledTimes(2);
+    expect(publish.mock.calls[0]).toEqual(publish.mock.calls[1]);
+    expect((await loadState(statePath)).usageResetDeadlineMs).toBe(new Date(2026, 10, 9).getTime());
+  });
+
+  it('leaves a newer deadline owed when the cache changes during a publish with equal text', async () => {
+    const { statePath } = await useTempFiles();
+    const { loadState, saveState, withStateLock } = await import('../src/state-store.js');
+    await syncRenderedSlotWithStateLock(
+      statePath,
+      options,
+      async () => {
+        await withStateLock(statePath, async () => {
+          const state = await loadState(statePath);
+          state.usageBadgesAt = new Date(2026, 10, 8, 23, 50).getTime();
+          state.queueOwed = { ...state.queueOwed, renderedSync: true };
+          await saveState(state, statePath);
+        });
+      },
+      (state) => {
+        state.usageBadges = { '1': '0' };
+        state.usageBadgesAt = now;
+        state.queueOwed = { renderedSync: true };
+      }
+    );
+    const state = await loadState(statePath);
+    expect(state.usageResetDeadlineMs).toBe(deadline);
+    expect(state.queueOwed?.renderedSync).toBe(true);
+  });
+});

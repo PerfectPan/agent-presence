@@ -1,6 +1,15 @@
 import { describe, expect, it, vi } from 'vite-plus/test';
-import { markSlotSyncSuccess, prepareSlotSync, renderPresence, rollbackSlotSyncClaim, syncSlot } from './render.js';
+import {
+  markSlotSyncSuccess,
+  prepareSlotSync,
+  renderFallbackTitleWithoutUsageTokens,
+  renderPresence,
+  rollbackSlotSyncClaim,
+  syncSlot,
+  usageResetDeadlineMs
+} from './render.js';
 import { applyAgentEvent, createEmptyState, type AgentSession, type PresenceState } from './state.js';
+import { badgeExpiryMs } from './time.js';
 
 function session(id: string, source: string): AgentSession {
   return {
@@ -226,6 +235,81 @@ describe('prepareSlotSync usage badges', () => {
   });
 });
 
+describe('the published usage deadline', () => {
+  function stateWith(badges?: Record<string, string>): PresenceState {
+    return {
+      sessions: { s1: session('s1', 'claude') },
+      lastSlotUpdateAt: 0,
+      lastValue: '',
+      usageBadges: badges
+    };
+  }
+
+  // A badge computed at 23:50 local on 2026-11-07 turns stale at the next midnight.
+  const lateEvening = new Date(2026, 10, 7, 23, 50).getTime();
+
+  it('expires a window at the midnight that completes its span', () => {
+    expect(badgeExpiryMs(lateEvening, 1)).toBe(new Date(2026, 10, 8).getTime());
+    expect(badgeExpiryMs(lateEvening, 7)).toBe(new Date(2026, 10, 14).getTime());
+    // At the deadline itself the badge reads the wrong day, exactly like the staleness check.
+    expect(usageResetDeadlineMs(lateEvening, [1])).toBe(new Date(2026, 10, 8).getTime());
+  });
+
+  it('is the earliest referenced midnight, and none without a badge or a compute time', () => {
+    expect(usageResetDeadlineMs(lateEvening, [1, 7])).toBe(usageResetDeadlineMs(lateEvening, [1]));
+    expect(usageResetDeadlineMs(undefined, [1])).toBeUndefined();
+    expect(usageResetDeadlineMs(lateEvening, [])).toBeUndefined();
+  });
+
+  it('rides on the slot sync decision and is published with the value', () => {
+    const state = { ...stateWith({ '1': '2.1M · $4.50' }), usageBadgesAt: lateEvening };
+    const decision = prepareSlotSync(state, {
+      force: true,
+      now: lateEvening,
+      debounceMs: 0,
+      ttlMs: 60_000,
+      usage: { enabled: true, defaultWindow: 1 }
+    });
+    if (decision.action !== 'update') {
+      throw new Error('no update');
+    }
+    expect(decision.usageResetDeadlineMs).toBe(new Date(2026, 10, 8).getTime());
+    markSlotSyncSuccess(state, decision);
+    expect(state.usageResetDeadlineMs).toBe(new Date(2026, 10, 8).getTime());
+  });
+
+  it('is absent when usage is off or the cache predates the deadline fields', () => {
+    const decision = prepareSlotSync(stateWith(), {
+      force: true,
+      now: lateEvening,
+      debounceMs: 0,
+      ttlMs: 60_000,
+      usage: { enabled: true, defaultWindow: 1 }
+    });
+    expect(decision.action === 'update' && decision.usageResetDeadlineMs).toBeUndefined();
+    const legacy = prepareSlotSync(
+      { ...stateWith({ '1': '2.1M' }), usageBadgesAt: undefined },
+      {
+        force: true,
+        now: lateEvening,
+        debounceMs: 0,
+        ttlMs: 60_000,
+        usage: { enabled: true, defaultWindow: 1 }
+      }
+    );
+    expect(legacy.action === 'update' && legacy.usageResetDeadlineMs).toBeUndefined();
+  });
+});
+
+describe('the fallback title', () => {
+  it('drops the usage tokens and the segments that held only them', () => {
+    expect(renderFallbackTitleWithoutUsageTokens('AI 牛马暂未开工 | {usage}')).toBe('AI 牛马暂未开工');
+    expect(renderFallbackTitleWithoutUsageTokens('{usage} 个会话')).toBe('个会话');
+    expect(renderFallbackTitleWithoutUsageTokens('a | {usage_7d} | b')).toBe('a | b');
+    expect(renderFallbackTitleWithoutUsageTokens('no tokens here')).toBe('no tokens here');
+  });
+});
+
 describe('slot sync debounce', () => {
   it('updates when force is true even inside debounce window', async () => {
     const state = createEmptyState();
@@ -333,5 +417,53 @@ describe('slot sync debounce', () => {
 
     expect(state.lastSlotUpdateAt).toBe(1_000);
     expect(state.lastValue).toBe('');
+  });
+});
+
+describe('deadlines of badges actually displayed', () => {
+  const now = new Date(2026, 10, 7, 12).getTime();
+  const day1 = new Date(2026, 10, 8).getTime();
+  const day7 = new Date(2026, 10, 14).getTime();
+  const options = { force: true, now, debounceMs: 0, ttlMs: 60_000, usage: { enabled: true, defaultWindow: 1 } };
+
+  function deadline(zero: string, badges = { '1': 'daily', '7': 'weekly' }, computedAt = now): number | undefined {
+    const state = { ...createEmptyState(), usageBadges: badges, usageBadgesAt: computedAt };
+    const decision = prepareSlotSync(state, {
+      ...options,
+      renderTemplates: { zero, one: '{usage_1d}', many: '{usage}' }
+    });
+    if (decision.action !== 'update') {
+      throw new Error('no update');
+    }
+    return decision.usageResetDeadlineMs;
+  }
+
+  it('excludes other session templates and a suppressed default auto-append', () => {
+    expect(deadline('weekly {usage_7d}')).toBe(day7);
+    expect(deadline('auto append')).toBe(day1);
+    expect(deadline('{usage_1d} {usage_7d}')).toBe(day1);
+  });
+
+  it('excludes missing, empty, disabled and already-stale badges', () => {
+    expect(deadline('{usage_1d}', { '1': '', '7': 'weekly' })).toBeUndefined();
+    expect(deadline('{usage_2d}')).toBeUndefined();
+    expect(
+      deadline('{usage_1d}', { '1': 'daily', '7': 'weekly' }, new Date(2026, 10, 6, 23).getTime())
+    ).toBeUndefined();
+    const decision = prepareSlotSync(
+      { ...createEmptyState(), usageBadges: { '1': 'daily' }, usageBadgesAt: now },
+      {
+        ...options,
+        usage: { enabled: false, defaultWindow: 1 },
+        renderTemplates: { zero: '{usage}' }
+      }
+    );
+    expect(decision.action === 'update' && decision.usageResetDeadlineMs).toBeUndefined();
+  });
+
+  it('excludes badges beyond the length limit but includes partially visible badges', () => {
+    expect(deadline(`${'x'.repeat(200)}{usage_1d}`)).toBeUndefined();
+    expect(deadline(`${'x'.repeat(199)}{usage_1d}`)).toBe(day1);
+    expect(deadline('x'.repeat(199))).toBeUndefined();
   });
 });

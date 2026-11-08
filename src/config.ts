@@ -1,5 +1,6 @@
 import { join } from 'node:path';
 import { homedir } from 'node:os';
+import { renderFallbackTitleWithoutUsageTokens } from './render.js';
 import { readJsonFile, writeJsonAtomic } from './json-file.js';
 import type { RenderTemplates } from './render.js';
 import type { PricingOverrides } from './usage/index.js';
@@ -201,12 +202,12 @@ export function magicBuilderFaasName(config: AppConfig): string | undefined {
 }
 
 export function magicBuilderFallbackTitle(config: AppConfig): string {
-  return (
+  const title =
     process.env.AGENT_PRESENCE_MAGIC_BUILDER_FALLBACK_TITLE ??
     magicBuilderConfig(config).fallbackTitle ??
     config.render?.zero ??
-    'AI 牛马暂未开工'
-  );
+    'AI 牛马暂未开工';
+  return renderFallbackTitleWithoutUsageTokens(title) || 'AI 牛马暂未开工';
 }
 
 export function setMagicBuilderConfig(config: AppConfig, patch: Partial<MagicBuilderProviderConfig>): AppConfig {

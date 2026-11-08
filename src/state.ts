@@ -25,6 +25,13 @@ export interface PresenceState {
   /** Cached usage badges for the signature, keyed by window day count. */
   usageBadges?: Record<string, string>;
   usageBadgesAt?: number;
+  /**
+   * The locally saved deadline of the last successfully published value: the earliest
+   * local midnight at which a usage badge in `lastValue` turns stale, as
+   * absolute epoch ms; `undefined` when the value carries no badge. The
+   * transport to a generated preview is not implemented yet.
+   */
+  usageResetDeadlineMs?: number;
   /** Per-window source contributions used to rebuild aggregate usage badges. */
   usageSnapshots?: Record<string, Record<string, UsageSnapshot>>;
   /** Ids of applied queue records whose files may still exist. */

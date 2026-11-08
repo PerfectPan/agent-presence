@@ -47,6 +47,7 @@ const stateSchema = z.object({
   pendingSlotFlushAt: catchInvalid(z.optional(z.number()), undefined),
   usageBadges: catchInvalid(z.optional(entries), undefined),
   usageBadgesAt: catchInvalid(z.optional(z.number()), undefined),
+  usageResetDeadlineMs: catchInvalid(z.optional(timestamp), undefined),
   usageSnapshots: catchInvalid(z.optional(entries), undefined),
   queueApplied: z.optional(z.unknown()),
   queueOwed: z.optional(z.unknown())
@@ -112,6 +113,7 @@ export function normalizeState(raw: unknown): PresenceState {
     pendingSlotFlushAt: state.pendingSlotFlushAt,
     usageBadges: nonEmpty(validEntries(state.usageBadges, windowKey, z.string())),
     usageBadgesAt: state.usageBadgesAt,
+    usageResetDeadlineMs: state.usageResetDeadlineMs,
     usageSnapshots: nonEmpty(usageSnapshots),
     queueApplied: parseQueueApplied(state.queueApplied),
     queueOwed: parseQueueOwed(state.queueOwed)
