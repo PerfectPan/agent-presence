@@ -30,23 +30,7 @@ jobs:
           node-version-file: .node-version
           require-lockfile: true
 
-      - run: pnpm test
-      - run: pnpm run typecheck
-      - run: pnpm run build
-
-      # With pending changesets, opens or updates the release PR. The PR is
-      # opened with GITHUB_TOKEN, so its PR workflows may await maintainer
-      # approval. See CONTRIBUTING.md#releasing for the Ready/approval handoff,
-      # then verify that CI and Review actually passed for the release PR head.
-      #
-      # Without pending changesets, `pnpm release` runs `changeset publish`,
-      # which runs `pnpm publish` for an unpublished version: pnpm sends it to
-      # publishConfig.registry with an npm trusted-publishing (OIDC) token from
-      # `id-token: write` and attaches provenance itself, so no .npmrc or npm
-      # token is needed. The action then pushes the tag and creates the GitHub
-      # Release. Commits and tags go through the GitHub API, so they are signed.
       - name: Create release pull request or publish
-        id: changesets
         # Pinned to an exact release tag: the job holds write and OIDC permissions.
         uses: changesets/action@v2.1.2
         with:
@@ -54,6 +38,7 @@ jobs:
           publish-script: pnpm release
           commit-message: 'chore(release): version packages'
           pr-title: 'chore(release): version packages'
+          pr-draft: always
         env:
           # changelog-github reads PR titles and authors through the API
           GITHUB_TOKEN: ${{ github.token }}

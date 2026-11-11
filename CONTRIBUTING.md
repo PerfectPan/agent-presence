@@ -105,9 +105,9 @@ Only the published package gets changesets. The private docs site package (`site
 
 The package is published as `@rivus/agent-presence` through Changesets and npm Trusted Publishing (OIDC); the release workflow carries no long-lived npm write token.
 
-1. When changesets land on `main`, `.github/workflows/publish.yml` opens or updates the release PR `chore(release): version packages` on the branch `changeset-release/main` by running `pnpm version-packages` (`changeset version`). Later changesets fold into the same PR.
-2. The release PR uses the workflow's `GITHUB_TOKEN`; this workflow does not force it back to Draft. GitHub can create approval-required PR runs when that token opens, updates, or reopens a PR. If the PR shows **Approve workflows to run**, a maintainer with write access approves those runs. If no PR run is available, a maintainer can move the PR to Draft and then Ready to request CI through `ready_for_review`. Before merging, verify that the current release PR head has executed, successful Ubuntu and macOS CI jobs plus Review; a skipped Draft job is not sufficient. This repository's CI has no manual-dispatch trigger. See [GitHub's workflow-trigger behavior](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/trigger-a-workflow#triggering-a-workflow-from-a-workflow).
-3. Merging the release PR runs `publish.yml` again: gates, then `pnpm release` (`changeset publish`) publishes the unpublished version to npm through OIDC trusted publishing with provenance, and `changesets/action` pushes the tag and creates the matching GitHub Release.
+1. When changesets land on `main`, `.github/workflows/publish.yml` opens or updates the draft release PR `chore(release): version packages` on the branch `changeset-release/main` by running `pnpm version-packages` (`changeset version`). Later changesets fold into the same PR.
+2. Each update returns the release PR to Draft. Review the version changes, mark it Ready for review, and approve workflow runs if GitHub requests approval. Verify that both Ubuntu and macOS CI jobs and Review passed for the current head before merging.
+3. Merging the release PR runs `pnpm release`. When Changesets finds an unpublished version, pnpm runs the package’s `prepack` checks (tests, typecheck and build) before uploading it through npm Trusted Publishing. The action then pushes the tag and creates the GitHub Release.
 
 Before merging the release PR, run the hook event queue's idle-exit race tests at 1,000 iterations; CI runs them at the default 100:
 
