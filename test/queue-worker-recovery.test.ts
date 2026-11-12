@@ -156,7 +156,7 @@ if (mode.startsWith('raced-')) {
   Atomics.store(control, 0, process.hrtime.bigint() - 1_000_000_000n);
   const thread = new Worker(new URL(${JSON.stringify(watchdogThreadUrl)}), {
     workerData: { control: control.buffer, stopRequestPrefix: stopPath.slice(0, -4), staleMs: 200, pollMs: 20, requestFreshMs: 6000 },
-    execArgv: ['--experimental-transform-types']
+    execArgv: process.allowedNodeEnvironmentFlags.has('--experimental-transform-types') ? ['--experimental-transform-types'] : []
   });
   process.stdout.write('ready\\n');
   // Opening the FIFO writer waits until the monitor has observed a stale heartbeat and opened its reader.
@@ -189,7 +189,9 @@ async function startChild(mode: string): Promise<ChildProcessWithoutNullStreams>
   const child = spawn(
     process.execPath,
     [
-      '--experimental-transform-types',
+      ...(process.allowedNodeEnvironmentFlags.has('--experimental-transform-types')
+        ? ['--experimental-transform-types']
+        : []),
       '--input-type=module',
       '-e',
       childScript,

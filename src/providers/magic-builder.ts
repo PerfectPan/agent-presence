@@ -94,10 +94,13 @@ function logRequest(method: string, path: string, status: number | undefined, st
 }
 
 export class MagicBuilderProvider {
-  constructor(
-    private readonly baseUrl: string,
-    private readonly token?: string
-  ) {}
+  private readonly baseUrl: string;
+  private readonly token: string | undefined;
+
+  constructor(baseUrl: string, token?: string) {
+    this.baseUrl = baseUrl;
+    this.token = token;
+  }
 
   /**
    * Returns the link-preview URL Feishu signature should embed. The

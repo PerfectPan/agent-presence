@@ -14,7 +14,9 @@ describe('usage deadline at local midnight across DST', () => {
     const output = execFileSync(
       process.execPath,
       [
-        '--experimental-transform-types',
+        ...(process.allowedNodeEnvironmentFlags.has('--experimental-transform-types')
+          ? ['--experimental-transform-types']
+          : []),
         '--input-type=module',
         '-e',
         `

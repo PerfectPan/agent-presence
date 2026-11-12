@@ -193,10 +193,13 @@ function createProviderRequestLogger(
 }
 
 export class LGaryYangSlotBackend implements SlotBackend {
-  constructor(
-    private readonly baseUrl: string,
-    private readonly credential?: SlotCredential
-  ) {}
+  private readonly baseUrl: string;
+  private readonly credential: SlotCredential | undefined;
+
+  constructor(baseUrl: string, credential?: SlotCredential) {
+    this.baseUrl = baseUrl;
+    this.credential = credential;
+  }
 
   async createQrCode(): Promise<QrCodeResponse> {
     const response = await this.requestJson('/api/slot/wechat/qrcode');

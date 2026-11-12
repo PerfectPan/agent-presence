@@ -21,7 +21,7 @@ jobs:
         with:
           persist-credentials: false
 
-      # Installs the pnpm from `packageManager` and the Node.js major in
+      # Installs the pnpm from `packageManager` and the Node.js version in
       # `.node-version`, restores the pnpm store cache, and runs
       # `pnpm install --frozen-lockfile`. Only the build scripts allowed in
       # pnpm-workspace.yaml run.
