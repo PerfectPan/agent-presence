@@ -189,8 +189,8 @@ importers:
         specifier: ^3.0.3
         version: 3.0.3
       '@perfectpan/lint-config':
-        specifier: github:PerfectPan/lint-config#v0.6.0
-        version: https://codeload.github.com/PerfectPan/lint-config/tar.gz/28be8c1e152dde6a44fce9e43fdb282957959cc0(oxfmt@0.71.0(vite-plus@1.3.0(@astrojs/compiler-rs@0.5.1)(@types/node@24.19.1)(@vitest/ui@5.0.5)(esbuild@0.27.7)(typescript@7.0.2)(yaml@2.9.1)))(oxlint-tsgolint@7.0.2004)(oxlint@1.86.0(oxlint-tsgolint@7.0.2004)(vite-plus@1.3.0(@astrojs/compiler-rs@0.5.1)(@types/node@24.19.1)(@vitest/ui@5.0.5)(esbuild@0.27.7)(typescript@7.0.2)(yaml@2.9.1)))(typescript@7.0.2)(vite-plus@1.3.0(@astrojs/compiler-rs@0.5.1)(@types/node@24.19.1)(@vitest/ui@5.0.5)(esbuild@0.27.7)(typescript@7.0.2)(yaml@2.9.1))
+        specifier: github:PerfectPan/lint-config#v0.7.1
+        version: https://codeload.github.com/PerfectPan/lint-config/tar.gz/5b361c053389ac978dfec1121d11731c904ec1d0(oxfmt@0.71.0(vite-plus@1.3.0(@astrojs/compiler-rs@0.5.1)(@types/node@24.19.1)(@vitest/ui@5.0.5)(esbuild@0.27.7)(typescript@7.0.2)(yaml@2.9.1)))(oxlint-tsgolint@7.0.2004)(oxlint@1.86.0(oxlint-tsgolint@7.0.2004)(vite-plus@1.3.0(@astrojs/compiler-rs@0.5.1)(@types/node@24.19.1)(@vitest/ui@5.0.5)(esbuild@0.27.7)(typescript@7.0.2)(yaml@2.9.1)))(typescript@7.0.2)(vite-plus@1.3.0(@astrojs/compiler-rs@0.5.1)(@types/node@24.19.1)(@vitest/ui@5.0.5)(esbuild@0.27.7)(typescript@7.0.2)(yaml@2.9.1))
       '@types/node':
         specifier: ^24.19.1
         version: 24.19.1
@@ -1608,16 +1608,19 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@perfectpan/lint-config@https://codeload.github.com/PerfectPan/lint-config/tar.gz/28be8c1e152dde6a44fce9e43fdb282957959cc0':
-    resolution: {gitHosted: true, integrity: sha512-Q1pr0n4JHApZ7tSVtP/eXkZT5vCk6f/ndbXzeGZb/FBFBj08XI4xPPEziTt3pW3+ej1FX2D8Eud4QiRATeq05g==, tarball: https://codeload.github.com/PerfectPan/lint-config/tar.gz/28be8c1e152dde6a44fce9e43fdb282957959cc0}
-    version: 0.6.0
+  '@perfectpan/lint-config@https://codeload.github.com/PerfectPan/lint-config/tar.gz/5b361c053389ac978dfec1121d11731c904ec1d0':
+    resolution: {gitHosted: true, integrity: sha512-2s6i1aW0xGk1m850W0TLpkLJET8D7tjIY9sMCZWBH6EhUwAqYQT6zajNykFFI/DK49u07S/soXY8h2xYVbib3w==, tarball: https://codeload.github.com/PerfectPan/lint-config/tar.gz/5b361c053389ac978dfec1121d11731c904ec1d0}
+    version: 0.7.1
     peerDependencies:
+      eslint-plugin-better-tailwindcss: '>=4.10.0'
       oxfmt: '>=0.57.0'
       oxlint: '>=1.79.0'
       oxlint-tsgolint: '>=0.24.0'
-      typescript: '>=6.0.0'
+      typescript: '>=6.0.2'
       vite-plus: '>=0.2.4'
     peerDependenciesMeta:
+      eslint-plugin-better-tailwindcss:
+        optional: true
       oxfmt:
         optional: true
       oxlint:
@@ -4432,7 +4435,7 @@ snapshots:
   '@pagefind/windows-x64@1.5.2':
     optional: true
 
-  '@perfectpan/lint-config@https://codeload.github.com/PerfectPan/lint-config/tar.gz/28be8c1e152dde6a44fce9e43fdb282957959cc0(oxfmt@0.71.0(vite-plus@1.3.0(@astrojs/compiler-rs@0.5.1)(@types/node@24.19.1)(@vitest/ui@5.0.5)(esbuild@0.27.7)(typescript@7.0.2)(yaml@2.9.1)))(oxlint-tsgolint@7.0.2004)(oxlint@1.86.0(oxlint-tsgolint@7.0.2004)(vite-plus@1.3.0(@astrojs/compiler-rs@0.5.1)(@types/node@24.19.1)(@vitest/ui@5.0.5)(esbuild@0.27.7)(typescript@7.0.2)(yaml@2.9.1)))(typescript@7.0.2)(vite-plus@1.3.0(@astrojs/compiler-rs@0.5.1)(@types/node@24.19.1)(@vitest/ui@5.0.5)(esbuild@0.27.7)(typescript@7.0.2)(yaml@2.9.1))':
+  '@perfectpan/lint-config@https://codeload.github.com/PerfectPan/lint-config/tar.gz/5b361c053389ac978dfec1121d11731c904ec1d0(oxfmt@0.71.0(vite-plus@1.3.0(@astrojs/compiler-rs@0.5.1)(@types/node@24.19.1)(@vitest/ui@5.0.5)(esbuild@0.27.7)(typescript@7.0.2)(yaml@2.9.1)))(oxlint-tsgolint@7.0.2004)(oxlint@1.86.0(oxlint-tsgolint@7.0.2004)(vite-plus@1.3.0(@astrojs/compiler-rs@0.5.1)(@types/node@24.19.1)(@vitest/ui@5.0.5)(esbuild@0.27.7)(typescript@7.0.2)(yaml@2.9.1)))(typescript@7.0.2)(vite-plus@1.3.0(@astrojs/compiler-rs@0.5.1)(@types/node@24.19.1)(@vitest/ui@5.0.5)(esbuild@0.27.7)(typescript@7.0.2)(yaml@2.9.1))':
     optionalDependencies:
       oxfmt: 0.71.0(vite-plus@1.3.0(@astrojs/compiler-rs@0.5.1)(@types/node@24.19.1)(@vitest/ui@5.0.5)(esbuild@0.27.7)(typescript@7.0.2)(yaml@2.9.1))
       oxlint: 1.86.0(oxlint-tsgolint@7.0.2004)(vite-plus@1.3.0(@astrojs/compiler-rs@0.5.1)(@types/node@24.19.1)(@vitest/ui@5.0.5)(esbuild@0.27.7)(typescript@7.0.2)(yaml@2.9.1))
