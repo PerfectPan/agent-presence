@@ -28,8 +28,8 @@ import {
 // every record once, append every dsh usage line once, and refresh every owed source once. The worker runs in a child
 // process, which reports reaching the point on stdout and is killed there; the tests wait on those lines only.
 
-// The child needs `--experimental-transform-types` and this Node's `registerHooks` (both added in 22.15) to run the
-// TypeScript sources, while `engines` still allows 22.13: on such a Node the tests skip instead of failing.
+// The child needs native type stripping and `registerHooks` to resolve the TypeScript sources. Node 26 strips
+// types without the removed transform flag; Node 22.13 lacks `registerHooks`, so those tests skip.
 const canRunTypeSources = typeof nodeModule.registerHooks === 'function';
 
 /** Skips the crash tests where the child cannot run the TypeScript sources. */
@@ -124,7 +124,9 @@ async function startChildUntil(stopAt: string, line: string): Promise<ChildProce
   const started = spawn(
     process.execPath,
     [
-      '--experimental-transform-types',
+      ...(process.allowedNodeEnvironmentFlags.has('--experimental-transform-types')
+        ? ['--experimental-transform-types']
+        : []),
       '--no-warnings',
       '--input-type=module',
       '-e',
@@ -145,6 +147,7 @@ async function startChildUntil(stopAt: string, line: string): Promise<ChildProce
         return;
       }
     }
+    throw new Error(`the worker closed stdout before "${line}"`);
   })();
   await Promise.race([reached, exited]);
   return started;

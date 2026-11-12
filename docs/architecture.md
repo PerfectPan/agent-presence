@@ -717,7 +717,7 @@ remote value is wrong but local is correct      -> provider sync path bug or del
 
 ## Package And Release Safety
 
-The repository is managed with pnpm and pins the package manager through `packageManager`; CI and the release job install that pnpm and the Node.js major in `.node-version` through `pnpm/setup`.
+The repository is managed with pnpm and pins the package manager through `packageManager`; CI and the release job install that pnpm and the exact Node.js version in `.node-version` through `pnpm/setup`.
 
 Supply-chain settings live in `pnpm-workspace.yaml`:
 

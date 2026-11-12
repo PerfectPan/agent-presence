@@ -22,12 +22,12 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      # Installs the pnpm from `packageManager` and the Node.js major in
-      # `.node-version`, and runs `pnpm install --frozen-lockfile`. This job
+      # Installs the pnpm from `packageManager` and the Node.js range in
+      # `devEngines.runtime`, and runs `pnpm install --frozen-lockfile`. This job
       # skips the store cache.
       - uses: pnpm/setup@v3
         with:
-          node-version-file: .node-version
+          runtime: node
           require-lockfile: true
 
       - run: pnpm test

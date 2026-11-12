@@ -2,5 +2,10 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "astro",
   "buildCommand": "astro build",
-  "outputDirectory": "dist"
+  "outputDirectory": "dist",
+  "git": {
+    "deploymentEnabled": {
+      "chore/node-26-13-1": false
+    }
+  }
 }

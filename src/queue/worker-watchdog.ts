@@ -40,7 +40,10 @@ export async function startWorkerWatchdog(
         pollMs: options.pollMs ?? 2_000,
         requestFreshMs: STOP_REQUEST_FRESH_MS
       },
-      execArgv: source ? ['--experimental-transform-types'] : []
+      execArgv:
+        source && process.allowedNodeEnvironmentFlags.has('--experimental-transform-types')
+          ? ['--experimental-transform-types']
+          : []
     }
   );
   // If a monitor fails, normal cooperative handover still works. Never leave an unhandled Worker error.

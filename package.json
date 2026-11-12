@@ -63,5 +63,14 @@
     "@rivus/agent-kit-collab": "0.22.0",
     "effect": "4.0.5",
     "zod": "^4.6.5"
+  },
+  "devEngines": {
+    "runtime": [
+      {
+        "name": "node",
+        "version": "^26.13.1",
+        "onFail": "error"
+      }
+    ]
   }
 }
