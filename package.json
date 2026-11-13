@@ -28,7 +28,6 @@
     "format:check": "vp fmt --check",
     "prepack": "pnpm test && pnpm run typecheck && pnpm run build",
     "lint": "vp lint",
-    "release": "changeset publish",
     "test": "pnpm peers check --lockfile-only && vp test",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "version-packages": "changeset version"

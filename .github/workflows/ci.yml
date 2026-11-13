@@ -31,6 +31,12 @@ jobs:
           cache: true
           require-lockfile: true
 
+      # A pending changeset that names the private docs site blocks every release: Changesets never consumes a
+      # record for it alone and fails on one that also names the package.
+      - uses: PerfectPan/gh-repo-checks@v1
+        with:
+          check: release-plan
+
       - run: pnpm format:check
 
       - run: pnpm test
