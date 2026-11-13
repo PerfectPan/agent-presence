@@ -107,9 +107,9 @@ Only the published package gets changesets. The private docs site package (`site
 
 The package is published as `@rivus/agent-presence` through Changesets and npm Trusted Publishing (OIDC); the release workflow carries no long-lived npm write token.
 
-1. When changesets land on `main`, `.github/workflows/publish.yml` opens or updates the draft release PR `chore(release): version packages` on the branch `changeset-release/main` by running `pnpm version-packages` (`changeset version`). Later changesets fold into the same PR.
+1. `.github/workflows/publish.yml` calls the shared release workflow from `PerfectPan/gh-repo-checks`; its [runbook](https://github.com/PerfectPan/gh-repo-checks/blob/v1/docs/npm-release.md) describes each job and its recovery. When changesets land on `main`, it opens or updates the draft release PR `chore(release): version packages` on the branch `changeset-release/main` by running `pnpm version-packages` (`changeset version`). Later changesets fold into the same PR. CI rejects a changeset that names the private docs site, because such a record blocks every release.
 2. Each update returns the release PR to Draft. Review the version changes, mark it Ready for review, and approve workflow runs if GitHub requests approval. Verify that both Ubuntu and macOS CI jobs and Review passed for the current head before merging.
-3. Merging the release PR runs `pnpm release`. When Changesets finds an unpublished version, pnpm runs the package’s `prepack` checks (tests, typecheck and build) before uploading it through npm Trusted Publishing. The action then pushes the tag and creates the GitHub Release.
+3. Merging the release PR publishes the new version. A job without write permissions runs `pnpm format:check`, the docs site's `docs:sync` and `pnpm lint`, audits the package's production dependencies (the docs site is excluded), then packs the unpublished version, which runs the package’s `prepack` checks (tests, typecheck and build). A separate publish job, the only one allowed to request an OIDC token, uploads that tarball through npm Trusted Publishing, pushes the tag and creates the GitHub Release. To retry a failed release, use **Re-run failed jobs** on that run, which keeps its commit and packed tarball. Running the Release workflow on `main` manually publishes only while no changesets are pending, and tags the current `main` commit rather than the release commit.
 
 Before merging the release PR, run the hook event queue's idle-exit race tests at 1,000 iterations; CI runs them at the default 100:
 
@@ -120,7 +120,7 @@ PRESENCE_RACE_RUNS=1000 pnpm test test/queue-idle-race.test.ts test/queue-comman
 Two settings surfaces must stay in sync:
 
 - **GitHub**: `PerfectPan/agent-presence` → Settings → Actions → General: allow read/write workflow permissions and let GitHub Actions create and approve pull requests, so the Changesets action can open the release PR.
-- **npm**: `npmjs.com` → Packages → `@rivus/agent-presence` → Settings → Trusted publishing, using owner `PerfectPan`, repository `agent-presence`, workflow filename `publish.yml`. Renaming the workflow file breaks publishing until this setting changes too.
+- **npm**: `npmjs.com` → Packages → `@rivus/agent-presence` → Settings → Trusted publishing, using owner `PerfectPan`, repository `agent-presence`, workflow filename `publish.yml`. npm checks this calling workflow's file name, not the shared workflow it calls; renaming the workflow file breaks publishing until this setting changes too.
 
 Trusted Publishing cannot be configured until the package exists on npm. To bootstrap a brand-new package, run one explicit publish with a short-lived granular npm token (outside the normal workflow), confirm the package exists, configure Trusted Publishing as above, then revoke the token and remove any temporary workflow changes.
 
