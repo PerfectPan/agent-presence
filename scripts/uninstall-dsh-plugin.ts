@@ -1,20 +1,14 @@
 #!/usr/bin/env node
 import { resolveDshPluginPaths, uninstallDshPlugin } from '../src/installers.js';
 import { assertSupportedPlatform } from '../src/platform.js';
+import { reportDshPatchOutcome, runScriptMain } from './lib/cli.js';
 
 async function main(): Promise<void> {
   assertSupportedPlatform();
   const result = await uninstallDshPlugin(resolveDshPluginPaths());
 
   console.log(`${result.status === 'removed' ? 'removed' : 'kept'} dsh plugin: ${result.pluginPath}`);
-  if (result.patchUpdated) {
-    console.log(`updated dsh patch: ${result.patchPath}`);
-  } else if (result.patchError) {
-    console.warn(`warning: could not update dsh patch at ${result.patchPath}: ${result.patchError}`);
-  }
+  reportDshPatchOutcome(result);
 }
 
-main().catch((error: unknown) => {
-  console.error(error instanceof Error ? error.message : String(error));
-  process.exitCode = 1;
-});
+runScriptMain(main);

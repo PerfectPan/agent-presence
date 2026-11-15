@@ -1,4 +1,4 @@
-import { pickString, type StringEnv } from './context.js';
+import { pickProject, pickString, type StringEnv } from './context.js';
 
 export interface CodexHookContext {
   sessionId?: string;
@@ -24,12 +24,6 @@ export function resolveCodexHookContext(payload: unknown, env: StringEnv = proce
       nestedPayloadKeys: ['event', 'session', 'input', 'context'],
       payloadFirst: true
     }),
-    project: pickString(payload, {
-      env,
-      envKeys: ['PWD'],
-      payloadKeys: ['cwd', 'project'],
-      nestedPayloadKeys: ['event', 'session', 'input', 'context'],
-      payloadFirst: true
-    })
+    project: pickProject(payload, env)
   };
 }

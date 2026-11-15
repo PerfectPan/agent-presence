@@ -1,5 +1,5 @@
 import { basename } from 'node:path';
-import { pickString, type StringEnv } from './context.js';
+import { pickProject, pickString, type StringEnv } from './context.js';
 
 export interface ClaudeHookContext {
   event?: string;
@@ -50,12 +50,6 @@ export function resolveClaudeHookContext(payload: unknown, env: StringEnv = proc
   return {
     event,
     sessionId,
-    project: pickString(payload, {
-      env,
-      envKeys: ['PWD'],
-      payloadKeys: ['cwd', 'project'],
-      nestedPayloadKeys: ['event', 'session', 'input', 'context'],
-      payloadFirst: true
-    })
+    project: pickProject(payload, env)
   };
 }

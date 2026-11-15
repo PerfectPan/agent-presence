@@ -8,8 +8,6 @@ const config: KnipConfig = {
   workspaces: {
     '.': {
       entry: ['src/**/*.ts!', 'scripts/**/*.ts!'],
-      // mkfifo is a coreutils binary used by the queue-worker recovery test.
-      ignoreBinaries: ['mkfifo'],
       project: ['src/**/*.ts!', 'scripts/**/*.ts!']
     },
     site: {
