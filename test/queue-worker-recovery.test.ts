@@ -1,4 +1,4 @@
-import { execFileSync, spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
+import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { once } from 'node:events';
 import { mkdir, readFile, rm, utimes, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
@@ -151,21 +151,21 @@ const lock = await tryWorkerLock(statePath, kitPlatform());
 if (!lock) { throw new Error('no lock'); }
 if (mode.startsWith('raced-')) {
   const { Worker } = await import('node:worker_threads');
-  const { openSync, writeSync, closeSync } = await import('node:fs');
+  const { writeFileSync } = await import('node:fs');
   const control = new BigInt64Array(new SharedArrayBuffer(8));
   Atomics.store(control, 0, process.hrtime.bigint() - 1_000_000_000n);
+  // The request exists before the first stale tick, so the monitor observes the stale heartbeat and then waits in
+  // its simulated request I/O. The flip below lands inside that window; an observation not invalidated in there
+  // would terminate this process.
+  writeFileSync(stopPath, String(process.ppid));
   const thread = new Worker(new URL(${JSON.stringify(watchdogThreadUrl)}), {
-    workerData: { control: control.buffer, stopRequestPrefix: stopPath.slice(0, -4), staleMs: 200, pollMs: 20, requestFreshMs: 6000 },
+    workerData: { control: control.buffer, stopRequestPrefix: stopPath.slice(0, -4), staleMs: 200, pollMs: 20, requestFreshMs: 6000, requestDelayMs: 500 },
     execArgv: process.allowedNodeEnvironmentFlags.has('--experimental-transform-types') ? ['--experimental-transform-types'] : []
   });
   process.stdout.write('ready\\n');
-  // Opening the FIFO writer waits until the monitor has observed a stale heartbeat and opened its reader.
-  // Keep it blocked in request I/O until progress or release changes the shared state.
-  const fd = openSync(stopPath, 'w');
+  await sleep(150);
   Atomics.store(control, 0, mode === 'raced-release' ? 0n : process.hrtime.bigint() + 1_000_000_000n);
-  writeSync(fd, String(process.ppid));
-  closeSync(fd);
-  await sleep(500);
+  await sleep(700);
   await thread.terminate();
   await lock.release();
 } else {
@@ -249,7 +249,6 @@ describe('self-termination in a real worker process', () => {
   it.each(['raced-progress', 'raced-release'])(
     'invalidates a stale observation on %s during request I/O',
     async (mode) => {
-      execFileSync('mkfifo', [`${queuePaths(home.statePath).stopRequestPrefix}test`]);
       const child = await startChild(mode);
       expect(await once(child, 'exit')).toEqual([0, null]);
     }

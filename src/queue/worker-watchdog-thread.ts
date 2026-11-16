@@ -9,16 +9,25 @@ const {
   stopRequestPrefix,
   staleMs,
   pollMs,
-  requestFreshMs
+  requestFreshMs,
+  requestDelayMs
 } = workerData as {
   control: SharedArrayBuffer;
   stopRequestPrefix: string;
   staleMs: number;
   pollMs: number;
   requestFreshMs: number;
+  /** Simulated request I/O time; production adds none, a test widens the window a heartbeat or release can invalidate an observation in. */
+  requestDelayMs?: number;
 };
 const control = new BigInt64Array(buffer);
 const staleNs = BigInt(staleMs) * 1_000_000n;
+// A worker thread may block on Atomics, so this is how synchronous request I/O takes a test-controlled time.
+const sleepBuffer = new Int32Array(new SharedArrayBuffer(4));
+
+function sleep(ms: number): void {
+  Atomics.wait(sleepBuffer, 0, 0, ms);
+}
 
 function commandIsWaiting(): boolean {
   try {
@@ -28,6 +37,10 @@ function commandIsWaiting(): boolean {
       }
       try {
         const path = join(dirname(stopRequestPrefix), name);
+        if (requestDelayMs) {
+          // The simulated request I/O: an observation is only valid if it still holds once this has completed.
+          sleep(requestDelayMs);
+        }
         const pid = Number(readFileSync(path, 'utf8').trim());
         if (
           !Number.isSafeInteger(pid) ||

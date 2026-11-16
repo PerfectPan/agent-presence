@@ -68,6 +68,24 @@ const booleanLike = z.union([
 const stringLike = z.union([z.string(), z.pipe(z.number(), z.transform(String))]);
 
 /**
+ * Parses `value` with `schema`: `{ ok: true, data }` on success; on failure the issue is recorded under `path` and
+ * the result is `{ ok: false }`, so every drop is reported once and each caller decides what it keeps instead.
+ */
+function parseOrReport<S extends z.ZodMiniType>(
+  path: string,
+  schema: S,
+  value: unknown,
+  issues: ConfigIssue[]
+): { ok: true; data: z.output<S> } | { ok: false } {
+  const parsed = schema.safeParse(value);
+  if (parsed.success) {
+    return { ok: true, data: parsed.data };
+  }
+  issues.push({ path, reason: droppedValueReason(parsed.error) });
+  return { ok: false };
+}
+
+/**
  * A known config field: parses, or loads as missing with its path reported. `z.optional` wraps the pipe, so an
  * absent key stays absent and only a present value can be dropped.
  */
@@ -76,12 +94,8 @@ function configField<S extends z.ZodMiniType>(path: string, schema: S, issues: C
     z.pipe(
       z.unknown(),
       z.transform((value): z.output<S> | undefined => {
-        const parsed = schema.safeParse(value);
-        if (parsed.success) {
-          return parsed.data;
-        }
-        issues.push({ path, reason: droppedValueReason(parsed.error) });
-        return undefined;
+        const parsed = parseOrReport(path, schema, value, issues);
+        return parsed.ok ? parsed.data : undefined;
       })
     )
   );
@@ -95,12 +109,8 @@ function parseOrDrop<S extends z.ZodMiniType>(path: string, schema: S, issues: C
   return z.pipe(
     z.unknown(),
     z.transform((value) => {
-      const parsed = schema.safeParse(value);
-      if (parsed.success) {
-        return parsed.data;
-      }
-      issues.push({ path, reason: droppedValueReason(parsed.error) });
-      return fallback;
+      const parsed = parseOrReport(path, schema, value, issues);
+      return parsed.ok ? parsed.data : fallback;
     })
   );
 }
@@ -115,11 +125,9 @@ function entriesThatParse<S extends z.ZodMiniType>(prefix: string, entry: (key: 
     z.transform((entries) => {
       const parsed: Record<string, z.output<S>> = {};
       for (const [key, value] of Object.entries(entries)) {
-        const result = entry(key).safeParse(value);
-        if (result.success) {
+        const result = parseOrReport(`${prefix}.${key}`, entry(key), value, issues);
+        if (result.ok) {
           parsed[key] = result.data;
-        } else {
-          issues.push({ path: `${prefix}.${key}`, reason: droppedValueReason(result.error) });
         }
       }
       return parsed;

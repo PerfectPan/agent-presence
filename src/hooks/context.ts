@@ -60,3 +60,14 @@ export function pickString(payload: unknown, options: PickStringOptions): string
   const envValue = pickEnvString(options.env, envKeys);
   return envValue ? envValue : findPayloadString(payload, payloadKeys, options.nestedPayloadKeys);
 }
+
+/** The project directory a hook payload names: the payload's `cwd`/`project`, or the shell's `PWD`. */
+export function pickProject(payload: unknown, env: StringEnv = process.env): string | undefined {
+  return pickString(payload, {
+    env,
+    envKeys: ['PWD'],
+    payloadKeys: ['cwd', 'project'],
+    nestedPayloadKeys: ['event', 'session', 'input', 'context'],
+    payloadFirst: true
+  });
+}

@@ -1,53 +1,20 @@
 #!/usr/bin/env node
 import { existsSync } from 'node:fs';
+import { chmod, mkdir, rm, writeFile } from 'node:fs/promises';
+import { dirname } from 'node:path';
 import { presenceShimPath } from '../src/harness/shim-path.js';
 import { writePresenceShim } from '../src/harness/shim.js';
-import { chmod, mkdir, rm, writeFile } from 'node:fs/promises';
-import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
-import { dirname, join } from 'node:path';
-import { homedir } from 'node:os';
-import { buildPowerEventWatcherSwift, buildPowerWatcherPlist, buildPowerWatcherScript } from '../src/power-watcher.js';
 import { assertMacOS } from '../src/platform.js';
-
-const execFileAsync = promisify(execFile);
-const LABEL = 'work.rivus.agent-presence.power-watch';
-const LEGACY_LABEL = 'work.garyyang.agent-signature.shutdown-watch';
-
-async function launchctl(args: string[]): Promise<void> {
-  await execFileAsync('launchctl', args);
-}
-
-function currentUid(): number {
-  if (!process.getuid) {
-    throw new Error('process.getuid is unavailable on this platform');
-  }
-  return process.getuid();
-}
+import { buildPowerEventWatcherSwift, buildPowerWatcherPlist, buildPowerWatcherScript } from '../src/power-watcher.js';
+import { runScriptMain } from './lib/cli.js';
+import { POWER_WATCH_LABEL, currentUid, launchctl, powerWatchPaths } from './lib/power-watch.js';
 
 async function main(): Promise<void> {
   assertMacOS();
   if (!existsSync(presenceShimPath())) {
     await writePresenceShim(undefined, { mode: 'absolute' });
   }
-  const home = homedir();
-  const scriptPath =
-    process.env.AGENT_PRESENCE_POWER_WATCHER_SCRIPT ??
-    process.env.AGENT_SIGNATURE_SHUTDOWN_WATCHER_SCRIPT ??
-    join(home, '.agent-presence', 'power-watch.sh');
-  const powerWatcherPath =
-    process.env.AGENT_PRESENCE_POWER_WATCHER_SWIFT ??
-    process.env.AGENT_SIGNATURE_POWER_WATCHER_SWIFT ??
-    join(home, '.agent-presence', 'power-watch.swift');
-  const plistPath =
-    process.env.AGENT_PRESENCE_POWER_WATCHER_PLIST ??
-    process.env.AGENT_SIGNATURE_SHUTDOWN_WATCHER_PLIST ??
-    join(home, 'Library', 'LaunchAgents', `${LABEL}.plist`);
-  const logPath =
-    process.env.AGENT_PRESENCE_POWER_WATCHER_LOG ??
-    process.env.AGENT_SIGNATURE_SHUTDOWN_WATCHER_LOG ??
-    join(home, '.agent-presence', 'power-watch.log');
-  const legacyPlistPath = join(home, 'Library', 'LaunchAgents', `${LEGACY_LABEL}.plist`);
+  const { scriptPath, powerWatcherPath, plistPath, logPath, legacyPlistPath } = powerWatchPaths();
 
   await mkdir(dirname(scriptPath), { recursive: true, mode: 0o700 });
   await writeFile(
@@ -67,7 +34,7 @@ async function main(): Promise<void> {
   await writeFile(
     plistPath,
     buildPowerWatcherPlist({
-      label: LABEL,
+      label: POWER_WATCH_LABEL,
       scriptPath,
       logPath,
       errorLogPath: logPath
@@ -80,12 +47,9 @@ async function main(): Promise<void> {
   await rm(legacyPlistPath, { force: true });
   await launchctl(['bootout', domain, plistPath]).catch(() => undefined);
   await launchctl(['bootstrap', domain, plistPath]);
-  await launchctl(['enable', `${domain}/${LABEL}`]).catch(() => undefined);
+  await launchctl(['enable', `${domain}/${POWER_WATCH_LABEL}`]).catch(() => undefined);
   console.log(`installed shutdown watcher: ${plistPath}`);
   console.log(`installed power event watcher: ${powerWatcherPath}`);
 }
 
-main().catch((error: unknown) => {
-  console.error(error instanceof Error ? error.message : String(error));
-  process.exitCode = 1;
-});
+runScriptMain(main);

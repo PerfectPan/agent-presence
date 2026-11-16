@@ -24,7 +24,7 @@
     "uninstall:dsh-plugin": "node dist/scripts/uninstall-dsh-plugin.js",
     "uninstall:shutdown-watcher": "node dist/scripts/uninstall-shutdown-watcher.js",
     "changeset": "changeset",
-    "duplicates": "jscpd --config node_modules/@perfectpan/lint-config/jscpd.json src scripts --ignore '**/*.test.ts,**/install-*.ts,**/uninstall-*.ts,**/cli/commands/*.ts,**/config-schema.ts,**/hooks/*.ts' --format 'typescript,javascript,json'",
+    "duplicates": "jscpd --config node_modules/@perfectpan/lint-config/jscpd.json src scripts --ignore '**/*.test.ts' --format 'typescript,javascript,json'",
     "duplicates:audit": "jscpd --config node_modules/@perfectpan/lint-config/jscpd-audit.json src scripts site/src --absolute --output tmp/duplicates-audit --ignore '**/node_modules/**,**/dist/**' --format 'typescript,javascript'",
     "format": "vp fmt",
     "format:check": "vp fmt --check",
