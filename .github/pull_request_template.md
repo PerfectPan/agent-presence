@@ -17,6 +17,7 @@
 - [ ] Test: `pnpm test`
 - [ ] Typecheck: `pnpm run typecheck`
 - [ ] Lint: `pnpm lint` (after `pnpm -C site run docs:sync` in a fresh checkout)
+- [ ] Run `pnpm knip` and `pnpm knip:production`. Unused files, exports, dependencies, or configuration and tag hints fail CI.
 - [ ] Duplicate code: `pnpm duplicates` (fails on any reported clone, while `pnpm duplicates:audit` only reports findings)
 - [ ] Build: `pnpm run build`
 - [ ] Docs site, when `site/` changes: `pnpm -C site run docs:build`
