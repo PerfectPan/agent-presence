@@ -44,6 +44,9 @@ pnpm test
 pnpm run typecheck
 pnpm -C site run docs:sync   # generates the astro:content types lint needs
 pnpm lint
+# Both Knip checks fail CI on unused files, exports, dependencies, or configuration and tag hints.
+pnpm knip
+pnpm knip:production   # Check production entry points separately.
 pnpm duplicates   # Fails on any reported clone. `pnpm duplicates:audit` only reports findings.
 pnpm run build
 pnpm pack --dry-run
