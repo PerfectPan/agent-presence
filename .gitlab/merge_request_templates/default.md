@@ -17,6 +17,7 @@
 - [ ] Test: `pnpm test`
 - [ ] Typecheck: `pnpm run typecheck`
 - [ ] Lint: `pnpm lint` (after `pnpm -C site run docs:sync` in a fresh checkout)
+- [ ] Duplicate code: `pnpm duplicates` (fails on any reported clone, while `pnpm duplicates:audit` only reports findings)
 - [ ] Build: `pnpm run build`
 - [ ] Docs site, when `site/` changes: `pnpm -C site run docs:build`
 - [ ] Changeset: `pnpm changeset status` (user-facing package changes add a changeset)

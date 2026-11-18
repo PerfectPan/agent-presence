@@ -44,6 +44,7 @@ pnpm test
 pnpm run typecheck
 pnpm -C site run docs:sync   # generates the astro:content types lint needs
 pnpm lint
+pnpm duplicates   # Fails on any reported clone. `pnpm duplicates:audit` only reports findings.
 pnpm run build
 pnpm pack --dry-run
 
