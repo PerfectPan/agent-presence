@@ -57,6 +57,7 @@ pnpm format:check
 pnpm test
 pnpm run typecheck
 pnpm lint
+pnpm duplicates   # Fails on any reported clone. `pnpm duplicates:audit` only reports findings.
 pnpm run build
 pnpm pack --dry-run
 ```
