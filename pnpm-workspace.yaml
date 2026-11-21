@@ -16,6 +16,8 @@ minimumReleaseAgeIgnoreMissingTime: false
 minimumReleaseAgeExclude:
   - '@rivus/agent-kit'
   - '@rivus/agent-kit-collab'
+  # Renovate security update: astro@7.4.7
+  - astro@7.4.7
 blockExoticSubdeps: true
 strictDepBuilds: true
 engineStrict: true
