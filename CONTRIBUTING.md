@@ -24,17 +24,15 @@ The installer scripts (`pnpm run install:*` / `uninstall:*`) and `agent-presence
 ## Contribution Flow
 
 1. Open an issue or discussion for ambiguous work.
-2. Choose Spec and Plan artifacts using the [Change Design Gate](#change-design-gate) before substantial work, and review the behavior and technical design before implementing that scope.
+2. Check the [Change Design Gate](#change-design-gate). Write an implementation plan only when the change meets the gate; bugfixes and routine changes go straight to implementation and PR summary.
 3. Create a focused branch.
 4. Install local Git hooks with `./scripts/install-git-hooks.sh` if this checkout has not already done so.
 5. Add or update tests for behavior changes.
 6. Add a changeset for user-facing package changes.
 7. Run the [Required Checks](#required-checks).
-8. Update `README.md`, `README.zh-CN.md`, `docs/`, `site/`, or the active Spec and Plan when user-facing behavior, architecture, workflow, or operations change.
+8. Update `README.md`, `README.zh-CN.md`, `docs/`, `site/`, or the active Plan when user-facing behavior, architecture, or workflow changes.
 9. Open a pull request with a conventional title, a summary of what changed and why, validation with skipped gates, and any risks.
 10. Keep the PR description current after review feedback, rebases, validation reruns, or scope changes.
-
-Small fixes, typo corrections, dependency metadata updates, and narrow documentation improvements do not need a separate Spec and Plan.
 
 ## Required Checks
 
@@ -189,48 +187,40 @@ Trusted Publishing cannot be configured until the package exists on npm. To boot
 
 Model prices come from `@rivus/agent-kit/cost/prices`, the kit's snapshot of LiteLLM's price list, and update with the kit version: the kit refreshes the snapshot weekly and ships it in its next release, and upgrading `@rivus/agent-kit` brings those prices here. This repository keeps no price snapshot of its own. `src/usage/pricing.ts` holds only the fallback aliases for ids the kit's table does not name: the table's own Claude, GPT-5 and DeepSeek V4 models, so that their suffixed variants (`gpt-5.5-codex`, `claude-opus-4-8-thinking`) take their model's price; the Claude family aliases `opus`, `sonnet` and `haiku`; and the last list prices of models the table does not name. When a source records suffixed variants of another series, add the series to `ALIASED_SERIES` there; when it records a model the table drops, add the model's last list price.
 
-## SDD Workflow And Document Lifecycle
+## Plan Lifecycle And Retirement
 
-1. Record the problem, affected users or maintainers, in-scope behavior, non-goals, and acceptance conditions.
-2. Choose artifacts with the [Change Design Gate](#change-design-gate). Product work defaults to one behavioral Spec and one detailed Plan for the same deliverable. The Spec states required behavior: interactions and acceptance scenarios. The Plan owns the technical decisions (design, component and interface changes, data flow) and the detailed execution plan (ordered tasks, tests, exit conditions, validation, and rollback).
-3. Review the behavior and technical design before implementing the affected scope. The Plan must resolve implementation decisions rather than leave them to the implementer; keep it blocked while a material decision is unresolved. New behavior revises the Spec. New implementation decisions revise the Plan.
-4. Implement inside that boundary. Add evidence for each acceptance condition, or say why existing evidence is enough. Update current-state docs in the same change.
-5. Before retiring a completed Spec or Plan, move still-valid behavior, invariants, and operational limits into current-state docs and tests. The final delivery PR may delete the completed files. Keep an unfinished Spec or Plan active. When the owner decides that a long-blocked, unfinished Spec or Plan should not stay active, its scope may move to an issue that states the goal, the blocker, and the independent parts, and links the files at a fixed commit; the files are then deleted.
-6. Git history and the delivery PR keep the retired decision. Do not copy completed Specs or Plans into a second archive.
+1. Draft a plan from [`docs/plans/0000-template.md`](docs/plans/0000-template.md) only when triggered by the [Change Design Gate](#change-design-gate). Keep `Status: blocked` while a material scope, interface, data, or rollout decision is unresolved.
+2. Review the goals, boundaries, and key decisions before implementing; update the plan if design choices change mid-flight.
+3. Implement within that scope, adding tests and updating current-state `docs/` in the same change.
+4. Retire the plan as soon as its code scope lands on the default branch. Do not keep a completed plan in `docs/plans/` waiting on deferred manual checks or future polish. In the final delivery PR:
+   - Move any remaining manual verification or follow-up work to issues.
+   - Migrate lasting knowledge that code cannot express (invariants, ownership/trust boundaries, tradeoffs, external quirks, validation limits) into current-state `docs/` (and local `Why:` comments in code).
+   - Delete the completed plan file. Git history and the delivery PR keep the full execution record.
+5. When the owner decides that a long-blocked, unfinished Plan should not stay active, move its scope to an issue that states the goal, the blocker, and the independent parts, link the file at a fixed commit, and delete the plan file.
 
 ## Change Design Gate
 
-Every change needs a requirement record. Use the smallest set of artifacts that makes behavior and implementation reviewable.
+Most changes need only a clear PR description (`## Summary` and `## Validation`), not a separate document.
 
-| Change type                                      | Required artifact                                              |
-| ------------------------------------------------ | -------------------------------------------------------------- |
-| Product behavior                                 | One Spec plus one detailed Plan for the same deliverable       |
-| Technical refactor without changed user behavior | Detailed Plan with compatibility and acceptance conditions     |
-| Narrow maintenance, tests, or documentation      | Requirement and PR checklist; a separate Plan only when useful |
+| Change scope                                                                                                             | Required artifact                                                    |
+| ------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------- |
+| Bugfix, localized feature/refactor, tests, dependencies, or docs                                                         | PR description explaining what changed, why, and how it was verified |
+| New subsystem or package, public contract/schema/protocol change, major design tradeoffs, or multi-PR/multi-session work | One Plan in [`docs/plans/`](docs/plans/)                             |
 
-In this repository, changes to public CLI behavior, hook or installer behavior, install, deploy, or rollback safety, trust boundaries, configuration shape, the release process, repository structure, and long-term integration strategy count as product behavior or technical refactors, not narrow maintenance.
-
-A Spec defines observable interactions, scope, failure behavior, and acceptance examples. Use stable scenario IDs and Given/When/Then where useful. Link scenarios to tests. A Spec does not prescribe components, interfaces, or execution order. Keep active Specs under [`docs/specs/`](docs/specs/). A small change may keep both sections in the PR description. Split only when each slice has an independently demonstrable outcome.
-
-A Plan records technical decisions and the detailed execution plan that implements them. Shared architecture, compatibility, security, and recovery decisions belong in a reviewed Plan. After implementation, move lasting constraints into current-state architecture or operations docs. This repository does not keep an RFC directory. The RFCs it used earlier remain in Git history: their delivered design is in [`docs/architecture.md`](docs/architecture.md), and the Token Usage RFC's unfinished follow-up is tracked in [issue #133](https://github.com/PerfectPan/agent-presence/issues/133). Removing a proposal does not mark unimplemented ideas as delivered.
-
-Number a Spec and its paired Plan with the same four-digit id; new work takes the next free number across both directories.
+In this repository, changes to public CLI behavior, hook or installer behavior, install, deploy, or rollback safety, trust boundaries, configuration shape, the release process, repository structure, and long-term integration strategy generally meet the Plan gate.
 
 ## Implementation Plans
 
-[`docs/plans/`](docs/plans/) contains active Plans: technical decisions plus a detailed execution plan. Copy [`0000-template.md`](docs/plans/0000-template.md) and keep only the sections that apply. A product plan links its paired Spec. Explain the current constraints, the decisions, the boundaries, the failure and rollback behavior, and how the change will be verified. A file list alone is not a design.
+[`docs/plans/`](docs/plans/) holds active Plans only while non-trivial work is in flight. Copy [`0000-template.md`](docs/plans/0000-template.md) and keep only the sections that apply. State the problem, goals, non-goals, boundaries, rejected alternatives, failure/rollback behavior, and verification; a file list alone is not a design.
 
-The execution plan tells the implementer exactly what to do: preconditions, a completion contract, ordered tasks with files, changes, tests, and exit conditions, a validation ledger, and rollback per batch. Keep the plan blocked while a decision that changes scope, interfaces, data, or rollout is unresolved.
-
-Keep unknown owners, dates, and interfaces marked "unconfirmed". A plan may make feature-specific technical decisions, but it cannot silently override current architecture. At completion, migrate lasting constraints into current-state docs and tests, then delete the completed Spec and plan in the final delivery PR. Keep unfinished scope visible.
+Keep unknown owners, dates, and interfaces marked "unconfirmed". A plan may make feature-specific technical decisions, but it cannot silently override current architecture. This repository does not keep an RFC directory. The RFCs it used earlier remain in Git history: their delivered design is in [`docs/architecture.md`](docs/architecture.md), and the Token Usage RFC's unfinished follow-up is tracked in [issue #133](https://github.com/PerfectPan/agent-presence/issues/133). Follow [Plan Lifecycle And Retirement](#plan-lifecycle-and-retirement) when the code lands.
 
 ## Documentation Standards
 
 - Use `README.md` and `README.zh-CN.md` for orientation, quick start, and current user-facing behavior.
 - Use `CONTRIBUTING.md` for contribution workflow, review expectations, and repository policy.
 - Use `AGENTS.md` for AI-agent instructions.
-- Use `docs/specs/` for active product behavior and acceptance contracts.
-- Use `docs/plans/` for active technical decisions and detailed execution plans.
+- Use `docs/plans/` for active implementation plans while non-trivial work is in flight; retire them when code lands.
 - Use `docs/architecture.md` for the current runtime architecture and trust boundaries, and the Astro site under `site/` for the user guide.
 
 Follow [`docs/README.md`](docs/README.md) when adding or reorganizing documentation.
@@ -239,7 +229,7 @@ Follow [`docs/README.md`](docs/README.md) when adding or reorganizing documentat
 
 The PR template has three sections:
 
-- **Summary**: what changed and why, with links to the issue, Spec, or Plan.
+- **Summary**: what changed and why, with links to the issue or Plan when there is one.
 - **Validation**: the commands you ran and their results, evidence for behavior or packaging claims, and skipped gates with reasons.
 - **Risks** (optional): compatibility, rollout, rollback, or follow-up risks. Delete it when there are none.
 
