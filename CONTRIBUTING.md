@@ -169,15 +169,13 @@ Trusted Publishing cannot be configured until the package exists on npm. To boot
   and pause Renovate's Actions updates while restoring coverage.
 
 - **Security is a separate settings decision**: dependency graph and Dependabot alerts remain part of the target
-  setup. Removing a Dependabot version-update file does not enable alerts or transfer security coverage. At the
-  migration audit, the [repository security settings](https://github.com/PerfectPan/agent-presence/settings/security_analysis)
-  showed dependency graph, Dependabot alerts and automatic security PRs disabled; this change does not alter those
-  settings. The owner must separately enable the dependency graph and alerts, then
-  verify that Renovate has permission to read vulnerability alerts and demonstrate a real hosted alert-to-fix PR
-  with passing CI. OSV checks and `vulnerabilityAlerts` configuration alone do not establish that coverage. Agree
-  on one primary security-PR owner only after that verification; do not disable existing security updates during
-  a future handoff until the replacement is proven. If coverage cannot be demonstrated, retain any current
-  coverage and explicitly arrange the interim security-PR owner with the maintainer.
+  setup and are configured separately in [repository security settings](https://github.com/PerfectPan/agent-presence/settings/security_analysis);
+  removing a Dependabot version-update file does not enable alerts or transfer security coverage. Before handing off
+  security-PR ownership to Renovate, enable dependency graph and alerts, verify Renovate's vulnerability-alert read
+  permission, and confirm a hosted alert-to-fix PR passes CI (OSV checks and `vulnerabilityAlerts` configuration alone
+  do not establish that coverage). Do not disable existing security updates during a future handoff until the
+  replacement is proven; if coverage cannot be demonstrated, retain current coverage and agree on an interim
+  security-PR owner with the maintainer.
 
 - **Changesets**: bot PRs carry none. Dependency updates that do not change a published package's behavior need no
   changeset. If a bot PR changes published behavior (for example a bundled dependency changed), the reviewer adds a
@@ -210,7 +208,7 @@ In this repository, changes to public CLI behavior, hook or installer behavior, 
 
 [`docs/plans/`](docs/plans/) holds active Plans only while non-trivial work is in flight. Copy [`0000-template.md`](docs/plans/0000-template.md) and keep only the sections that apply. State the problem, goals, non-goals, boundaries, rejected alternatives, failure/rollback behavior, and verification; a file list alone is not a design.
 
-Keep unknown owners, dates, and interfaces marked "unconfirmed". A plan may make feature-specific technical decisions, but it cannot silently override current architecture. This repository does not keep an RFC directory. The RFCs it used earlier remain in Git history: their delivered design is in [`docs/architecture.md`](docs/architecture.md), and the Token Usage RFC's unfinished follow-up is tracked in [issue #133](https://github.com/PerfectPan/agent-presence/issues/133). Follow [Plan Lifecycle And Retirement](#plan-lifecycle-and-retirement) when the code lands.
+Keep unknown owners, dates, and interfaces marked "unconfirmed". A plan may make feature-specific technical decisions, but it cannot silently override current architecture. This repository does not keep an RFC directory. The RFCs it used earlier remain in Git history: their delivered design is under [`docs/architecture/`](docs/architecture/overview.md), and the Token Usage RFC's unfinished follow-up is tracked in [issue #133](https://github.com/PerfectPan/agent-presence/issues/133). Follow [Plan Lifecycle And Retirement](#plan-lifecycle-and-retirement) when the code lands.
 
 ## Documentation Standards
 
@@ -218,7 +216,7 @@ Keep unknown owners, dates, and interfaces marked "unconfirmed". A plan may make
 - Use `CONTRIBUTING.md` for contribution workflow, review expectations, and repository policy.
 - Use `AGENTS.md` for AI-agent instructions.
 - Use `docs/plans/` for active implementation plans while non-trivial work is in flight; retire them when code lands.
-- Use `docs/architecture.md` for the current runtime architecture and trust boundaries, and the Astro site under `site/` for the user guide.
+- Use `docs/architecture/` (starting at [`docs/architecture/overview.md`](docs/architecture/overview.md)) for the current runtime architecture and trust boundaries, and the Astro site under `site/` for the user guide.
 
 Follow [`docs/AGENTS.md`](docs/AGENTS.md) for category placement, writing standards, and retiring plans, and list new documents in [`docs/README.md`](docs/README.md).
 

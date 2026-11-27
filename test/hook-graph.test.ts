@@ -11,7 +11,7 @@ const hookCommandEntry = resolve(repoRoot, 'src/cli/commands/hook.ts');
 const producerEntry = resolve(repoRoot, 'src/queue/produce.ts');
 
 // The hook path's static graph loads only repository modules, Node built-ins,
-// and the npm entries in hookGraphPackages (docs/architecture.md, "CLI"). Any
+// and the npm entries in hookGraphPackages (docs/architecture/overview.md, "CLI"). Any
 // other bare specifier is an npm package loaded on every hook run, so the walk
 // fails on it; this keeps `effect`, `zod`, and `@clack/prompts` out. The
 // forbidden modules are the setup/installer cluster, the Clack wrapper, the
@@ -58,7 +58,7 @@ const forbiddenHookGraphModules = [
 const scriptsDir = resolve(repoRoot, 'scripts');
 // Every npm entry the hook path loads statically, by exact specifier. A batch
 // that brings a package into the hook path adds it here; `effect` and `zod`
-// never go on this list (docs/architecture.md, "CLI"). The kit's process lock
+// never go on this list (docs/architecture/overview.md, "CLI"). The kit's process lock
 // and Node platform are here for the source-resolution log lock through
 // `src/sources.ts` and the producer's worker-lock check through
 // `src/cli/hook-output.ts`.

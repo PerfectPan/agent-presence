@@ -44,7 +44,7 @@ pnpm link --global
 agent-presence setup --hook-command absolute
 ```
 
-包里也暴露了兼容命令 `agent-signature`，旧 hook 可以继续工作。实现边界与信任边界见 [docs/architecture.md](docs/architecture.md)。
+包里也暴露了兼容命令 `agent-signature`，旧 hook 可以继续工作。实现边界与信任边界见 [docs/architecture/overview.md](docs/architecture/overview.md)。
 
 ## 从 0.10.0 升级
 

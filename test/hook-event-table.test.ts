@@ -8,7 +8,7 @@ import { createEmptyState, type AgentSession } from '../src/state.js';
 import { loadState, saveState } from '../src/state-store.js';
 import { captureHookWorkerStarts, drainQueue, restoreHookWorkerStarts } from './hook-producer-support.js';
 
-// Pin the `--source/--event` invocation forms in docs/architecture.md, "Hook
+// Pin the `--source/--event` invocation forms in docs/architecture/hook-pipeline.md, "Hook
 // Normalization". Each case records through the hook producer and applies
 // through one in-process worker run (`drainQueue`). The seeded running sessions
 // distinguish start from heartbeat by startedAt, and the usage badge assertions

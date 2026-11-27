@@ -11,7 +11,7 @@ description: Use when installing, configuring, verifying, or debugging @rivus/ag
 
 ## Use When
 
-- A user wants Codex, Claude Code, Gemini CLI, Grok, opencode, or Pi Coding Agent activity shown in Feishu signature.
+- A user wants Codex, Claude Code, Gemini CLI, Grok, opencode, Pi Coding Agent, or dsh activity shown in Feishu signature.
 - Hooks are installed but the signature is stale.
 - The count differs from visible terminal windows.
 - Laptop sleep, lid close, or wake behavior needs verification.
@@ -28,6 +28,7 @@ agent-presence setup
 agent-presence url
 agent-presence status
 agent-presence status --remote        # inspects the published FaaS preview
+agent-presence usage                  # today + 7-day token usage
 agent-presence update --force
 agent-presence reset --force
 ```
@@ -59,7 +60,7 @@ agent-presence config provider feishu-signature \
 ## Mental Model
 
 ```text
-agent hook event -> JSON state -> render text -> debounced slot update -> Feishu preview
+agent hook event -> local queue -> worker applies to JSON state -> usage refresh + debounced render -> slot / FaaS preview -> Feishu preview
 ```
 
 Active means "currently working", not "terminal window exists":

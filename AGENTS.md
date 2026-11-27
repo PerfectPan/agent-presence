@@ -67,7 +67,7 @@ Do not claim implementation work is complete until the relevant commands pass, o
 
 Check the [Change Design Gate](CONTRIBUTING.md#change-design-gate) before starting work. Bugfixes and routine changes need only a clear PR summary and validation. For non-trivial changes that meet the gate, write or review the active Plan in `docs/plans/` before implementation, and do not start a Plan that is blocked on an unresolved decision. Retire a completed Plan in its final delivery PR per [`docs/AGENTS.md` §4](docs/AGENTS.md#4-retiring-a-plan).
 
-Read [`docs/architecture.md`](docs/architecture.md) before changing runtime behavior. The constraints that matter most:
+Read [`docs/architecture/overview.md`](docs/architecture/overview.md) (and the deep-dive docs under `docs/architecture/`) before changing runtime behavior. The constraints that matter most:
 
 - The hook path (`agent-presence hook`) runs inside another agent's lifecycle. It must stay fast, bounded, non-interactive, and fail-open: a hook never throws into or blocks the agent, and Codex hooks always print `{}`.
 - Presence comes from lifecycle events, never from process scans. Each agent is a source in the source table: built-ins are `builtin:<id>` entries in `src/sources.default.json` backed by resolvers in `src/cli/hook-context.ts`, and a user's `plugins.sources` config merges over them. A new agent is a new source entry, not a special case in the hook command.
@@ -78,7 +78,7 @@ Read [`docs/architecture.md`](docs/architecture.md) before changing runtime beha
 
 - Read [`docs/AGENTS.md`](docs/AGENTS.md) before writing non-code knowledge: adding or changing a file under `docs/`, choosing between a doc and a `Why:` comment, or retiring a Plan.
 - Keep `README.md` and `README.zh-CN.md` focused on orientation, quick start, and current user-facing behavior; the user guide lives in `site/`.
-- Use `docs/architecture.md` for the current runtime architecture and trust boundaries.
+- Use `docs/architecture/` (starting at [`docs/architecture/overview.md`](docs/architecture/overview.md)) for the current runtime architecture and trust boundaries.
 - Use `CONTRIBUTING.md` for contribution workflow.
 - Use `docs/plans/` for active implementation plans while non-trivial work is in flight, and retire completed plans in their final delivery PR. See `docs/README.md`.
 - Record user-facing changes with a changeset (`pnpm changeset`) in the same PR; do not edit the generated `CHANGELOG.md`.
