@@ -268,7 +268,7 @@ async function resolveHandlerSpecifier(
     // A writable parent dir lets another user swap the (otherwise fine) file, so
     // narrow the swap window by requiring the directory be owned and not
     // group/world-writable too. This does not fully close the check-to-import
-    // TOCTOU gap (see docs/architecture.md), but removes the easy directory-swap vector.
+    // TOCTOU gap (see docs/architecture/providers-and-sources.md), but removes the easy directory-swap vector.
     const parent = lstatSync(dirname(handler));
     if (typeof process.getuid === 'function' && parent.uid !== process.getuid()) {
       await diagnose(

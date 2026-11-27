@@ -3,7 +3,7 @@ import { GROK_EVENTS } from '../hooks/grok.js';
 
 // The signal rule these tables implement, including the kit-phase fallback
 // for a name a table does not list and why rows differ from the kit phase:
-// docs/architecture.md, "Hook Normalization". A table value is the internal
+// docs/architecture/hook-pipeline.md, "Hook Normalization". A table value is the internal
 // event name normalizeEvent, applyAgentEvent, and isSessionBoundaryEvent
 // understand; `null` ignores the event.
 

@@ -44,7 +44,7 @@ pnpm link --global
 agent-presence setup --hook-command absolute
 ```
 
-`agent-signature` stays available as a compatibility alias, so old hooks keep working. See [docs/architecture.md](docs/architecture.md) for the implementation shape and trust boundaries.
+`agent-signature` stays available as a compatibility alias, so old hooks keep working. See [docs/architecture/overview.md](docs/architecture/overview.md) for the implementation shape and trust boundaries.
 
 ## Upgrade from 0.10.0
 

@@ -13,6 +13,7 @@ export default defineConfig({
       // Copied verbatim from the project template; keep them byte-identical so syncs stay a plain diff.
       '.github/ISSUE_TEMPLATE/**',
       '.github/workflows/review.yml',
+      'docs/AGENTS.md',
       'docs/plans/0000-template.md',
       'docs/plans/README.md'
     ]

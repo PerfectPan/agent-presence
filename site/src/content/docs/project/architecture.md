@@ -4,7 +4,7 @@ description: How presence flows from agent hooks to your signature.
 ---
 
 ```text
-Codex / Claude Code / Gemini CLI / opencode / Pi / Grok hooks
+Codex / Claude Code / Gemini CLI / opencode / Pi / Grok / dsh hooks
 -> hook records an event in the local queue and returns
 -> worker applies queued events to locked JSON state (TTL pruning)
 -> usage refresh + debounced renderer (templates + usage badges)
@@ -22,7 +22,7 @@ Token usage is read **after the fact** from local agent transcripts. The managed
 
 CLI commands resolve a provider through a small registry (`createProvider`) and assert only the capability they need — login, publish, or signature URL — so they never depend on a concrete backend. The shared remote value store is modelled as a `SlotBackend`: both `magic-builder` (default) and `feishu-signature` compose the same backend for login/publish/info and differ only in which preview URL Feishu embeds. Neither provider depends on the other, and a future provider with its own storage can implement the interface without touching the slot backend.
 
-For the full design and trust boundaries, see `docs/architecture.md` in the repository.
+For the full design and trust boundaries, see `docs/architecture/overview.md` in the repository.
 
 ## Sources
 

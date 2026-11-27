@@ -4,7 +4,7 @@ description: presence 如何从智能体 hook 流到你的签名。
 ---
 
 ```text
-Codex / Claude Code / Gemini CLI / opencode / Pi / Grok hooks
+Codex / Claude Code / Gemini CLI / opencode / Pi / Grok / dsh hooks
 -> hook 将事件写入本地队列并返回
 -> worker 在状态锁下将队列事件应用到 JSON 状态(TTL 清理)
 -> usage 刷新 + 防抖渲染(模板 + usage 徽章)
@@ -22,7 +22,7 @@ token 统计是**事后**从本地 transcript 读取的。托管 dsh 插件是�
 
 CLI 命令通过一个小的注册表(`createProvider`)解析 provider,只断言自己需要的能力——登录、发布、或签名 URL——因此从不依赖某个具体后端。共享的远端值存储抽象成 `SlotBackend`:`magic-builder`(默认)和 `feishu-signature` 都**组合**同一个后端来做登录/发布/读取,只在飞书嵌入哪个预览 URL 上分叉。两个 provider 互不依赖;未来一个有自己存储的新 provider,可以直接实现该接口而完全不碰 slot 后端。
 
-完整设计与信任边界见仓库里的 `docs/architecture.md`。
+完整设计与信任边界见仓库里的 `docs/architecture/overview.md`。
 
 ## Sources
 

@@ -169,15 +169,13 @@ Trusted Publishing cannot be configured until the package exists on npm. To boot
   and pause Renovate's Actions updates while restoring coverage.
 
 - **Security is a separate settings decision**: dependency graph and Dependabot alerts remain part of the target
-  setup. Removing a Dependabot version-update file does not enable alerts or transfer security coverage. At the
-  migration audit, the [repository security settings](https://github.com/PerfectPan/agent-presence/settings/security_analysis)
-  showed dependency graph, Dependabot alerts and automatic security PRs disabled; this change does not alter those
-  settings. The owner must separately enable the dependency graph and alerts, then
-  verify that Renovate has permission to read vulnerability alerts and demonstrate a real hosted alert-to-fix PR
-  with passing CI. OSV checks and `vulnerabilityAlerts` configuration alone do not establish that coverage. Agree
-  on one primary security-PR owner only after that verification; do not disable existing security updates during
-  a future handoff until the replacement is proven. If coverage cannot be demonstrated, retain any current
-  coverage and explicitly arrange the interim security-PR owner with the maintainer.
+  setup and are configured separately in [repository security settings](https://github.com/PerfectPan/agent-presence/settings/security_analysis);
+  removing a Dependabot version-update file does not enable alerts or transfer security coverage. Before handing off
+  security-PR ownership to Renovate, enable dependency graph and alerts, verify Renovate's vulnerability-alert read
+  permission, and confirm a hosted alert-to-fix PR passes CI (OSV checks and `vulnerabilityAlerts` configuration alone
+  do not establish that coverage). Do not disable existing security updates during a future handoff until the
+  replacement is proven; if coverage cannot be demonstrated, retain current coverage and agree on an interim
+  security-PR owner with the maintainer.
 
 - **Changesets**: bot PRs carry none. Dependency updates that do not change a published package's behavior need no
   changeset. If a bot PR changes published behavior (for example a bundled dependency changed), the reviewer adds a
@@ -190,17 +188,14 @@ Model prices come from `@rivus/agent-kit/cost/prices`, the kit's snapshot of Lit
 ## Plan Lifecycle And Retirement
 
 1. Draft a plan from [`docs/plans/0000-template.md`](docs/plans/0000-template.md) only when triggered by the [Change Design Gate](#change-design-gate). Keep `Status: blocked` while a material scope, interface, data, or rollout decision is unresolved.
-2. Review the goals, boundaries, and key decisions before implementing; update the plan if design choices change mid-flight.
+2. Review the goals, boundaries, and key decisions before implementing; update an active plan mid-flight only when remaining multi-PR or multi-session work still needs re-alignment.
 3. Implement within that scope, adding tests and updating current-state `docs/` in the same change.
-4. Retire the plan as soon as its code scope lands on the default branch. Do not keep a completed plan in `docs/plans/` waiting on deferred manual checks or future polish. In the final delivery PR:
-   - Move any remaining manual verification or follow-up work to issues.
-   - Migrate lasting knowledge that code cannot express (invariants, ownership/trust boundaries, tradeoffs, external quirks, validation limits) into current-state `docs/` (and local `Why:` comments in code).
-   - Delete the completed plan file. Git history and the delivery PR keep the full execution record.
+4. Retire the plan in its final delivery PR as soon as its code scope lands on the default branch; move deferred manual checks and future polish to issues rather than keeping the plan open. Follow [`docs/AGENTS.md` §4](docs/AGENTS.md#4-retiring-a-plan).
 5. When the owner decides that a long-blocked, unfinished Plan should not stay active, move its scope to an issue that states the goal, the blocker, and the independent parts, link the file at a fixed commit, and delete the plan file.
 
 ## Change Design Gate
 
-Most changes need only a clear PR description (`## Summary` and `## Validation`), not a separate document.
+Most changes need only a clear PR description (`## Summary` and `## Validation`), not a separate document. Write a Plan only when upfront alignment with a human is needed before implementing. Do not write a Plan for adjustments requested during implementation or review—reflect those directly in code, durable docs, and the PR description.
 
 | Change scope                                                                                                             | Required artifact                                                    |
 | ------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------- |
@@ -213,7 +208,7 @@ In this repository, changes to public CLI behavior, hook or installer behavior, 
 
 [`docs/plans/`](docs/plans/) holds active Plans only while non-trivial work is in flight. Copy [`0000-template.md`](docs/plans/0000-template.md) and keep only the sections that apply. State the problem, goals, non-goals, boundaries, rejected alternatives, failure/rollback behavior, and verification; a file list alone is not a design.
 
-Keep unknown owners, dates, and interfaces marked "unconfirmed". A plan may make feature-specific technical decisions, but it cannot silently override current architecture. This repository does not keep an RFC directory. The RFCs it used earlier remain in Git history: their delivered design is in [`docs/architecture.md`](docs/architecture.md), and the Token Usage RFC's unfinished follow-up is tracked in [issue #133](https://github.com/PerfectPan/agent-presence/issues/133). Follow [Plan Lifecycle And Retirement](#plan-lifecycle-and-retirement) when the code lands.
+Keep unknown owners, dates, and interfaces marked "unconfirmed". A plan may make feature-specific technical decisions, but it cannot silently override current architecture. This repository does not keep an RFC directory. The RFCs it used earlier remain in Git history: their delivered design is under [`docs/architecture/`](docs/architecture/overview.md), and the Token Usage RFC's unfinished follow-up is tracked in [issue #133](https://github.com/PerfectPan/agent-presence/issues/133). Follow [Plan Lifecycle And Retirement](#plan-lifecycle-and-retirement) when the code lands.
 
 ## Documentation Standards
 
@@ -221,9 +216,9 @@ Keep unknown owners, dates, and interfaces marked "unconfirmed". A plan may make
 - Use `CONTRIBUTING.md` for contribution workflow, review expectations, and repository policy.
 - Use `AGENTS.md` for AI-agent instructions.
 - Use `docs/plans/` for active implementation plans while non-trivial work is in flight; retire them when code lands.
-- Use `docs/architecture.md` for the current runtime architecture and trust boundaries, and the Astro site under `site/` for the user guide.
+- Use `docs/architecture/` (starting at [`docs/architecture/overview.md`](docs/architecture/overview.md)) for the current runtime architecture and trust boundaries, and the Astro site under `site/` for the user guide.
 
-Follow [`docs/README.md`](docs/README.md) when adding or reorganizing documentation.
+Follow [`docs/AGENTS.md`](docs/AGENTS.md) for category placement, writing standards, and retiring plans, and list new documents in [`docs/README.md`](docs/README.md).
 
 ## Pull Request Expectations
 

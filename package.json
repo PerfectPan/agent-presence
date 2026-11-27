@@ -42,7 +42,7 @@
   },
   "files": [
     "dist",
-    "docs/architecture.md",
+    "docs/architecture",
     "docs/assets",
     "!docs/README.md",
     "skills",

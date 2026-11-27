@@ -10,7 +10,7 @@ import { loadState, saveState } from '../src/state-store.js';
 import { captureHookWorkerStarts, drainQueue, restoreHookWorkerStarts } from './hook-producer-support.js';
 
 // `hook --agent <kitAgentId>` interpreted with readHookEvent. One case per
-// event of the signal rule in docs/architecture.md ("Hook Normalization"),
+// event of the signal rule in docs/architecture/hook-pipeline.md ("Hook Normalization"),
 // including grouped names and payload branches. Where the `--source/--event`
 // form handles the same event, the state outcome matches
 // test/hook-event-table.test.ts.
